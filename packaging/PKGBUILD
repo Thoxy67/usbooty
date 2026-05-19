@@ -28,6 +28,11 @@ optdepends=(
 )
 provides=("$_pkgname=$pkgver")
 conflicts=("$_pkgname")
+# Disable LTO: makepkg's `lto` adds -flto only to CXXFLAGS, so cxx-qt-lib's C++
+# glue compiles to GCC LTO bitcode that rust-lld cannot resolve at link time
+# (undefined `cxxbridge`/`qguiapplication_new` symbols). Rust is not LTO'd to
+# match, so the two sides cannot be linked together.
+options=('!lto')
 source=("$_pkgname::git+https://git.thoxy.xyz/thoxy/usbooty.git")
 sha256sums=('SKIP')
 install="$pkgname.install"
