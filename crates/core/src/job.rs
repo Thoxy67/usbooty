@@ -7,15 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// Which of the two write methods the user selected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WriteMethod {
-    /// Raw byte-for-byte copy of the ISO onto the device.
-    Dd,
-    /// Partition the device and copy the ISO contents file-by-file.
-    Fat32,
-}
+use crate::iso_report::PersistenceKind;
 
 /// The partition table type to write (the user always chooses this explicitly).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,41 +29,160 @@ impl PartitionTable {
     }
 }
 
-/// How to handle a Windows `install.wim` that exceeds the FAT32 4 GiB file limit.
+/// The filesystem to create on the target's main partition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileSystem {
+    /// FAT32 — universal, but a 4 GiB per-file limit.
+    Fat32,
+    /// NTFS — Windows-native, no practical file-size limit.
+    Ntfs,
+    /// exFAT — FAT successor, no 4 GiB limit, broad support.
+    ExFat,
+    /// ext4 — Linux-native.
+    Ext4,
+}
+
+impl FileSystem {
+    /// Short name shown in the UI.
+    pub fn label(self) -> &'static str {
+        match self {
+            FileSystem::Fat32 => "FAT32",
+            FileSystem::Ntfs => "NTFS",
+            FileSystem::ExFat => "exFAT",
+            FileSystem::Ext4 => "ext4",
+        }
+    }
+}
+
+/// How a Windows `install.wim` larger than FAT32's 4 GiB file limit is handled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WimStrategy {
-    /// No oversized file — copy everything as-is onto a single FAT32 partition.
+    /// No oversized image — a single partition holds everything as-is.
     None,
-    /// Split `install.wim` into `install.swm` chunks with `wimlib-imagex`.
-    Split,
-    /// Use the UEFI:NTFS two-partition trick (large NTFS + tiny FAT32 ESP).
+    /// The UEFI:NTFS two-partition layout: a large NTFS partition keeps
+    /// `install.wim` intact, plus a tiny FAT partition with a signed bootloader.
     UefiNtfs,
+}
+
+/// Cross-cutting options that apply to every job mode.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobOptions {
+    /// Volume label for the main partition (sanitized per-filesystem by the
+    /// helper). Empty falls back to a default.
+    #[serde(default)]
+    pub label: String,
+    /// Zero the whole device before partitioning, rather than a quick format.
+    #[serde(default)]
+    pub full_format: bool,
+    /// Read the written data back and verify it after the job completes.
+    #[serde(default)]
+    pub verify: bool,
+}
+
+/// An optional persistent overlay partition for a Linux live USB.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Persistence {
+    /// Which live-system persistence scheme to set up.
+    pub kind: PersistenceKind,
+    /// Size of the persistence partition, in bytes.
+    pub size_bytes: u64,
+}
+
+/// Optional customization of a Windows installation, applied via a generated
+/// `autounattend.xml` placed on the USB.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WindowsSetup {
+    /// Bypass the Windows 11 TPM 2.0 requirement.
+    #[serde(default)]
+    pub bypass_tpm: bool,
+    /// Bypass the Windows 11 Secure Boot requirement.
+    #[serde(default)]
+    pub bypass_secureboot: bool,
+    /// Bypass the Windows 11 8 GB RAM requirement.
+    #[serde(default)]
+    pub bypass_ram: bool,
+    /// Skip the forced Microsoft-account requirement during OOBE.
+    #[serde(default)]
+    pub skip_msaccount: bool,
+    /// Create a local account with this name (skips account creation in OOBE).
+    #[serde(default)]
+    pub local_account: Option<String>,
+    /// Disable telemetry / data-collection prompts.
+    #[serde(default)]
+    pub disable_telemetry: bool,
+}
+
+impl WindowsSetup {
+    /// Whether any customization is actually requested.
+    pub fn is_active(&self) -> bool {
+        self.bypass_tpm
+            || self.bypass_secureboot
+            || self.bypass_ram
+            || self.skip_msaccount
+            || self.local_account.is_some()
+            || self.disable_telemetry
+    }
 }
 
 /// A complete, executable description of one write operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Job {
-    /// Raw write of `iso_path` onto `device_path`.
+    /// Raw byte-for-byte write of `iso_path` onto `device_path`.
     Dd {
         iso_path: PathBuf,
         device_path: PathBuf,
+        #[serde(default)]
+        opts: JobOptions,
     },
-    /// Partition `device_path`, create filesystem(s), and copy the ISO contents.
+    /// Partition `device_path`, create a filesystem, and copy the ISO contents.
     Partitioned {
         iso_path: PathBuf,
         device_path: PathBuf,
         table: PartitionTable,
-        wim_strategy: WimStrategy,
+        /// Filesystem for the main partition.
+        filesystem: FileSystem,
+        /// Large-`install.wim` handling.
+        wim: WimStrategy,
         /// Path to a locally-cached `uefi-ntfs.img`; required iff
-        /// `wim_strategy == UefiNtfs`. The GUI downloads it so the helper
-        /// never needs network access.
+        /// `wim == UefiNtfs`. The GUI downloads it so the helper never needs
+        /// network access.
+        #[serde(default)]
         uefi_ntfs_img: Option<PathBuf>,
-        /// Volume label detected from the source image, used to name the main
-        /// partition and its filesystem. Empty when the image has no label —
-        /// the helper then falls back to a default.
-        label: String,
+        /// Optional persistent overlay partition for a Linux live USB.
+        #[serde(default)]
+        persistence: Option<Persistence>,
+        /// Optional Windows-installer customization.
+        #[serde(default)]
+        windows_setup: Option<WindowsSetup>,
+        #[serde(default)]
+        opts: JobOptions,
+    },
+    /// Partition and format `device_path` with no payload — a blank, usable
+    /// (non-bootable) drive.
+    Format {
+        device_path: PathBuf,
+        table: PartitionTable,
+        filesystem: FileSystem,
+        #[serde(default)]
+        opts: JobOptions,
+    },
+    /// Install or update Ventoy on `device_path` via the Ventoy CLI, then
+    /// optionally copy `iso_path` onto the Ventoy data partition. Ventoy does
+    /// its own partitioning and formatting, so this carries no `JobOptions`.
+    Ventoy {
+        device_path: PathBuf,
+        /// GPT (Ventoy's `-g`) instead of Ventoy's MBR default.
+        table: PartitionTable,
+        /// Secure Boot support (Ventoy's `-s` / `-S`).
+        secure_boot: bool,
+        /// Update an existing Ventoy install (`-u`) instead of a fresh install.
+        update: bool,
+        /// An ISO to copy onto the Ventoy data partition once it is ready.
+        #[serde(default)]
+        iso_path: Option<PathBuf>,
     },
 }
 
@@ -79,14 +190,19 @@ impl Job {
     /// The target device node for this job.
     pub fn device_path(&self) -> &PathBuf {
         match self {
-            Job::Dd { device_path, .. } | Job::Partitioned { device_path, .. } => device_path,
+            Job::Dd { device_path, .. }
+            | Job::Partitioned { device_path, .. }
+            | Job::Format { device_path, .. }
+            | Job::Ventoy { device_path, .. } => device_path,
         }
     }
 
-    /// The source ISO for this job.
-    pub fn iso_path(&self) -> &PathBuf {
+    /// The source ISO for this job, if it has one.
+    pub fn iso_path(&self) -> Option<&PathBuf> {
         match self {
-            Job::Dd { iso_path, .. } | Job::Partitioned { iso_path, .. } => iso_path,
+            Job::Dd { iso_path, .. } | Job::Partitioned { iso_path, .. } => Some(iso_path),
+            Job::Ventoy { iso_path, .. } => iso_path.as_ref(),
+            Job::Format { .. } => None,
         }
     }
 }
@@ -101,12 +217,30 @@ mod tests {
             iso_path: "/tmp/win.iso".into(),
             device_path: "/dev/sdb".into(),
             table: PartitionTable::Gpt,
-            wim_strategy: WimStrategy::UefiNtfs,
+            filesystem: FileSystem::Ntfs,
+            wim: WimStrategy::UefiNtfs,
             uefi_ntfs_img: Some("/home/u/.cache/usbooty/uefi-ntfs.img".into()),
-            label: "WIN11".into(),
+            persistence: None,
+            windows_setup: None,
+            opts: JobOptions {
+                label: "WIN11".into(),
+                full_format: false,
+                verify: true,
+            },
         };
         let json = serde_json::to_string(&job).unwrap();
         let back: Job = serde_json::from_str(&json).unwrap();
+        assert_eq!(job, back);
+    }
+
+    #[test]
+    fn dd_job_roundtrips() {
+        let job = Job::Dd {
+            iso_path: "/tmp/linux.iso".into(),
+            device_path: "/dev/sdc".into(),
+            opts: JobOptions::default(),
+        };
+        let back: Job = serde_json::from_str(&serde_json::to_string(&job).unwrap()).unwrap();
         assert_eq!(job, back);
     }
 }

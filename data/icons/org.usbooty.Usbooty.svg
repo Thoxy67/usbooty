@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#312e81"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2e8f0"/>
+      <stop offset="1" stop-color="#94a3b8"/>
+    </linearGradient>
+    <linearGradient id="badge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#15803d"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded indigo background. -->
+  <rect x="2" y="2" width="60" height="60" rx="13" ry="13" fill="url(#bg)"/>
+
+  <!-- USB flash drive, upright and slightly left of centre to leave
+       room for the badge. -->
+  <g stroke="#0f172a" stroke-width="1.6" stroke-linejoin="round">
+    <!-- Metal USB-A connector. -->
+    <rect x="23" y="9" width="14" height="16" rx="1.5" fill="url(#metal)"/>
+    <!-- Plastic body. -->
+    <rect x="18" y="24" width="24" height="32" rx="3.5" fill="url(#body)"/>
+  </g>
+
+  <!-- Connector contact slot. -->
+  <rect x="26" y="13" width="8" height="7" rx="0.8" fill="#1e293b"/>
+
+  <!-- Cap seam across the body. -->
+  <line x1="18" y1="33" x2="42" y2="33" stroke="#94a3b8" stroke-width="1.4"/>
+
+  <!-- Boot badge: a green disc with a "flash" bolt, overlapping the
+       top-right corner. Says in one beat what the app does — flash a
+       bootable USB. -->
+  <g>
+    <circle cx="49" cy="15" r="11" fill="url(#badge)"
+            stroke="#064e3b" stroke-width="1.5"/>
+    <path d="M 51 8.5 L 45.5 16 L 48.5 16 L 47 21.5 L 52.5 13.5 L 49.5 13.5 Z"
+          fill="#ffffff" stroke="#064e3b" stroke-width="0.6"
+          stroke-linejoin="round"/>
+  </g>
+</svg>

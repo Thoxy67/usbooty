@@ -20,13 +20,16 @@
 mod blockdev;
 mod dd;
 mod emit;
+mod format;
 mod fsutil;
 mod isocopy;
 mod label;
 mod partition;
 mod partitioned;
+mod persistence;
 mod uefi_ntfs;
-mod wim;
+mod unattend;
+mod ventoy;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -115,27 +118,91 @@ fn run() -> Result<()> {
         "usbooty-helper {} starting",
         env!("CARGO_PKG_VERSION")
     ));
+    emit::log(describe_job(&job));
 
     match job {
         Job::Dd {
             iso_path,
             device_path,
-        } => dd::run(&iso_path, &device_path, &ABORT),
+            opts,
+        } => dd::run(&iso_path, &device_path, &opts, &ABORT),
         Job::Partitioned {
             iso_path,
             device_path,
             table,
-            wim_strategy,
+            filesystem,
+            wim,
             uefi_ntfs_img,
-            label,
+            persistence,
+            windows_setup,
+            opts,
         } => partitioned::run(
             &iso_path,
             &device_path,
             table,
-            wim_strategy,
+            filesystem,
+            wim,
             uefi_ntfs_img.as_deref(),
-            &label,
+            persistence,
+            windows_setup.as_ref(),
+            &opts,
             &ABORT,
+        ),
+        Job::Format {
+            device_path,
+            table,
+            filesystem,
+            opts,
+        } => format::run(&device_path, table, filesystem, &opts, &ABORT),
+        Job::Ventoy {
+            device_path,
+            table,
+            secure_boot,
+            update,
+            iso_path,
+        } => ventoy::run(
+            &device_path,
+            table,
+            secure_boot,
+            update,
+            iso_path.as_deref(),
+            &ABORT,
+        ),
+    }
+}
+
+/// A one-line summary of a job, logged when the helper starts.
+fn describe_job(job: &Job) -> String {
+    match job {
+        Job::Dd { device_path, .. } => {
+            format!("Job: raw image write → {}", device_path.display())
+        }
+        Job::Partitioned {
+            device_path,
+            filesystem,
+            table,
+            ..
+        } => format!(
+            "Job: partition & copy → {} ({}, {})",
+            device_path.display(),
+            filesystem.label(),
+            table.label()
+        ),
+        Job::Format {
+            device_path,
+            filesystem,
+            ..
+        } => format!(
+            "Job: format {} as {}",
+            device_path.display(),
+            filesystem.label()
+        ),
+        Job::Ventoy {
+            device_path, update, ..
+        } => format!(
+            "Job: {} Ventoy → {}",
+            if *update { "update" } else { "install" },
+            device_path.display()
         ),
     }
 }

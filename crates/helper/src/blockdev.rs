@@ -1,12 +1,18 @@
 //! Low-level block-device helpers: size queries, partition-table reread, and
 //! unmounting whatever the kernel currently has mounted off the target device.
 
-use anyhow::{Context, Result};
-use std::fs::File;
+use anyhow::{bail, Context, Result};
+use std::fs::{File, OpenOptions};
+use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use crate::emit;
+
+/// Zero-write chunk size — matches the DD path.
+const ZERO_BUF: usize = 4 * 1024 * 1024;
 
 // BLKGETSIZE64: `_IOR(0x12, 114, size_t)` — device size in bytes.
 nix::ioctl_read!(blkgetsize64, 0x12, 114, u64);
@@ -57,6 +63,44 @@ pub fn partition_path(base: &Path, index: u32) -> String {
     } else {
         format!("{base}{index}")
     }
+}
+
+/// Write zeros across the whole `device` — a "full format" erase that wipes
+/// every stale filesystem and residual data before the new layout is written.
+/// Reports an `Erasing` progress phase and honours `abort`.
+pub fn zero_device(device: &Path, abort: &AtomicBool) -> Result<()> {
+    let mut dev = OpenOptions::new()
+        .write(true)
+        .open(device)
+        .with_context(|| format!("opening device {}", device.display()))?;
+    let size = device_size(&dev)?;
+
+    emit::phase("Erasing");
+    emit::log(format!(
+        "Full format: erasing the whole device ({})",
+        usbooty_core::device::format_size(size)
+    ));
+    let buf = vec![0u8; ZERO_BUF];
+    let mut done = 0u64;
+    let mut last = Instant::now();
+    while done < size {
+        if abort.load(Ordering::SeqCst) {
+            bail!("aborted by user");
+        }
+        let chunk = ((size - done) as usize).min(buf.len());
+        dev.write_all(&buf[..chunk])
+            .context("zeroing the target device")?;
+        done += chunk as u64;
+        if last.elapsed() >= Duration::from_millis(100) {
+            emit::progress("Erasing", done, size);
+            last = Instant::now();
+        }
+    }
+    emit::progress("Erasing", size, size);
+    dev.flush().ok();
+    let _ = nix::unistd::fsync(&dev);
+    emit::log("Device fully erased");
+    Ok(())
 }
 
 /// Unmount every filesystem currently mounted from `device` or any of its

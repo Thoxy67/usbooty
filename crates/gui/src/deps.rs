@@ -32,8 +32,18 @@ const TOOLS: &[Tool] = &[
         critical: false,
     },
     Tool {
-        bin: "wimlib-imagex",
-        package: "wimlib",
+        bin: "mkfs.exfat",
+        package: "exfatprogs",
+        critical: false,
+    },
+    Tool {
+        bin: "mkfs.ext4",
+        package: "e2fsprogs",
+        critical: false,
+    },
+    Tool {
+        bin: "ventoy",
+        package: "ventoy",
         critical: false,
     },
 ];

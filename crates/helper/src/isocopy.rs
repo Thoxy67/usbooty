@@ -67,27 +67,35 @@ impl Drop for IsoMount {
         // `umount` of a loop mount also detaches the auto-allocated loop device.
         let _ = Command::new("umount").arg(&self.mountpoint).status();
         let _ = fs::remove_dir(&self.mountpoint);
+        emit::log("Unmounted source ISO");
     }
 }
 
-/// Mutable state threaded through the recursive copy.
+/// Files at least this large are named individually in the log.
+const LOG_FILE_MIN: u64 = 16 * 1024 * 1024;
+
+/// Mutable state threaded through the recursive copy or verify walk.
 struct Ctx<'a> {
-    /// Bytes copied so far.
+    /// Progress phase name reported to the GUI (`Copying` / `Verifying`).
+    phase: &'static str,
+    /// Bytes processed so far.
     copied: u64,
-    /// Total bytes that will be copied — the sum of every non-skipped file.
+    /// Files processed so far.
+    files: u64,
+    /// Total bytes that will be processed — the sum of every non-skipped file.
     total: u64,
-    /// Reused copy buffer.
+    /// Reused I/O buffer.
     buf: Vec<u8>,
     last_report: Instant,
     abort: &'a AtomicBool,
-    /// Called with a lowercased relative path; `true` means "do not copy".
+    /// Called with a lowercased relative path; `true` means "skip".
     skip: &'a dyn Fn(&str) -> bool,
 }
 
 impl Ctx<'_> {
     fn report(&mut self, force: bool) {
         if force || self.last_report.elapsed() >= REPORT_EVERY {
-            emit::progress("Copying", self.copied, self.total.max(self.copied));
+            emit::progress(self.phase, self.copied, self.total.max(self.copied));
             self.last_report = Instant::now();
         }
     }
@@ -117,8 +125,14 @@ pub fn copy_iso(
     // progress bar reflects the real remaining work and reaches 100%.
     let total = tree_size(iso.path(), "", skip)?;
 
+    emit::log(format!(
+        "Copying ISO contents ({}) to the target",
+        usbooty_core::device::format_size(total)
+    ));
     let mut ctx = Ctx {
+        phase: "Copying",
         copied: 0,
+        files: 0,
         total,
         buf: vec![0u8; COPY_BUF],
         last_report: Instant::now(),
@@ -127,6 +141,11 @@ pub fn copy_iso(
     };
     copy_tree(iso.path(), dest, "", &mut ctx)?;
     ctx.report(true);
+    emit::log(format!(
+        "Copied {} file(s), {}",
+        ctx.files,
+        usbooty_core::device::format_size(ctx.copied)
+    ));
     Ok(())
 }
 
@@ -169,6 +188,15 @@ fn copy_tree(src: &Path, dest: &Path, rel: &str, ctx: &mut Ctx) -> Result<()> {
             copy_tree(&src_path, &dest_path, &child_rel, ctx)?;
         } else if file_type.is_file() {
             if !(ctx.skip)(&child_rel) {
+                // Name the genuinely large files (kernels, install.wim,
+                // squashfs, …) in the log; small files would just flood it.
+                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                if size >= LOG_FILE_MIN {
+                    emit::log(format!(
+                        "  {child_rel}  ({})",
+                        usbooty_core::device::format_size(size)
+                    ));
+                }
                 copy_file(&src_path, &dest_path, ctx)?;
             }
         } else {
@@ -202,12 +230,90 @@ fn copy_file(src: &Path, dest: &Path, ctx: &mut Ctx) -> Result<()> {
         ctx.copied += n as u64;
         ctx.report(false);
     }
+    ctx.files += 1;
     Ok(())
+}
+
+/// Re-read every copied file and confirm it matches the source ISO
+/// byte-for-byte. Mirrors [`copy_iso`]; run after a copy when verification is
+/// requested. The destination filesystem must still be mounted at `dest`.
+pub fn verify_iso(
+    iso_path: &Path,
+    dest: &Path,
+    abort: &AtomicBool,
+    skip: &dyn Fn(&str) -> bool,
+) -> Result<()> {
+    let iso = IsoMount::new(iso_path)?;
+    let total = tree_size(iso.path(), "", skip)?;
+    emit::phase("Verifying");
+    let mut ctx = Ctx {
+        phase: "Verifying",
+        copied: 0,
+        files: 0,
+        total,
+        buf: vec![0u8; COPY_BUF],
+        last_report: Instant::now(),
+        abort,
+        skip,
+    };
+    verify_tree(iso.path(), dest, "", &mut ctx)?;
+    ctx.report(true);
+    Ok(())
+}
+
+/// Recursively compare one ISO directory against its copy under `dest`.
+fn verify_tree(src: &Path, dest: &Path, rel: &str, ctx: &mut Ctx) -> Result<()> {
+    for entry in fs::read_dir(src).with_context(|| format!("reading {}", src.display()))? {
+        if ctx.abort.load(Ordering::SeqCst) {
+            bail!("aborted by user");
+        }
+        let entry = entry.context("reading an ISO directory entry")?;
+        let raw_name = entry.file_name();
+        let name = raw_name.to_string_lossy();
+        let child_rel = join_rel(rel, &name);
+        let file_type = entry.file_type().context("stat of an ISO entry")?;
+        let src_path = entry.path();
+        let dest_path = dest.join(name.as_ref());
+
+        if file_type.is_dir() {
+            verify_tree(&src_path, &dest_path, &child_rel, ctx)?;
+        } else if file_type.is_file() && !(ctx.skip)(&child_rel) {
+            let src_hash = hash_file(&src_path, &mut ctx.buf, ctx.abort)?;
+            let dest_hash = hash_file(&dest_path, &mut ctx.buf, ctx.abort)?;
+            if src_hash != dest_hash {
+                bail!("verification failed: {child_rel} does not match the source ISO");
+            }
+            ctx.copied += entry.metadata().map(|m| m.len()).unwrap_or(0);
+            ctx.report(false);
+        }
+    }
+    Ok(())
+}
+
+/// BLAKE3-hash a file, streaming it in chunks through the reused `buf`.
+fn hash_file(path: &Path, buf: &mut [u8], abort: &AtomicBool) -> Result<blake3::Hash> {
+    let mut file = fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
+    let mut hasher = blake3::Hasher::new();
+    loop {
+        if abort.load(Ordering::SeqCst) {
+            bail!("aborted by user");
+        }
+        let n = file
+            .read(buf)
+            .with_context(|| format!("reading {}", path.display()))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize())
 }
 
 /// Extract a single file from the ISO to `dest`. `path` is the segment list
 /// from the ISO root, e.g. `["sources", "install.wim"]`. Each segment is
 /// matched case-insensitively. Returns the number of bytes written.
+// Used by the Windows To Go method (extracts install.wim before applying it).
+#[allow(dead_code)]
 pub fn extract_file(iso_path: &Path, path: &[&str], dest: &Path) -> Result<u64> {
     let iso = IsoMount::new(iso_path)?;
     let src = resolve_ci(iso.path(), path)?;
@@ -220,6 +326,7 @@ pub fn extract_file(iso_path: &Path, path: &[&str], dest: &Path) -> Result<u64> 
 
 /// Resolve a `/`-segment path under `root`, matching each segment ignoring
 /// case (ISO9660 may upper-case names; UDF preserves them).
+#[allow(dead_code)]
 fn resolve_ci(root: &Path, segments: &[&str]) -> Result<PathBuf> {
     let mut current = root.to_path_buf();
     for segment in segments {

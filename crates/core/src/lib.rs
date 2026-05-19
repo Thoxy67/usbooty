@@ -14,7 +14,9 @@ pub mod plan;
 pub mod progress;
 
 pub use device::DeviceInfo;
-pub use iso_report::{IsoReport, OsKind};
-pub use job::{Job, PartitionTable, WimStrategy, WriteMethod};
-pub use plan::{choose_scheme, needs_wim_choice, PartitionScheme, FAT32_MAX_FILE};
+pub use iso_report::{IsoReport, OsKind, PersistenceKind};
+pub use job::{
+    FileSystem, Job, JobOptions, PartitionTable, Persistence, WimStrategy, WindowsSetup,
+};
+pub use plan::{auto_filesystem, FAT32_MAX_FILE};
 pub use progress::{LogLevel, ProgressMsg};

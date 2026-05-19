@@ -9,7 +9,10 @@ use std::sync::{Arc, Mutex};
 
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
-use usbooty_core::{DeviceInfo, IsoReport, Job, PartitionTable, WimStrategy};
+use usbooty_core::{
+    DeviceInfo, FileSystem, IsoReport, Job, JobOptions, OsKind, PartitionTable, Persistence,
+    WimStrategy, WindowsSetup,
+};
 
 /// The bridge module exposed to C++/QML.
 #[cxx_qt::bridge]
@@ -26,16 +29,43 @@ pub mod qobject {
         // Source ISO.
         #[qproperty(QString, iso_path)]
         #[qproperty(QString, iso_summary)]
+        // Editable volume label, pre-filled from the ISO's own label.
+        #[qproperty(QString, label)]
+        // SHA-256 of the source ISO ("Computing…" while it is calculated).
+        #[qproperty(QString, iso_sha256)]
+        // The application version, for the About dialog.
+        #[qproperty(QString, app_version)]
         // Target devices: newline-separated display strings for the combo box.
         #[qproperty(QString, devices)]
         #[qproperty(i32, selected_device)]
         #[qproperty(bool, show_fixed_disks)]
-        // Options. method: 0 = DD, 1 = partition & copy. table: 0 = GPT, 1 = MBR.
+        // Options. method: 0 = DD, 1 = partition & copy, 2 = format only.
+        // table: 0 = GPT, 1 = MBR. filesystem (format mode only):
+        // 0 = FAT32, 1 = NTFS, 2 = exFAT, 3 = ext4.
         #[qproperty(i32, method)]
         #[qproperty(i32, table)]
-        // Large-install.wim handling, set by the choice dialog:
-        // 0 = split install.wim, 1 = UEFI:NTFS two-partition layout.
-        #[qproperty(i32, wim_choice)]
+        #[qproperty(i32, filesystem)]
+        // Ventoy options (write method 3).
+        #[qproperty(bool, ventoy_update)]
+        #[qproperty(bool, ventoy_secure_boot)]
+        // Zero the whole device before writing, rather than a quick format.
+        #[qproperty(bool, full_format)]
+        // Read the written data back and verify it after the job.
+        #[qproperty(bool, verify)]
+        // Linux live-USB persistence: whether the ISO supports it, and the
+        // chosen overlay size in MiB (0 = no persistence partition).
+        #[qproperty(bool, persistence_supported)]
+        #[qproperty(i32, persistence_size)]
+        // Windows 11 installer customization (applied via autounattend.xml).
+        // `windows_iso` / `linux_iso` reflect the detected OS of the source ISO.
+        #[qproperty(bool, windows_iso)]
+        #[qproperty(bool, linux_iso)]
+        #[qproperty(bool, bypass_tpm)]
+        #[qproperty(bool, bypass_secureboot)]
+        #[qproperty(bool, bypass_ram)]
+        #[qproperty(bool, skip_msaccount)]
+        #[qproperty(bool, disable_telemetry)]
+        #[qproperty(QString, local_account)]
         // Job state.
         #[qproperty(bool, busy)]
         #[qproperty(f64, progress)]
@@ -78,9 +108,6 @@ pub mod qobject {
         /// A human-readable description of the device about to be erased.
         #[qinvokable]
         fn confirm_text(self: &AppController) -> QString;
-        /// Whether the FAT32 method must ask how to handle a large install.wim.
-        #[qinvokable]
-        fn needs_wim_choice(self: &AppController) -> bool;
         /// Fetch the language list for a Windows release (by `RELEASES` index).
         #[qinvokable]
         fn win_fetch_languages(self: Pin<&mut AppController>, version_index: i32);
@@ -115,12 +142,29 @@ pub struct JobHandle {
 pub struct AppControllerRust {
     iso_path: QString,
     iso_summary: QString,
+    label: QString,
+    iso_sha256: QString,
+    app_version: QString,
     devices: QString,
     selected_device: i32,
     show_fixed_disks: bool,
     method: i32,
     table: i32,
-    wim_choice: i32,
+    filesystem: i32,
+    ventoy_update: bool,
+    ventoy_secure_boot: bool,
+    full_format: bool,
+    verify: bool,
+    persistence_supported: bool,
+    persistence_size: i32,
+    windows_iso: bool,
+    linux_iso: bool,
+    bypass_tpm: bool,
+    bypass_secureboot: bool,
+    bypass_ram: bool,
+    skip_msaccount: bool,
+    disable_telemetry: bool,
+    local_account: QString,
     busy: bool,
     progress: f64,
     phase: QString,
@@ -149,12 +193,29 @@ impl Default for AppControllerRust {
         Self {
             iso_path: QString::default(),
             iso_summary: QString::from("No image selected"),
+            label: QString::default(),
+            iso_sha256: QString::default(),
+            app_version: QString::from(env!("CARGO_PKG_VERSION")),
             devices: QString::default(),
             selected_device: -1,
             show_fixed_disks: false,
             method: 0,
             table: 0,
-            wim_choice: 0,
+            filesystem: 0,
+            ventoy_update: false,
+            ventoy_secure_boot: true,
+            full_format: false,
+            verify: false,
+            persistence_supported: false,
+            persistence_size: 0,
+            windows_iso: false,
+            linux_iso: false,
+            bypass_tpm: false,
+            bypass_secureboot: false,
+            bypass_ram: false,
+            skip_msaccount: false,
+            disable_telemetry: false,
+            local_account: QString::default(),
             busy: false,
             progress: 0.0,
             phase: QString::default(),
@@ -236,47 +297,102 @@ impl qobject::AppController {
                 .set_iso_summary(QString::from("Cannot read that file"));
             return;
         }
-
         let report = crate::iso::analyze(&path_buf);
-        let name = path_buf
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.clone());
-        let summary = format!("{name}  ·  {}", report.summary());
-
-        self.as_mut().set_iso_path(QString::from(&path));
-        self.as_mut().set_iso_summary(QString::from(&summary));
-        self.as_mut().rust_mut().iso_report = Some(report);
-        self.refresh_fit_warning();
+        self.apply_iso(&path, report, None);
     }
 
-    /// Whether the FAT32 method must prompt for large-`install.wim` handling.
-    pub fn needs_wim_choice(&self) -> bool {
-        *self.method() == 1
-            && self
-                .rust()
-                .iso_report
-                .as_ref()
-                .is_some_and(usbooty_core::needs_wim_choice)
+    /// Set the source ISO from a just-downloaded file whose SHA-256 was
+    /// already computed as it streamed — so no re-read of the ISO is needed.
+    pub fn set_downloaded_iso(self: core::pin::Pin<&mut Self>, path: &str, sha256: &str) {
+        let report = crate::iso::analyze(std::path::Path::new(path));
+        self.apply_iso(path, report, Some(sha256));
+    }
+
+    /// Apply an analyzed ISO to the UI state. When `sha256` is `Some` the hash
+    /// is already known (a downloaded ISO); otherwise it is computed off-thread.
+    fn apply_iso(
+        mut self: core::pin::Pin<&mut Self>,
+        path: &str,
+        report: IsoReport,
+        sha256: Option<&str>,
+    ) {
+        let name = std::path::Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string());
+        let summary = format!("{name}  ·  {}", report.summary());
+        let vol_label = report.label.clone();
+        let pers_supported = report.persistence.is_some();
+        let is_windows = report.os_kind == OsKind::Windows;
+        let is_linux = report.os_kind == OsKind::Linux;
+
+        self.as_mut().set_iso_path(QString::from(path));
+        self.as_mut().set_iso_summary(QString::from(&summary));
+        // Pre-fill the editable volume label from the image's own label.
+        self.as_mut().set_label(QString::from(&vol_label));
+        self.as_mut().set_persistence_supported(pers_supported);
+        self.as_mut().set_persistence_size(0);
+        self.as_mut().set_windows_iso(is_windows);
+        self.as_mut().set_linux_iso(is_linux);
+
+        // Auto-pick the write method the image needs: the partition method for
+        // a Windows/Linux installer, raw DD for a BSD/other image (DD is
+        // OS-agnostic and the only method that boots those). Leave explicit
+        // "Format only" / "Ventoy" choices alone; the user can still override.
+        if *self.method() < 2 {
+            let auto_method = if is_windows || is_linux { 1 } else { 0 };
+            self.as_mut().set_method(auto_method);
+        }
+        self.as_mut().rust_mut().iso_report = Some(report);
+
+        match sha256 {
+            // Downloaded ISO — the hash was computed during the download.
+            Some(hash) => self.as_mut().set_iso_sha256(QString::from(hash)),
+            // Local ISO — the SHA-256 of a multi-gigabyte file is slow, so
+            // compute it on a worker thread without blocking the UI.
+            None => {
+                self.as_mut().set_iso_sha256(QString::from("Computing…"));
+                let qt = self.qt_thread();
+                let path = path.to_string();
+                std::thread::spawn(move || crate::runner::compute_iso_sha256(qt, path));
+            }
+        }
+
+        self.refresh_fit_warning();
     }
 
     /// Whether [`start`](Self::start) would currently do anything useful.
     pub fn can_start(&self) -> bool {
-        !self.busy()
-            && !self.iso_path().to_string().is_empty()
-            && *self.selected_device() >= 0
-            && self.fit_warning().to_string().is_empty()
+        if *self.busy() || *self.selected_device() < 0 {
+            return false;
+        }
+        match *self.method() {
+            // Format-only takes no ISO and has nothing to fit-check.
+            2 => true,
+            // Ventoy: an ISO is optional, but if given it must fit.
+            3 => self.fit_warning().to_string().is_empty(),
+            _ => {
+                !self.iso_path().to_string().is_empty()
+                    && self.fit_warning().to_string().is_empty()
+            }
+        }
     }
 
-    /// Describe the device about to be erased, for the confirmation dialog.
+    /// Describe what is about to happen, for the confirmation dialog.
     pub fn confirm_text(&self) -> QString {
-        match self.selected_info() {
-            Some(dev) => QString::from(&format!(
-                "All data on {} will be permanently erased.",
+        let Some(dev) = self.selected_info() else {
+            return QString::from("No device selected.");
+        };
+        if *self.method() == 3 && *self.ventoy_update() {
+            return QString::from(&format!(
+                "Ventoy on {} will be updated — existing files are kept.",
                 dev.display()
-            )),
-            None => QString::from("No device selected."),
+            ));
         }
+        QString::from(&format!(
+            "All data on {} will be permanently erased.",
+            dev.display()
+        ))
     }
 
     /// Validate inputs, build a [`Job`], and spawn the privileged helper.
@@ -292,47 +408,94 @@ impl qobject::AppController {
             return;
         };
 
-        let job = if *self.method() == 0 {
-            Job::Dd {
+        let table = if *self.table() == 0 {
+            PartitionTable::Gpt
+        } else {
+            PartitionTable::Mbr
+        };
+        let label = self.label().to_string();
+        let full_format = *self.full_format();
+        let verify = *self.verify();
+
+        let job = match *self.method() {
+            0 => Job::Dd {
                 iso_path: iso.into(),
                 device_path: device.into(),
-            }
-        } else {
-            let table = if *self.table() == 0 {
-                PartitionTable::Gpt
-            } else {
-                PartitionTable::Mbr
-            };
-            // The user's answer to the large-install.wim prompt; `choose_scheme`
-            // ignores it unless the ISO actually needs the choice.
-            let user_wim = if *self.wim_choice() == 1 {
-                WimStrategy::UefiNtfs
-            } else {
-                WimStrategy::Split
-            };
-            let wim_strategy = self
-                .rust()
-                .iso_report
-                .as_ref()
-                .map(|report| {
-                    usbooty_core::choose_scheme(report, table, Some(user_wim)).wim_strategy
-                })
-                .unwrap_or(WimStrategy::None);
-            // Name the partition after the source image's own volume label.
-            let label = self
-                .rust()
-                .iso_report
-                .as_ref()
-                .map(|report| report.label.clone())
-                .unwrap_or_default();
-            Job::Partitioned {
-                iso_path: iso.into(),
+                opts: JobOptions::default(),
+            },
+            2 => Job::Format {
                 device_path: device.into(),
                 table,
-                wim_strategy,
-                // The runner downloads and fills this in when needed.
-                uefi_ntfs_img: None,
-                label,
+                filesystem: filesystem_from_index(*self.filesystem()),
+                opts: JobOptions {
+                    label,
+                    full_format,
+                    verify,
+                },
+            },
+            3 => Job::Ventoy {
+                device_path: device.into(),
+                table,
+                secure_boot: *self.ventoy_secure_boot(),
+                update: *self.ventoy_update(),
+                // Seed the Ventoy partition with the loaded ISO, if any.
+                iso_path: (!iso.is_empty()).then(|| iso.into()),
+            },
+            _ => {
+                // Filesystem and large-`install.wim` handling are decided
+                // automatically from the ISO analysis: NTFS + UEFI:NTFS for a
+                // Windows ISO with an oversized install.wim, FAT32 otherwise.
+                let (filesystem, wim) = self
+                    .rust()
+                    .iso_report
+                    .as_ref()
+                    .map(usbooty_core::auto_filesystem)
+                    .unwrap_or((FileSystem::Fat32, WimStrategy::None));
+                // A persistent overlay, when the ISO supports it and the user
+                // gave the slider a non-zero size.
+                let persistence = self
+                    .rust()
+                    .iso_report
+                    .as_ref()
+                    .and_then(|r| r.persistence)
+                    .filter(|_| *self.persistence_size() > 0)
+                    .map(|kind| Persistence {
+                        kind,
+                        size_bytes: *self.persistence_size() as u64 * 1024 * 1024,
+                    });
+                // Windows-installer customization, when the source is Windows.
+                let windows_setup = if *self.windows_iso() {
+                    let setup = WindowsSetup {
+                        bypass_tpm: *self.bypass_tpm(),
+                        bypass_secureboot: *self.bypass_secureboot(),
+                        bypass_ram: *self.bypass_ram(),
+                        skip_msaccount: *self.skip_msaccount(),
+                        disable_telemetry: *self.disable_telemetry(),
+                        local_account: {
+                            let name = self.local_account().to_string();
+                            (!name.trim().is_empty()).then(|| name.trim().to_string())
+                        },
+                    };
+                    setup.is_active().then_some(setup)
+                } else {
+                    None
+                };
+                Job::Partitioned {
+                    iso_path: iso.into(),
+                    device_path: device.into(),
+                    table,
+                    filesystem,
+                    wim,
+                    // The runner downloads and fills this in when needed.
+                    uefi_ntfs_img: None,
+                    persistence,
+                    windows_setup,
+                    opts: JobOptions {
+                        label,
+                        full_format,
+                        verify,
+                    },
+                }
             }
         };
 
@@ -452,5 +615,15 @@ impl qobject::AppController {
         } else {
             self.rust().device_list.get(idx as usize)
         }
+    }
+}
+
+/// Map a GUI filesystem-combo index to a [`FileSystem`].
+fn filesystem_from_index(index: i32) -> FileSystem {
+    match index {
+        1 => FileSystem::Ntfs,
+        2 => FileSystem::ExFat,
+        3 => FileSystem::Ext4,
+        _ => FileSystem::Fat32,
     }
 }

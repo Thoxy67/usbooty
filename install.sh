@@ -32,5 +32,7 @@ install -Dm644 "$SRC_DIR/data/org.usbooty.Usbooty.desktop" \
     "$PREFIX/share/applications/org.usbooty.Usbooty.desktop"
 install -Dm644 "$SRC_DIR/data/org.usbooty.Usbooty.metainfo.xml" \
     "$PREFIX/share/metainfo/org.usbooty.Usbooty.metainfo.xml"
+install -Dm644 "$SRC_DIR/data/icons/org.usbooty.Usbooty.svg" \
+    "$PREFIX/share/icons/hicolor/scalable/apps/org.usbooty.Usbooty.svg"
 
 echo "usbooty installed. Launch it from your application menu or run 'usbooty'."

@@ -1,43 +1,54 @@
-//! The FAT32 partition method: partition the device, create a filesystem, and
-//! copy the ISO contents onto it file by file.
+//! The partition-and-copy method: partition the device, create a filesystem,
+//! and copy the ISO contents onto it file by file.
 
 use anyhow::{bail, Context, Result};
 use std::fs::OpenOptions;
-use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
-use usbooty_core::{PartitionTable, WimStrategy};
+use usbooty_core::{
+    FileSystem, JobOptions, PartitionTable, Persistence, WimStrategy, WindowsSetup,
+};
 
 use crate::{blockdev, emit, fsutil, isocopy, partition};
 
 /// Run the partition-method job, dispatching on the large-`install.wim` strategy.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     iso: &Path,
     device: &Path,
     table: PartitionTable,
-    wim_strategy: WimStrategy,
+    filesystem: FileSystem,
+    wim: WimStrategy,
     uefi_ntfs_img: Option<&Path>,
-    label: &str,
+    persistence: Option<Persistence>,
+    windows_setup: Option<&WindowsSetup>,
+    opts: &JobOptions,
     abort: &AtomicBool,
 ) -> Result<()> {
-    match wim_strategy {
-        WimStrategy::None => plain_fat32(iso, device, table, label, abort),
-        WimStrategy::Split => crate::wim::run_split(iso, device, table, label, abort),
+    match wim {
+        WimStrategy::None => {
+            plain_copy(iso, device, table, filesystem, persistence, windows_setup, opts, abort)
+        }
         WimStrategy::UefiNtfs => {
             let img = uefi_ntfs_img
                 .context("the UEFI:NTFS layout requires the uefi-ntfs.img resource")?;
-            crate::uefi_ntfs::run(iso, device, table, img, label, abort)
+            crate::uefi_ntfs::run(iso, device, table, img, windows_setup, opts, abort)
         }
     }
 }
 
-/// The common case: one FAT32 partition spanning the device, ISO copied in.
-fn plain_fat32(
+/// The common case: one partition spanning the device, ISO contents copied in.
+/// With `persistence`, a second ext4 partition is added for a writable overlay.
+#[allow(clippy::too_many_arguments)]
+fn plain_copy(
     iso: &Path,
     device: &Path,
     table: PartitionTable,
-    label: &str,
+    filesystem: FileSystem,
+    persistence: Option<Persistence>,
+    windows_setup: Option<&WindowsSetup>,
+    opts: &JobOptions,
     abort: &AtomicBool,
 ) -> Result<()> {
     let iso_size = std::fs::metadata(iso)
@@ -47,57 +58,168 @@ fn plain_fat32(
         bail!("the source ISO is empty");
     }
 
-    let part = setup_single_fat32(device, table, iso_size, label)?;
+    if let Some(p) = persistence {
+        return copy_with_persistence(iso, device, table, filesystem, iso_size, p, opts, abort);
+    }
 
+    let part = setup_single_partition(device, table, filesystem, iso_size, opts, abort)?;
     emit::phase("Copying");
     {
-        let mount = fsutil::Mount::new(&part, "vfat")?;
+        let mount = fsutil::Mount::for_filesystem(&part, filesystem)?;
         isocopy::copy_iso(iso, mount.path(), abort, &|_| false)?;
+        if opts.verify {
+            isocopy::verify_iso(iso, mount.path(), abort, &|_| false)?;
+        }
+        if let Some(setup) = windows_setup {
+            crate::unattend::write(mount.path(), setup)?;
+        }
         emit::phase("Flushing");
         // `mount` drops here: sync + unmount.
     }
 
-    emit::log("FAT32 partition created and populated");
+    emit::log(format!(
+        "{} partition created and populated",
+        filesystem.label()
+    ));
     Ok(())
 }
 
-/// Unmount the target, write a single-FAT32-partition table, format it, and
-/// return the partition's device node. Shared by the plain and WIM-split paths.
-pub fn setup_single_fat32(
+/// Unmount the target, optionally erase it, write a single-partition table,
+/// format it as `filesystem`, and return the partition's device node.
+/// `min_size` is the minimum device size required (0 when there is no payload).
+pub fn setup_single_partition(
     device: &Path,
     table: PartitionTable,
+    filesystem: FileSystem,
     min_size: u64,
-    label: &str,
+    opts: &JobOptions,
+    abort: &AtomicBool,
 ) -> Result<String> {
-    let unmounted = blockdev::unmount_all(device)?;
-    if unmounted > 0 {
-        emit::log(format!(
-            "Unmounted {unmounted} filesystem(s) from the target"
-        ));
-    }
+    prepare_device(device, opts, abort)?;
 
     emit::phase("Partitioning");
     {
-        let mut dev = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(device)
-            .with_context(|| format!("opening device {}", device.display()))?;
+        let mut dev = open_device(device)?;
         let dev_size = blockdev::device_size(&dev)?;
-        if dev_size < min_size {
+        if min_size > 0 && dev_size < min_size {
             bail!("the target device is smaller than the ISO contents");
         }
+        emit::log(format!(
+            "Target {} — {}",
+            device.display(),
+            usbooty_core::device::format_size(dev_size)
+        ));
+        emit::log("Wiping old partition tables and filesystem signatures");
         partition::wipe_signatures(&mut dev, dev_size)?;
-        partition::write_single_partition(&mut dev, table, label)?;
-        dev.flush().ok();
-        let _ = nix::unistd::fsync(&dev);
-        blockdev::reread_partition_table(&dev);
+        emit::log(format!(
+            "Writing a {} partition table with one {} partition",
+            table.label(),
+            filesystem.label()
+        ));
+        partition::write_single_partition(&mut dev, table, filesystem, &opts.label)?;
+        commit(&dev);
     }
 
     let part = blockdev::partition_path(device, 1);
     fsutil::wait_for_node(&part)?;
 
     emit::phase("Formatting");
-    fsutil::mkfs_vfat(&part, label)?;
+    fsutil::mkfs(filesystem, &part, &opts.label)?;
     Ok(part)
+}
+
+/// The persistence variant: a main partition plus a trailing ext4 overlay.
+fn copy_with_persistence(
+    iso: &Path,
+    device: &Path,
+    table: PartitionTable,
+    filesystem: FileSystem,
+    iso_size: u64,
+    persistence: Persistence,
+    opts: &JobOptions,
+    abort: &AtomicBool,
+) -> Result<()> {
+    prepare_device(device, opts, abort)?;
+
+    emit::phase("Partitioning");
+    {
+        let mut dev = open_device(device)?;
+        let dev_size = blockdev::device_size(&dev)?;
+        if dev_size < iso_size + persistence.size_bytes {
+            bail!("the target device is too small for the ISO plus persistence");
+        }
+        emit::log("Wiping old partition tables and filesystem signatures");
+        partition::wipe_signatures(&mut dev, dev_size)?;
+        emit::log(format!(
+            "Writing a {} table: a {} partition plus a {} ext4 persistence partition",
+            table.label(),
+            filesystem.label(),
+            usbooty_core::device::format_size(persistence.size_bytes),
+        ));
+        partition::write_persistence_layout(
+            &mut dev,
+            table,
+            filesystem,
+            persistence.size_bytes,
+            &opts.label,
+        )?;
+        commit(&dev);
+    }
+
+    let main_part = blockdev::partition_path(device, 1);
+    let pers_part = blockdev::partition_path(device, 2);
+    fsutil::wait_for_node(&main_part)?;
+    fsutil::wait_for_node(&pers_part)?;
+
+    emit::phase("Formatting");
+    fsutil::mkfs(filesystem, &main_part, &opts.label)?;
+
+    emit::phase("Copying");
+    {
+        let mount = fsutil::Mount::for_filesystem(&main_part, filesystem)?;
+        isocopy::copy_iso(iso, mount.path(), abort, &|_| false)?;
+        if opts.verify {
+            isocopy::verify_iso(iso, mount.path(), abort, &|_| false)?;
+        }
+        // Add the persistence kernel option to the copied bootloader configs,
+        // so the live system actually uses the overlay partition.
+        crate::persistence::patch_boot_config(mount.path(), persistence.kind)?;
+    }
+
+    crate::persistence::setup(&pers_part, persistence.kind)?;
+    emit::phase("Flushing");
+    emit::log(format!(
+        "{} live USB created with a persistence partition",
+        filesystem.label()
+    ));
+    Ok(())
+}
+
+/// Unmount the target and, if requested, fully erase it.
+fn prepare_device(device: &Path, opts: &JobOptions, abort: &AtomicBool) -> Result<()> {
+    let unmounted = blockdev::unmount_all(device)?;
+    if unmounted > 0 {
+        emit::log(format!(
+            "Unmounted {unmounted} filesystem(s) from the target"
+        ));
+    }
+    if opts.full_format {
+        blockdev::zero_device(device, abort)?;
+    }
+    Ok(())
+}
+
+/// Open the whole-disk device read/write.
+fn open_device(device: &Path) -> Result<std::fs::File> {
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(device)
+        .with_context(|| format!("opening device {}", device.display()))
+}
+
+/// Flush a freshly-written partition table and ask the kernel to re-read it.
+fn commit(dev: &std::fs::File) {
+    let _ = nix::unistd::fsync(dev);
+    blockdev::reread_partition_table(dev);
 }

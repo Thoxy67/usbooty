@@ -10,7 +10,7 @@ ApplicationWindow {
     width: 600
     height: 860
     minimumWidth: 520
-    minimumHeight: 700
+    minimumHeight: 620
     title: "usbooty — Bootable USB Creator"
 
     AppController {
@@ -23,10 +23,13 @@ ApplicationWindow {
         }
     }
 
-    // Whether the user can launch a job right now.
+    // Whether the user can launch a job right now. Format-only (method 2)
+    // needs no source image; Ventoy (method 3) treats the ISO as optional.
     readonly property bool ready:
-        !app.busy && app.isoPath !== "" && app.selectedDevice >= 0
-        && app.fitWarning === ""
+        !app.busy && app.selectedDevice >= 0
+        && (app.method === 2
+            || (app.method === 3 && app.fitWarning === "")
+            || (app.isoPath !== "" && app.fitWarning === ""))
 
     // A wall-clock elapsed counter, ticking once a second while a job runs.
     property int elapsedSecs: 0
@@ -65,21 +68,21 @@ ApplicationWindow {
         property string heading: ""
         default property alias body: bodyColumn.data
         Layout.fillWidth: true
-        padding: 14
+        padding: 10
         background: Rectangle {
             radius: 8
             color: card.palette.base
             border.color: card.palette.mid
         }
         contentItem: ColumnLayout {
-            spacing: 12
+            spacing: 8
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 9
+                spacing: 8
                 Rectangle {
-                    width: 24
-                    height: 24
-                    radius: 12
+                    width: 22
+                    height: 22
+                    radius: 11
                     color: card.palette.highlight
                     Label {
                         anchors.centerIn: parent
@@ -98,7 +101,7 @@ ApplicationWindow {
             ColumnLayout {
                 id: bodyColumn
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: 6
             }
         }
     }
@@ -126,27 +129,93 @@ ApplicationWindow {
         }
     }
 
-    header: ToolBar {
-        RowLayout {
-            anchors.fill: parent
-            Label {
-                text: window.title
-                font.bold: true
-                Layout.leftMargin: 12
-                Layout.fillWidth: true
+    // ---- Reusable split button: a main action + an attached dropdown ----
+    component SplitButton: Control {
+        id: sb
+        property string text: ""
+        signal clicked()
+        signal menuRequested()
+
+        padding: 1
+        implicitHeight: 32
+        implicitWidth: splitRow.implicitWidth + 2
+
+        background: Rectangle {
+            radius: 4
+            color: sb.palette.button
+            border.color: sb.palette.mid
+        }
+
+        contentItem: Row {
+            id: splitRow
+            opacity: sb.enabled ? 1.0 : 0.5
+
+            // Main action zone.
+            Rectangle {
+                height: sb.availableHeight
+                width: mainText.implicitWidth + 26
+                radius: 3
+                color: mainArea.pressed ? Qt.darker(sb.palette.button, 1.25)
+                     : mainArea.containsMouse ? Qt.lighter(sb.palette.button, 1.08)
+                     : "transparent"
+                Label {
+                    id: mainText
+                    anchors.centerIn: parent
+                    text: sb.text
+                    color: sb.palette.buttonText
+                }
+                MouseArea {
+                    id: mainArea
+                    anchors.fill: parent
+                    enabled: sb.enabled
+                    hoverEnabled: true
+                    onClicked: sb.clicked()
+                }
             }
-            Button {
-                text: "About"
-                flat: true
-                onClicked: aboutDialog.open()
+            // Divider.
+            Rectangle {
+                width: 1
+                height: sb.availableHeight
+                color: sb.palette.mid
+            }
+            // Dropdown-arrow zone.
+            Rectangle {
+                height: sb.availableHeight
+                width: 24
+                radius: 3
+                color: arrowArea.pressed ? Qt.darker(sb.palette.button, 1.25)
+                     : arrowArea.containsMouse ? Qt.lighter(sb.palette.button, 1.08)
+                     : "transparent"
+                Label {
+                    anchors.centerIn: parent
+                    text: "▾"
+                    color: sb.palette.buttonText
+                }
+                MouseArea {
+                    id: arrowArea
+                    anchors.fill: parent
+                    enabled: sb.enabled
+                    hoverEnabled: true
+                    onClicked: sb.menuRequested()
+                }
+            }
+        }
+    }
+
+    menuBar: MenuBar {
+        Menu {
+            title: "?"
+            MenuItem {
+                text: "About usbooty"
+                onTriggered: aboutDialog.open()
             }
         }
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 16
-        spacing: 12
+        anchors.margins: 12
+        spacing: 8
 
         // ---- Advisory banners ------------------------------------------
         Banner {
@@ -155,7 +224,7 @@ ApplicationWindow {
         }
         Banner {
             // The ISO cannot fit on the chosen drive.
-            message: app.fitWarning
+            message: app.method === 2 ? "" : app.fitWarning
             tint: "#f8d7da"
             line: "#dc3545"
             ink: "#842029"
@@ -165,6 +234,8 @@ ApplicationWindow {
         StepCard {
             step: 1
             heading: "Source image"
+            // The format-only method takes no source image.
+            enabled: app.method !== 2
 
             RowLayout {
                 Layout.fillWidth: true
@@ -172,29 +243,45 @@ ApplicationWindow {
                     id: isoField
                     Layout.fillWidth: true
                     readOnly: true
-                    placeholderText: "Choose an ISO image, or drag one onto the window…"
+                    placeholderText: app.method === 2
+                        ? "Not used for a plain format"
+                        : "Choose an ISO image, or drag one onto the window…"
                     text: app.isoPath
                 }
-                Button {
+                // Split button: "Browse…" plus a dropdown to download Windows.
+                SplitButton {
+                    id: sourceBtn
                     text: "Browse…"
                     enabled: !app.busy
                     onClicked: isoDialog.open()
+                    onMenuRequested: sourceMenu.popup(sourceBtn, 0, sourceBtn.height)
+                    Menu {
+                        id: sourceMenu
+                        MenuItem {
+                            text: "Download a Windows ISO…"
+                            onTriggered: winDialog.open()
+                        }
+                    }
                 }
             }
-            RowLayout {
+            Label {
+                text: app.isoSummary
+                color: palette.placeholderText
+                elide: Text.ElideMiddle
                 Layout.fillWidth: true
-                Label {
-                    text: app.isoSummary
-                    color: palette.placeholderText
-                    elide: Text.ElideMiddle
-                    Layout.fillWidth: true
-                }
-                Button {
-                    text: "Download Windows…"
-                    flat: true
-                    enabled: !app.busy
-                    onClicked: winDialog.open()
-                }
+            }
+            TextEdit {
+                // Selectable so the user can copy the hash to cross-check it
+                // against the value the distro / Microsoft publishes.
+                visible: app.isoPath !== ""
+                text: "SHA-256:  " + app.isoSha256
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.WrapAnywhere
+                color: palette.placeholderText
+                font.family: "monospace"
+                font.pointSize: 8
+                Layout.fillWidth: true
             }
         }
 
@@ -275,30 +362,147 @@ ApplicationWindow {
                 ComboBox {
                     Layout.fillWidth: true
                     enabled: !app.busy
-                    model: ["DD image (raw copy)", "Partition & copy files"]
+                    model: ["DD image (raw copy)", "Partition & copy files",
+                            "Format only (no ISO)", "Ventoy (multi-boot USB)"]
                     currentIndex: app.method
                     onActivated: function(index) { app.method = index }
+                }
+
+                Label { text: "Filesystem" }
+                ComboBox {
+                    Layout.fillWidth: true
+                    // The filesystem is chosen automatically when writing an
+                    // image; it is only user-selectable for a plain format.
+                    enabled: !app.busy && app.method === 2
+                    model: ["FAT32", "NTFS", "exFAT", "ext4"]
+                    currentIndex: app.filesystem
+                    onActivated: function(index) { app.filesystem = index }
+                    ToolTip.visible: hovered && !enabled
+                    ToolTip.text: "When writing an image, the filesystem is chosen automatically."
                 }
 
                 Label { text: "Partition scheme" }
                 ComboBox {
                     Layout.fillWidth: true
-                    // Always shown; only meaningful for the FAT32 method, since
-                    // a raw DD copy keeps the ISO's own embedded table.
-                    enabled: !app.busy && app.method === 1
+                    // Meaningful for the partition and format methods; a raw
+                    // DD copy keeps the ISO's own embedded table.
+                    enabled: !app.busy && app.method !== 0
                     model: ["GPT (UEFI)", "MBR (BIOS/Legacy)"]
                     currentIndex: app.table
                     onActivated: function(index) { app.table = index }
                     ToolTip.visible: hovered && !enabled
                     ToolTip.text: "The DD method preserves the ISO's own partition table."
                 }
+
+                // Ventoy names its own data partition — no label field for it.
+                Label {
+                    text: "Volume label"
+                    visible: app.method !== 3
+                }
+                TextField {
+                    Layout.fillWidth: true
+                    visible: app.method !== 3
+                    enabled: !app.busy && app.method !== 0
+                    placeholderText: "Drive label"
+                    text: app.label
+                    // onTextEdited (not onTextChanged) avoids a binding loop:
+                    // it fires only for user edits, not the pre-fill above.
+                    onTextEdited: app.label = text
+                    ToolTip.visible: hovered && !enabled
+                    ToolTip.text: "The label is sanitized to each filesystem's limits."
+                }
+            }
+
+            CheckBox {
+                text: "Full format — erase the whole device first (slow)"
+                // DD overwrites every sector anyway, and Ventoy does its own
+                // partitioning and formatting.
+                enabled: !app.busy && (app.method === 1 || app.method === 2)
+                checked: app.fullFormat
+                onToggled: app.fullFormat = checked
+            }
+
+            CheckBox {
+                text: "Verify after writing — read the data back and check it"
+                // A plain format / Ventoy install writes no verifiable payload.
+                enabled: !app.busy && app.method < 2
+                checked: app.verify
+                onToggled: app.verify = checked
+            }
+
+            // Ventoy options — only for the Ventoy write method.
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: app.method === 3
+                spacing: 4
+                CheckBox {
+                    text: "Update an existing Ventoy install (keeps your ISOs)"
+                    enabled: !app.busy
+                    checked: app.ventoyUpdate
+                    onToggled: app.ventoyUpdate = checked
+                }
+                CheckBox {
+                    text: "Secure Boot support"
+                    enabled: !app.busy
+                    checked: app.ventoySecureBoot
+                    onToggled: app.ventoySecureBoot = checked
+                }
+                Label {
+                    text: "Ventoy makes a USB you drop ISOs onto and boot directly. "
+                        + "A loaded ISO above (optional) is copied onto it."
+                    color: palette.placeholderText
+                    font.pointSize: 8
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+            }
+
+            // Persistence — only for Linux live ISOs that support it.
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: app.persistenceSupported && app.method === 1
+                spacing: 2
+                Label {
+                    text: app.persistenceSize > 0
+                        ? "Persistent storage:  "
+                          + (app.persistenceSize / 1024).toFixed(1) + " GB"
+                        : "Persistent storage:  off"
+                    font.bold: true
+                }
+                Slider {
+                    Layout.fillWidth: true
+                    enabled: !app.busy
+                    from: 0
+                    to: 32768
+                    stepSize: 256
+                    value: app.persistenceSize
+                    onMoved: app.persistenceSize = value
+                }
+                Label {
+                    text: "Keeps your files and settings across reboots of this live USB."
+                    color: palette.placeholderText
+                    font.pointSize: 8
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+            }
+
+            // Linux ISO whose distribution has no partition-persistence support.
+            Label {
+                Layout.fillWidth: true
+                visible: app.linuxIso && !app.persistenceSupported && app.method === 1
+                text: "Persistent storage isn't supported for this distribution "
+                    + "(only Debian/Ubuntu-family live systems can use it)."
+                color: palette.placeholderText
+                font.pointSize: 8
+                wrapMode: Text.Wrap
             }
         }
 
         // ---- Action -----------------------------------------------------
         Button {
             Layout.fillWidth: true
-            Layout.preferredHeight: 46
+            Layout.preferredHeight: 44
             text: app.busy ? "Cancel" : "Start"
             highlighted: true
             font.bold: true
@@ -306,6 +510,11 @@ ApplicationWindow {
             onClicked: {
                 if (app.busy) {
                     app.cancel()
+                } else if (app.windowsIso && app.method === 1) {
+                    // Windows installer, partition method: offer the setup
+                    // options first. (DD is a raw copy — it cannot apply an
+                    // autounattend.xml, so no setup dialog there.)
+                    windowsSetupDialog.open()
                 } else {
                     confirmLabel.text = app.confirmText()
                     confirmDialog.open()
@@ -401,16 +610,25 @@ ApplicationWindow {
                     }
                 }
                 ScrollView {
+                    id: logScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
                     TextArea {
+                        // Binding the width to the viewport makes lines wrap;
+                        // without it the text runs off the side and the view
+                        // never gains the height it needs to scroll.
+                        width: logScroll.availableWidth
                         readOnly: true
-                        wrapMode: TextEdit.Wrap
+                        wrapMode: TextArea.Wrap
                         font.family: "monospace"
+                        font.pointSize: 9
                         placeholderText: "Job output will appear here."
                         text: app.logText
-                        // Keep the newest line in view.
+                        // Keep the newest line in view as the log grows.
                         onTextChanged: cursorPosition = length
                     }
                 }
@@ -456,6 +674,57 @@ ApplicationWindow {
         onAccepted: app.setIso(selectedFile)
     }
 
+    // Shown when Start is pressed on a Windows ISO — optional install tweaks.
+    Dialog {
+        id: windowsSetupDialog
+        title: "Windows setup (optional)"
+        anchors.centerIn: parent
+        width: 480
+        modal: true
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            confirmLabel.text = app.confirmText()
+            confirmDialog.open()
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label {
+                text: "Customize the Windows installation, or just press OK to skip."
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+            CheckBox {
+                text: "Bypass Windows 11 checks — TPM 2.0, Secure Boot, RAM"
+                checked: app.bypassTpm
+                onToggled: {
+                    app.bypassTpm = checked
+                    app.bypassSecureboot = checked
+                    app.bypassRam = checked
+                }
+            }
+            CheckBox {
+                text: "Skip the Microsoft-account requirement"
+                checked: app.skipMsaccount
+                onToggled: app.skipMsaccount = checked
+            }
+            CheckBox {
+                text: "Disable data-collection / telemetry prompts"
+                checked: app.disableTelemetry
+                onToggled: app.disableTelemetry = checked
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Local account" }
+                TextField {
+                    Layout.fillWidth: true
+                    placeholderText: "Optional — name for a local account"
+                    text: app.localAccount
+                    onTextEdited: app.localAccount = text
+                }
+            }
+        }
+    }
+
     Dialog {
         id: confirmDialog
         title: "Erase device?"
@@ -463,14 +732,7 @@ ApplicationWindow {
         width: 440
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
-        // After confirmation, a large Windows install.wim needs a follow-up
-        // choice; otherwise start immediately.
-        onAccepted: {
-            if (app.needsWimChoice())
-                wimDialog.open()
-            else
-                app.start()
-        }
+        onAccepted: app.start()
         contentItem: ColumnLayout {
             spacing: 8
             Label {
@@ -481,39 +743,6 @@ ApplicationWindow {
             Label {
                 text: "This cannot be undone."
                 font.bold: true
-            }
-        }
-    }
-
-    Dialog {
-        id: wimDialog
-        title: "Large install.wim"
-        anchors.centerIn: parent
-        width: 460
-        modal: true
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        onAccepted: {
-            app.wimChoice = uefiNtfsRadio.checked ? 1 : 0
-            app.start()
-        }
-        contentItem: ColumnLayout {
-            spacing: 8
-            Label {
-                text: "This Windows ISO's install.wim is larger than 4 GB — "
-                    + "too big for a single file on FAT32. Choose how to handle it:"
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
-            }
-            RadioButton {
-                id: splitRadio
-                text: "Split install.wim into .swm chunks (FAT32, most compatible)"
-                checked: true
-                Layout.fillWidth: true
-            }
-            RadioButton {
-                id: uefiNtfsRadio
-                text: "UEFI:NTFS — NTFS partition + signed bootloader (keeps install.wim intact)"
-                Layout.fillWidth: true
             }
         }
     }
@@ -537,28 +766,59 @@ ApplicationWindow {
         id: aboutDialog
         title: "About usbooty"
         anchors.centerIn: parent
-        width: 420
+        width: 440
         modal: true
         standardButtons: Dialog.Ok
         contentItem: ColumnLayout {
-            spacing: 6
-            Label {
-                text: "usbooty"
-                font.bold: true
-                font.pointSize: 14
+            spacing: 12
+
+            ColumnLayout {
+                spacing: 0
+                Label {
+                    text: "usbooty"
+                    font.bold: true
+                    font.pointSize: 16
+                }
+                Label {
+                    text: "Version " + app.appVersion
+                    color: palette.placeholderText
+                    font.pointSize: 9
+                }
             }
+
             Label {
                 text: "Create bootable USB drives from ISO images."
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
+
+            GridLayout {
+                columns: 2
+                columnSpacing: 16
+                rowSpacing: 3
+                Label { text: "Author"; font.bold: true }
+                Label { text: "Thoxy" }
+                Label { text: "License"; font.bold: true }
+                Label { text: "MIT" }
+            }
+
             Label {
-                text: "Two write methods: a raw DD copy, and a partition-and-"
-                    + "copy method that creates FAT32 or NTFS partitions and "
-                    + "supports the Windows UEFI:NTFS layout."
+                text: "DD raw write, partition-and-copy (FAT32 / NTFS / exFAT / "
+                    + "ext4, with the Windows UEFI:NTFS layout), Linux "
+                    + "persistence, Windows 11 setup customization, plain "
+                    + "formatting, and Ventoy multi-boot USBs."
                 wrapMode: Text.Wrap
-                Layout.fillWidth: true
                 color: palette.placeholderText
+                font.pointSize: 9
+                Layout.fillWidth: true
+            }
+
+            Label {
+                text: "<a href=\"https://github.com/thoxy/usbooty\">"
+                    + "github.com/thoxy/usbooty</a>"
+                textFormat: Text.RichText
+                font.pointSize: 9
+                onLinkActivated: function(link) { Qt.openUrlExternally(link) }
             }
         }
     }

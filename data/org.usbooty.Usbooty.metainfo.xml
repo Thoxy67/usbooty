@@ -2,17 +2,22 @@
 <component type="desktop-application">
   <id>org.usbooty.Usbooty</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0-or-later</project_license>
+  <project_license>MIT</project_license>
 
   <name>usbooty</name>
   <summary>Create bootable USB drives from ISO images</summary>
 
+  <developer id="xyz.thoxy">
+    <name>Thoxy</name>
+  </developer>
+
   <description>
     <p>
-      usbooty turns an ISO image into a bootable USB drive. It offers two
-      methods: a raw "DD" write for isohybrid images, and a FAT32 partition
-      method that produces a writable drive — including support for Windows
-      installation media via the UEFI:NTFS bootloader.
+      usbooty turns an ISO image into a bootable USB drive. It can write a raw
+      "DD" image, partition and copy an installer (FAT32, NTFS, exFAT or ext4 —
+      including the Windows UEFI:NTFS layout), set up Linux live-USB
+      persistence, customize a Windows 11 install, format a drive, and create
+      a Ventoy multi-boot USB.
     </p>
   </description>
 

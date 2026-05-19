@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 
-use usbooty_core::PartitionTable;
+use usbooty_core::{FileSystem, PartitionTable};
 
 /// Logical sector size assumed throughout (Linux reports 512 for `/sys`-style
 /// sizing regardless of the physical sector size).
@@ -22,17 +22,43 @@ const BASIC_DATA_GUID: [u8; 16] = [
     0xA2, 0xA0, 0xD0, 0xEB, 0xE5, 0xB9, 0x33, 0x44, 0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7,
 ];
 
+/// Linux filesystem-data partition type GUID, in on-disk byte order. Used for
+/// an ext4 partition (`0FC63DAF-8483-4772-8E79-3D69D8477DE4`).
+const LINUX_DATA_GUID: [u8; 16] = [
+    0xAF, 0x63, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47, 0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4,
+];
+
 /// GPT attribute bit 63 — "do not assign a drive letter". Set on the tiny
 /// UEFI:NTFS partition so Windows never surfaces it to the user.
 const GPT_ATTR_NO_DRIVE_LETTER: u64 = 1 << 63;
 
 /// MBR partition type byte for "FAT32 with LBA addressing".
 const MBR_TYPE_FAT32_LBA: u8 = 0x0C;
-/// MBR partition type byte for NTFS.
+/// MBR partition type byte for NTFS / exFAT (both use `0x07`).
 const MBR_TYPE_NTFS: u8 = 0x07;
+/// MBR partition type byte for a Linux filesystem.
+const MBR_TYPE_LINUX: u8 = 0x83;
 /// MBR partition type byte for an EFI System Partition — the type Rufus uses
 /// for the UEFI:NTFS partition so firmware reliably boots it.
 const MBR_TYPE_EFI_SYSTEM: u8 = 0xEF;
+
+/// The GPT partition-type GUID for a `filesystem`.
+fn gpt_type_guid(filesystem: FileSystem) -> [u8; 16] {
+    match filesystem {
+        FileSystem::Ext4 => LINUX_DATA_GUID,
+        // FAT32 / NTFS / exFAT all use Microsoft Basic Data.
+        _ => BASIC_DATA_GUID,
+    }
+}
+
+/// The MBR partition-type byte for a `filesystem`.
+fn mbr_type_byte(filesystem: FileSystem) -> u8 {
+    match filesystem {
+        FileSystem::Fat32 => MBR_TYPE_FAT32_LBA,
+        FileSystem::Ntfs | FileSystem::ExFat => MBR_TYPE_NTFS,
+        FileSystem::Ext4 => MBR_TYPE_LINUX,
+    }
+}
 
 /// Read `N` random bytes from `/dev/urandom`, for GUIDs and disk signatures.
 fn random_bytes<const N: usize>() -> [u8; N] {
@@ -58,21 +84,26 @@ pub fn wipe_signatures<D: Read + Write + Seek>(device: &mut D, device_size: u64)
     Ok(())
 }
 
-/// Write a single data partition spanning the whole device, using the
-/// requested table type. The partition is FAT32-typed and, for MBR, active.
-/// `name` becomes the GPT partition name (MBR has no partition names).
+/// Write a single data partition spanning the whole device, typed for
+/// `filesystem`. For MBR the partition is marked active; `name` becomes the
+/// GPT partition name (MBR has no partition names).
 pub fn write_single_partition<D: Read + Write + Seek>(
     device: &mut D,
     table: PartitionTable,
+    filesystem: FileSystem,
     name: &str,
 ) -> Result<()> {
     match table {
-        PartitionTable::Gpt => write_gpt(device, name),
-        PartitionTable::Mbr => write_mbr(device),
+        PartitionTable::Gpt => write_gpt(device, filesystem, name),
+        PartitionTable::Mbr => write_mbr(device, filesystem),
     }
 }
 
-fn write_gpt<D: Read + Write + Seek>(device: &mut D, name: &str) -> Result<()> {
+fn write_gpt<D: Read + Write + Seek>(
+    device: &mut D,
+    filesystem: FileSystem,
+    name: &str,
+) -> Result<()> {
     let mut gpt =
         gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()).context("creating GPT")?;
     // Recompute usable LBAs from the device's real size.
@@ -81,7 +112,7 @@ fn write_gpt<D: Read + Write + Seek>(device: &mut D, name: &str) -> Result<()> {
         .context("sizing GPT to the device")?;
 
     gpt[1] = gptman::GPTPartitionEntry {
-        partition_type_guid: BASIC_DATA_GUID,
+        partition_type_guid: gpt_type_guid(filesystem),
         unique_partition_guid: random_bytes::<16>(),
         starting_lba: gpt.header.first_usable_lba.max(ALIGN_SECTORS),
         ending_lba: gpt.header.last_usable_lba,
@@ -94,7 +125,7 @@ fn write_gpt<D: Read + Write + Seek>(device: &mut D, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn write_mbr<D: Read + Write + Seek>(device: &mut D) -> Result<()> {
+fn write_mbr<D: Read + Write + Seek>(device: &mut D, filesystem: FileSystem) -> Result<()> {
     let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>())
         .context("creating MBR")?;
     let sectors = mbr.disk_size.saturating_sub(ALIGN_SECTORS as u32);
@@ -102,7 +133,7 @@ fn write_mbr<D: Read + Write + Seek>(device: &mut D) -> Result<()> {
     mbr[1] = mbrman::MBRPartitionEntry {
         boot: mbrman::BOOT_ACTIVE,
         first_chs: mbrman::CHS::empty(),
-        sys: MBR_TYPE_FAT32_LBA,
+        sys: mbr_type_byte(filesystem),
         last_chs: mbrman::CHS::empty(),
         starting_lba: ALIGN_SECTORS as u32,
         sectors,
@@ -208,6 +239,101 @@ fn write_mbr_uefi_ntfs<D: Read + Write + Seek>(device: &mut D, fat_sectors: u64)
     Ok(())
 }
 
+/// Write a two-partition layout for a Linux live USB with persistence: a main
+/// `filesystem` partition for the live system, plus a trailing ext4 partition
+/// of `persistence_bytes` for the writable overlay.
+pub fn write_persistence_layout<D: Read + Write + Seek>(
+    device: &mut D,
+    table: PartitionTable,
+    filesystem: FileSystem,
+    persistence_bytes: u64,
+    main_name: &str,
+) -> Result<()> {
+    let pers_sectors = persistence_bytes.div_ceil(SECTOR);
+    match table {
+        PartitionTable::Gpt => write_gpt_persistence(device, filesystem, pers_sectors, main_name),
+        PartitionTable::Mbr => write_mbr_persistence(device, filesystem, pers_sectors),
+    }
+}
+
+fn write_gpt_persistence<D: Read + Write + Seek>(
+    device: &mut D,
+    filesystem: FileSystem,
+    pers_sectors: u64,
+    main_name: &str,
+) -> Result<()> {
+    let mut gpt =
+        gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()).context("creating GPT")?;
+    gpt.header
+        .update_from(device, SECTOR)
+        .context("sizing GPT to the device")?;
+
+    let first = gpt.header.first_usable_lba.max(ALIGN_SECTORS);
+    let last = gpt.header.last_usable_lba;
+    if last <= first + pers_sectors {
+        anyhow::bail!("device is too small for the persistence layout");
+    }
+    let pers_start = last + 1 - pers_sectors;
+
+    gpt[1] = gptman::GPTPartitionEntry {
+        partition_type_guid: gpt_type_guid(filesystem),
+        unique_partition_guid: random_bytes::<16>(),
+        starting_lba: first,
+        ending_lba: pers_start - 1,
+        attribute_bits: 0,
+        partition_name: crate::label::partition(main_name).as_str().into(),
+    };
+    gpt[2] = gptman::GPTPartitionEntry {
+        partition_type_guid: LINUX_DATA_GUID,
+        unique_partition_guid: random_bytes::<16>(),
+        starting_lba: pers_start,
+        ending_lba: last,
+        attribute_bits: 0,
+        partition_name: "persistence".into(),
+    };
+
+    gpt.write_into(device).context("writing GPT")?;
+    gptman::GPT::write_protective_mbr_into(device, SECTOR).context("writing protective MBR")?;
+    Ok(())
+}
+
+fn write_mbr_persistence<D: Read + Write + Seek>(
+    device: &mut D,
+    filesystem: FileSystem,
+    pers_sectors: u64,
+) -> Result<()> {
+    let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>())
+        .context("creating MBR")?;
+
+    let total = mbr.disk_size;
+    let pers_sectors = pers_sectors as u32;
+    let p1_start = ALIGN_SECTORS as u32;
+    if total <= p1_start + pers_sectors {
+        anyhow::bail!("device is too small for the persistence layout");
+    }
+    let pers_start = total - pers_sectors;
+
+    mbr[1] = mbrman::MBRPartitionEntry {
+        boot: mbrman::BOOT_ACTIVE,
+        first_chs: mbrman::CHS::empty(),
+        sys: mbr_type_byte(filesystem),
+        last_chs: mbrman::CHS::empty(),
+        starting_lba: p1_start,
+        sectors: pers_start - p1_start,
+    };
+    mbr[2] = mbrman::MBRPartitionEntry {
+        boot: mbrman::BOOT_INACTIVE,
+        first_chs: mbrman::CHS::empty(),
+        sys: MBR_TYPE_LINUX,
+        last_chs: mbrman::CHS::empty(),
+        starting_lba: pers_start,
+        sectors: pers_sectors,
+    };
+
+    mbr.write_into(device).context("writing MBR")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,7 +348,8 @@ mod tests {
     #[test]
     fn writes_a_gpt_with_one_basic_data_partition() {
         let mut disk = disk(64 * 1024 * 1024);
-        write_single_partition(&mut disk, PartitionTable::Gpt, "USBOOTY").unwrap();
+        write_single_partition(&mut disk, PartitionTable::Gpt, FileSystem::Fat32, "USBOOTY")
+            .unwrap();
 
         disk.set_position(0);
         let gpt = gptman::GPT::read_from(&mut disk, SECTOR).unwrap();
@@ -235,7 +362,8 @@ mod tests {
     #[test]
     fn writes_an_mbr_with_one_active_fat32_partition() {
         let mut disk = disk(64 * 1024 * 1024);
-        write_single_partition(&mut disk, PartitionTable::Mbr, "USBOOTY").unwrap();
+        write_single_partition(&mut disk, PartitionTable::Mbr, FileSystem::Fat32, "USBOOTY")
+            .unwrap();
 
         disk.set_position(0);
         let mbr = mbrman::MBR::read_from(&mut disk, SECTOR as u32).unwrap();

@@ -25,6 +25,16 @@ pub fn ntfs(raw: &str) -> String {
     or_default(bounded(raw, 32))
 }
 
+/// An exFAT volume label: up to 15 characters.
+pub fn exfat(raw: &str) -> String {
+    or_default(bounded(raw, 15))
+}
+
+/// An ext4 volume label: up to 16 bytes.
+pub fn ext4(raw: &str) -> String {
+    or_default(bounded(raw, 16))
+}
+
 /// A GPT partition name: up to 36 UTF-16 code units (36 chars for ASCII labels,
 /// which is all an ISO9660 volume identifier can carry).
 pub fn partition(raw: &str) -> String {

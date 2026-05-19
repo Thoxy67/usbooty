@@ -133,7 +133,7 @@ pub fn run_job(
     // Qt thread) and hand the helper a local path, so the root helper itself
     // never needs network access.
     if let Job::Partitioned {
-        wim_strategy: WimStrategy::UefiNtfs,
+        wim: WimStrategy::UefiNtfs,
         uefi_ntfs_img: img @ None,
         ..
     } = &mut job
@@ -329,6 +329,7 @@ pub fn win_fetch_options(
 /// Download a Windows ISO from `url` and select it as the source.
 pub fn download_windows_url(qt: CxxQtThread<AppController>, url: String) {
     set_phase(&qt, "Downloading Windows ISO");
+    apply(&qt, ProgressMsg::info("Downloading the Windows ISO from Microsoft…"));
 
     let dest_dir = directories::UserDirs::new()
         .and_then(|dirs| dirs.download_dir().map(std::path::Path::to_path_buf))
@@ -354,7 +355,7 @@ pub fn download_windows_url(qt: CxxQtThread<AppController>, url: String) {
     });
 
     match result {
-        Ok(path) => {
+        Ok((path, sha256)) => {
             let elapsed = meter.start.elapsed().as_secs();
             let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             let summary = if elapsed > 0 && bytes > 0 {
@@ -368,6 +369,8 @@ pub fn download_windows_url(qt: CxxQtThread<AppController>, url: String) {
                 "Windows ISO downloaded".to_string()
             };
             let path = path.to_string_lossy().into_owned();
+            apply(&qt, ProgressMsg::info(format!("{summary} → {path}")));
+            apply(&qt, ProgressMsg::info(format!("SHA-256: {sha256}")));
             let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
                 ctrl.as_mut().set_busy(false);
                 ctrl.as_mut().set_progress(1.0);
@@ -375,7 +378,9 @@ pub fn download_windows_url(qt: CxxQtThread<AppController>, url: String) {
                 ctrl.as_mut().set_speed(QString::default());
                 ctrl.as_mut().set_eta(QString::default());
                 ctrl.as_mut().set_status(QString::from(&summary));
-                ctrl.as_mut().set_iso(&QString::from(&path));
+                // The SHA-256 was computed during the download — use it
+                // directly instead of re-reading the whole ISO.
+                ctrl.as_mut().set_downloaded_iso(&path, &sha256);
                 ctrl.as_mut().job_finished(true, QString::from(&summary));
             });
         }
@@ -400,4 +405,13 @@ fn append_log(mut ctrl: Pin<&mut AppController>, level: LogLevel, text: &str) {
     };
     let updated = format!("{}{prefix}{text}\n", ctrl.log_text());
     ctrl.as_mut().set_log_text(QString::from(&updated));
+}
+
+/// Compute the source ISO's SHA-256 on a worker thread and publish it to the
+/// `iso_sha256` property. Slow for a multi-gigabyte ISO, hence off-thread.
+pub fn compute_iso_sha256(qt: CxxQtThread<AppController>, path: String) {
+    let hash = crate::iso::sha256(std::path::Path::new(&path));
+    let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
+        ctrl.as_mut().set_iso_sha256(QString::from(&hash));
+    });
 }

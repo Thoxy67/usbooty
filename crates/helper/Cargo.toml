@@ -18,6 +18,7 @@ anyhow = { workspace = true }
 nix = { version = "0.31", features = ["fs", "ioctl", "mount", "signal"] }
 gptman = "3.1.1"
 mbrman = "0.6.1"
+blake3 = { workspace = true }
 
 # The source ISO is loop-mounted, so the kernel parses ISO9660/UDF for us —
 # no userspace ISO reader is needed in the helper (the GUI still uses `cdfs`).

@@ -1,0 +1,15 @@
+post_install() {
+    cat <<'EOF'
+
+==> usbooty installed.
+==> Launch it from your application menu or run:  usbooty
+==> Privileged actions (writing to a device) are authorized via polkit
+==> on demand — there is nothing to enable manually.
+==> Optional formatters: dosfstools, ntfs-3g, exfatprogs, e2fsprogs.
+
+EOF
+}
+
+post_upgrade() {
+    :
+}

@@ -1,0 +1,86 @@
+# Maintainer: Thoxy <the.thi67@gmail.com>
+pkgname=usbooty-git
+_pkgname=usbooty
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Create bootable USB drives from ISO images — a Rufus-like tool (git version)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/thoxy/usbooty"
+license=('MIT')
+depends=(
+    'qt6-base'
+    'qt6-declarative'
+    'polkit'
+)
+makedepends=(
+    'rust'
+    'git'
+    'qt6-base'
+    'qt6-declarative'
+    'pkgconf'
+)
+optdepends=(
+    'dosfstools: FAT32 formatting'
+    'ntfs-3g: NTFS formatting'
+    'exfatprogs: exFAT formatting'
+    'e2fsprogs: ext4 formatting'
+    'ventoy: Ventoy multi-boot USB creation'
+)
+provides=("$_pkgname=$pkgver")
+conflicts=("$_pkgname")
+source=("$_pkgname::git+https://github.com/thoxy/usbooty.git")
+sha256sums=('SKIP')
+install="$pkgname.install"
+
+pkgver() {
+    cd "$_pkgname"
+    # Last tag plus the commit distance for a sortable version; falls back to
+    # a base + commit count when the repo has no tag yet.
+    if git describe --long --tags --abbrev=7 >/dev/null 2>&1; then
+        git describe --long --tags --abbrev=7 \
+            | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+    else
+        printf "0.1.0.r%s.g%s" \
+            "$(git rev-list --count HEAD)" \
+            "$(git rev-parse --short=7 HEAD)"
+    fi
+}
+
+build() {
+    cd "$_pkgname"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --release --locked
+}
+
+check() {
+    cd "$_pkgname"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    # The ISO-analysis tests need `xorriso` and skip themselves when it is
+    # absent; every other test is deterministic and hardware-free.
+    cargo test --release --locked --workspace
+}
+
+package() {
+    cd "$_pkgname"
+
+    # The GUI runs unprivileged; the helper is invoked via pkexec and must
+    # live at the path pinned in the polkit policy.
+    install -Dm755 target/release/usbooty \
+        "$pkgdir/usr/bin/usbooty"
+    install -Dm755 target/release/usbooty-helper \
+        "$pkgdir/usr/libexec/usbooty/usbooty-helper"
+
+    install -Dm644 data/org.usbooty.helper.policy \
+        "$pkgdir/usr/share/polkit-1/actions/org.usbooty.helper.policy"
+    install -Dm644 data/org.usbooty.Usbooty.desktop \
+        "$pkgdir/usr/share/applications/org.usbooty.Usbooty.desktop"
+    install -Dm644 data/org.usbooty.Usbooty.metainfo.xml \
+        "$pkgdir/usr/share/metainfo/org.usbooty.Usbooty.metainfo.xml"
+    install -Dm644 data/icons/org.usbooty.Usbooty.svg \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/org.usbooty.Usbooty.svg"
+
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

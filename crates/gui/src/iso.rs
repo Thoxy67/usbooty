@@ -10,7 +10,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use cdfs::{DirectoryEntry, ISO9660};
-use usbooty_core::{IsoReport, OsKind};
+use usbooty_core::{IsoReport, OsKind, PersistenceKind};
 
 /// FAT32's single-file ceiling, used for the `has_4gb_file` flag.
 const FOUR_GIB: u64 = 0xFFFF_FFFF;
@@ -77,6 +77,25 @@ pub fn analyze(path: &Path) -> IsoReport {
 
     report.os_kind = classify(&report);
 
+    // Linux live systems can carry a persistent overlay, but only the
+    // Debian/Ubuntu family supports the partition-label scheme. Ubuntu/casper
+    // uses a `casper*` directory; Debian-live uses exactly `live`. Anything
+    // else (Arch `arch`, Fedora `LiveOS`, …) cannot do partition persistence.
+    if report.os_kind == OsKind::Linux {
+        let root = list_dir(&iso, &[]).unwrap_or_default();
+        let has_casper = root
+            .iter()
+            .any(|(name, is_dir, _)| *is_dir && name.starts_with("casper"));
+        let has_live = root
+            .iter()
+            .any(|(name, is_dir, _)| *is_dir && name == "live");
+        if has_casper {
+            report.persistence = Some(PersistenceKind::CasperRw);
+        } else if has_live {
+            report.persistence = Some(PersistenceKind::DebianLive);
+        }
+    }
+
     // Modern Windows ISOs are UDF images carrying only a near-empty ISO9660
     // stub, which `cdfs` (used above) cannot see into. Detect the UDF
     // filesystem directly: unless the disc was clearly identified as Linux,
@@ -92,7 +111,40 @@ pub fn analyze(path: &Path) -> IsoReport {
         }
     }
 
+    // A BSD ISO carries no Linux bootloader directories, so it lands in
+    // `Other`; recognize it by its volume label so the UI names it correctly
+    // and steers the user to the (OS-agnostic) DD method.
+    if report.os_kind == OsKind::Other && report.label.to_lowercase().contains("bsd") {
+        report.os_kind = OsKind::Bsd;
+    }
+
     report
+}
+
+/// Compute the SHA-256 of a file as a lowercase hex string (empty on error).
+///
+/// Linux distros and Microsoft publish SHA-256 sums, so this is the digest
+/// worth showing for cross-checking a downloaded ISO. It streams the whole
+/// file and is slow on a multi-gigabyte image — call it off the UI thread.
+pub fn sha256(path: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    let Ok(mut file) = File::open(path) else {
+        return String::new();
+    };
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1024 * 1024];
+    loop {
+        match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => hasher.update(&buf[..n]),
+            Err(_) => return String::new(),
+        }
+    }
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// Read the volume label from the ISO9660 Primary Volume Descriptor.

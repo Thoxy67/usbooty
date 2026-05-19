@@ -186,14 +186,18 @@ impl Catalog {
     }
 }
 
-/// Download `url` into `dest_dir`, returning the saved path. `progress` is
-/// called with `(downloaded, total)` and is throttled internally.
+/// Download `url` into `dest_dir`, returning `(saved path, SHA-256 hex)`.
+/// The SHA-256 is computed from the bytes as they stream past — free, and
+/// ready the instant the download finishes (no re-read of the ISO needed).
+/// `progress` is called with `(downloaded, total)` and is throttled internally.
 pub fn download(
     url: &str,
     dest_dir: &Path,
     abort: &AtomicBool,
     mut progress: impl FnMut(u64, u64),
-) -> Result<PathBuf> {
+) -> Result<(PathBuf, String)> {
+    use sha2::{Digest, Sha256};
+
     let mut response = ureq::get(url)
         .header("User-Agent", USER_AGENT)
         .call()
@@ -213,6 +217,7 @@ pub fn download(
     let mut buf = vec![0u8; 256 * 1024];
     let mut done = 0u64;
     let mut last = Instant::now();
+    let mut hasher = Sha256::new();
     loop {
         if abort.load(Ordering::SeqCst) {
             let _ = std::fs::remove_file(&dest);
@@ -225,6 +230,7 @@ pub fn download(
             break;
         }
         out.write_all(&buf[..n]).context("writing the ISO")?;
+        hasher.update(&buf[..n]);
         done += n as u64;
         if last.elapsed() >= Duration::from_millis(150) {
             progress(done, total);
@@ -232,7 +238,13 @@ pub fn download(
         }
     }
     progress(done, total.max(done));
-    Ok(dest)
+
+    let sha256 = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    Ok((dest, sha256))
 }
 
 /// Turn a Microsoft `Errors` array into a helpful Rust error.

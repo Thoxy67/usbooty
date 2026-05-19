@@ -5,6 +5,16 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The live-USB persistence scheme an ISO supports, if any.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PersistenceKind {
+    /// Ubuntu / casper-based live systems — a `casper-rw` (or `writable`) partition.
+    CasperRw,
+    /// Debian-live — a `persistence` partition carrying a `persistence.conf` file.
+    DebianLive,
+}
+
 /// The kind of operating system an ISO contains.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -13,6 +23,8 @@ pub enum OsKind {
     Windows,
     /// A Linux ISO (isolinux or GRUB present).
     Linux,
+    /// A BSD ISO (FreeBSD / OpenBSD / NetBSD / …) — written with the DD method.
+    Bsd,
     /// Something else — still writable with the DD method.
     Other,
 }
@@ -46,6 +58,8 @@ pub struct IsoReport {
     pub label: String,
     /// Total size of the ISO file on disk, in bytes.
     pub total_size: u64,
+    /// Live-USB persistence support, if the ISO is a Linux live system.
+    pub persistence: Option<PersistenceKind>,
 }
 
 impl IsoReport {
@@ -65,6 +79,7 @@ impl IsoReport {
             has_4gb_file: false,
             label: String::new(),
             total_size,
+            persistence: None,
         }
     }
 
@@ -73,6 +88,7 @@ impl IsoReport {
         let os = match self.os_kind {
             OsKind::Windows => "Windows",
             OsKind::Linux => "Linux",
+            OsKind::Bsd => "BSD",
             OsKind::Other => "Generic image",
         };
         format!("{os} · {}", crate::device::format_size(self.total_size))
