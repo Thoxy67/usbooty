@@ -19,6 +19,29 @@ nix::ioctl_read!(blkgetsize64, 0x12, 114, u64);
 // BLKRRPART: `_IO(0x12, 95)` — ask the kernel to re-read the partition table.
 nix::ioctl_none!(blkrrpart, 0x12, 95);
 
+/// Open a whole-disk block device read/write with `O_EXCL`.
+///
+/// On a block device (Linux 2.6+), `O_EXCL` makes `open` fail with `EBUSY` if
+/// the device — or any of its partitions — is mounted or otherwise claimed.
+/// This closes the race between [`unmount_all`] and the first write: if the
+/// target gets re-mounted (e.g. by a desktop automounter) in that window, the
+/// job fails loudly here instead of silently corrupting an in-use disk.
+pub fn open_exclusive(device: &Path) -> Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(nix::fcntl::OFlag::O_EXCL.bits())
+        .open(device)
+        .with_context(|| {
+            format!(
+                "opening {} exclusively — it may still be mounted or in use; \
+                 close anything using the device and try again",
+                device.display()
+            )
+        })
+}
+
 /// Total writable size of the target in bytes.
 ///
 /// For a real block device this is the `BLKGETSIZE64` ioctl. When the target
@@ -69,10 +92,7 @@ pub fn partition_path(base: &Path, index: u32) -> String {
 /// every stale filesystem and residual data before the new layout is written.
 /// Reports an `Erasing` progress phase and honours `abort`.
 pub fn zero_device(device: &Path, abort: &AtomicBool) -> Result<()> {
-    let mut dev = OpenOptions::new()
-        .write(true)
-        .open(device)
-        .with_context(|| format!("opening device {}", device.display()))?;
+    let mut dev = open_exclusive(device)?;
     let size = device_size(&dev)?;
 
     emit::phase("Erasing");

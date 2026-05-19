@@ -389,10 +389,18 @@ impl qobject::AppController {
                 dev.display()
             ));
         }
-        QString::from(&format!(
+        let mut text = format!(
             "All data on {} will be permanently erased.",
             dev.display()
-        ))
+        );
+        // Make an internal disk impossible to mistake for a USB drive.
+        if !dev.removable {
+            text.push_str(
+                "\n\n⚠ This is an INTERNAL (non-removable) disk — \
+                 make absolutely sure this is the device you mean to erase.",
+            );
+        }
+        QString::from(&text)
     }
 
     /// Validate inputs, build a [`Job`], and spawn the privileged helper.
@@ -403,10 +411,27 @@ impl qobject::AppController {
             return;
         }
 
-        let iso = self.iso_path().to_string();
-        let Some(device) = self.selected_info().map(|d| d.path.clone()) else {
+        // Re-scan the system and confirm the chosen device still exists exactly
+        // as it was enumerated. A USB drive swapped into this slot since the
+        // user picked it would reuse the same `/dev` node — writing to it would
+        // destroy the wrong disk. Any mismatch aborts and forces a fresh scan.
+        let Some(selected) = self.selected_info().cloned() else {
+            self.as_mut()
+                .set_status(QString::from("Select a target device first"));
             return;
         };
+        let current = crate::devices::enumerate(*self.show_fixed_disks());
+        if !current.contains(&selected) {
+            self.as_mut().set_status(QString::from(
+                "The selected device changed since it was chosen — \
+                 the device list has been refreshed; check the target and start again.",
+            ));
+            self.as_mut().refresh_devices();
+            return;
+        }
+
+        let iso = self.iso_path().to_string();
+        let device = selected.path.clone();
 
         let table = if *self.table() == 0 {
             PartitionTable::Gpt

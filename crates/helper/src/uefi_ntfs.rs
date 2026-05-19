@@ -30,12 +30,13 @@ pub fn run(
     let iso_size = std::fs::metadata(iso)
         .context("reading ISO metadata")?
         .len();
-    let img_size = std::fs::metadata(uefi_ntfs_img)
-        .context("reading uefi-ntfs.img")?
-        .len();
-    if img_size == 0 {
-        bail!("the downloaded uefi-ntfs.img is empty");
+    // Defence in depth: re-validate the bootloader image here, in the
+    // privileged helper, even though the GUI already checked it on download.
+    let img_bytes = std::fs::read(uefi_ntfs_img).context("reading uefi-ntfs.img")?;
+    if let Err(why) = usbooty_core::validate_uefi_ntfs(&img_bytes) {
+        bail!("the uefi-ntfs.img is invalid: {why}");
     }
+    let img_size = img_bytes.len() as u64;
 
     let unmounted = blockdev::unmount_all(device)?;
     if unmounted > 0 {
@@ -51,11 +52,7 @@ pub fn run(
 
     emit::phase("Partitioning");
     {
-        let mut dev = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(device)
-            .with_context(|| format!("opening device {}", device.display()))?;
+        let mut dev = blockdev::open_exclusive(device)?;
         let dev_size = blockdev::device_size(&dev)?;
         if dev_size < iso_size + img_size {
             bail!("the target device is too small for the Windows files");

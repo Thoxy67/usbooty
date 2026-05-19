@@ -5,10 +5,10 @@
 //! raw URLs and cached under `~/.cache/usbooty/resources/`, so the app always
 //! tracks the latest upstream version while still working offline once cached.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 /// How long a cached resource is trusted before a fresh check is made.
@@ -37,6 +37,15 @@ impl Resource {
             }
         }
     }
+
+    /// Structurally validate the bytes of this resource — the download is never
+    /// integrity-checked by the transport, so a truncated or corrupted file
+    /// must be rejected before it is cached or written to a drive.
+    fn validate(self, bytes: &[u8]) -> Result<(), String> {
+        match self {
+            Resource::UefiNtfsImg => usbooty_core::validate_uefi_ntfs(bytes),
+        }
+    }
 }
 
 /// Cached HTTP validators, stored alongside each resource as `<name>.meta`.
@@ -62,22 +71,35 @@ pub fn ensure(resource: Resource) -> Result<PathBuf> {
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
 
-    if file.is_file() && now().saturating_sub(meta.fetched_at) < TTL.as_secs() {
-        return Ok(file); // fresh enough — no network needed
+    // A fresh *and structurally valid* cached copy needs no network at all.
+    if now().saturating_sub(meta.fetched_at) < TTL.as_secs() && cached_valid(resource, &file) {
+        return Ok(file);
     }
 
     match download(resource, meta.etag.as_deref()) {
         Ok(Fetch::NotModified) => {
-            save_meta(
-                &meta_path,
-                &Meta {
-                    fetched_at: now(),
-                    ..meta
-                },
-            );
-            Ok(file)
+            // The server says our copy is current — trust it only if the bytes
+            // on disk still validate (a cache file can rot independently).
+            if cached_valid(resource, &file) {
+                save_meta(
+                    &meta_path,
+                    &Meta {
+                        fetched_at: now(),
+                        ..meta
+                    },
+                );
+                Ok(file)
+            } else {
+                bail!(
+                    "the cached {} is corrupt and the server reports no newer copy",
+                    resource.name()
+                );
+            }
         }
         Ok(Fetch::Body { bytes, etag }) => {
+            if let Err(why) = resource.validate(&bytes) {
+                bail!("the downloaded {} is invalid: {why}", resource.name());
+            }
             std::fs::write(&file, &bytes).with_context(|| format!("writing {}", file.display()))?;
             save_meta(
                 &meta_path,
@@ -90,18 +112,26 @@ pub fn ensure(resource: Resource) -> Result<PathBuf> {
             Ok(file)
         }
         Err(e) => {
-            if file.is_file() {
-                Ok(file) // offline: fall back to the stale cached copy
+            // Offline: fall back to the cached copy only if it is still valid.
+            if cached_valid(resource, &file) {
+                Ok(file)
             } else {
                 Err(e).with_context(|| {
                     format!(
-                        "could not download {} and no cached copy exists",
+                        "could not download {} and no valid cached copy exists",
                         resource.name()
                     )
                 })
             }
         }
     }
+}
+
+/// Whether `file` exists and holds a structurally-valid copy of `resource`.
+fn cached_valid(resource: Resource, file: &Path) -> bool {
+    std::fs::read(file)
+        .ok()
+        .is_some_and(|bytes| resource.validate(&bytes).is_ok())
 }
 
 /// Outcome of a conditional download.

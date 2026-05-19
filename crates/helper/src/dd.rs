@@ -1,7 +1,7 @@
 //! The DD write method: a raw, byte-for-byte copy of the ISO onto the device.
 
 use anyhow::{bail, Context, Result};
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,10 +38,7 @@ pub fn run(
         ));
     }
 
-    let mut dev = OpenOptions::new()
-        .write(true)
-        .open(device_path)
-        .with_context(|| format!("opening device {}", device_path.display()))?;
+    let mut dev = blockdev::open_exclusive(device_path)?;
 
     let dev_size = blockdev::device_size(&dev)?;
     if total > dev_size {

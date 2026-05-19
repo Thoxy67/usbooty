@@ -177,7 +177,7 @@ pub fn run_job(
         finish(&qt, false, "Could not send the job to the helper".into());
         return;
     }
-    *stdin_slot.lock().unwrap() = Some(stdin);
+    *stdin_slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(stdin);
 
     // Stream stdout, forwarding each progress message to the UI.
     let stdout = child.stdout.take().expect("stdout was piped");

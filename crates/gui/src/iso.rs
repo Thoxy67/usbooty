@@ -140,11 +140,12 @@ pub fn sha256(path: &Path) -> String {
             Err(_) => return String::new(),
         }
     }
-    hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    let mut hex = String::with_capacity(64);
+    for b in hasher.finalize() {
+        use std::fmt::Write;
+        let _ = write!(hex, "{b:02x}");
+    }
+    hex
 }
 
 /// Read the volume label from the ISO9660 Primary Volume Descriptor.

@@ -2,7 +2,6 @@
 //! and copy the ISO contents onto it file by file.
 
 use anyhow::{bail, Context, Result};
-use std::fs::OpenOptions;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
@@ -209,13 +208,9 @@ fn prepare_device(device: &Path, opts: &JobOptions, abort: &AtomicBool) -> Resul
     Ok(())
 }
 
-/// Open the whole-disk device read/write.
+/// Open the whole-disk device read/write, exclusively.
 fn open_device(device: &Path) -> Result<std::fs::File> {
-    OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(device)
-        .with_context(|| format!("opening device {}", device.display()))
+    blockdev::open_exclusive(device)
 }
 
 /// Flush a freshly-written partition table and ask the kernel to re-read it.
