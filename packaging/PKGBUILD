@@ -5,7 +5,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="Create bootable USB drives from ISO images — a Rufus-like tool (git version)"
 arch=('x86_64' 'aarch64')
-url="https://github.com/thoxy/usbooty"
+url="https://git.thoxy.xyz/thoxy/usbooty"
 license=('MIT')
 depends=(
     'qt6-base'
@@ -28,7 +28,7 @@ optdepends=(
 )
 provides=("$_pkgname=$pkgver")
 conflicts=("$_pkgname")
-source=("$_pkgname::git+https://github.com/thoxy/usbooty.git")
+source=("$_pkgname::git+https://git.thoxy.xyz/thoxy/usbooty.git")
 sha256sums=('SKIP')
 install="$pkgname.install"
 

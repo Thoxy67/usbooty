@@ -1,6 +1,6 @@
 # usbooty-git
 
-Arch User Repository package for [usbooty](https://github.com/thoxy/usbooty) —
+Arch User Repository package for [usbooty](https://git.thoxy.xyz/thoxy/usbooty) —
 a Rufus-like tool that creates bootable USB drives from ISO images.
 
 This is the **git** package: it builds the latest commit from upstream.
