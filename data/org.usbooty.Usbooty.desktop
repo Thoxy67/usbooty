@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=usbooty
+GenericName=Bootable USB Creator
+Comment=Create bootable USB drives from ISO images
+Exec=usbooty
+Icon=org.usbooty.Usbooty
+Terminal=false
+Categories=System;Utility;
+Keywords=USB;ISO;boot;flash;rufus;installer;
+StartupNotify=true
