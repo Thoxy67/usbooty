@@ -1,0 +1,10 @@
+<!--
+  Qt resource bundle for the GUI's iconography. Compiled into the binary by
+  rcc via `cxx-qt-build`, so the icon is reachable as `qrc:/icons/usbooty.svg`
+  in QML regardless of whether the binary has been installed.
+-->
+<RCC>
+    <qresource prefix="/icons">
+        <file alias="usbooty.svg">../../../data/icons/org.usbooty.Usbooty.svg</file>
+    </qresource>
+</RCC>

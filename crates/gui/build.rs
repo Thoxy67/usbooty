@@ -5,5 +5,8 @@ fn main() {
         .file("src/bridge.rs")
         .qt_module("Qml")
         .qt_module("Quick")
+        // Bundle the app icon into the binary as `qrc:/icons/usbooty.svg`, so
+        // QML can reference it whether running from the dev tree or installed.
+        .qrc("qrc/icons.qrc")
         .build();
 }

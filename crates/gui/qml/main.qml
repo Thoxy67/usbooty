@@ -1184,17 +1184,32 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 12
 
-            ColumnLayout {
-                spacing: 0
-                Label {
-                    text: "usbooty"
-                    font.bold: true
-                    font.pointSize: 16
+            // Logo + name / version side by side at the top of the dialog.
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 14
+                Image {
+                    source: "qrc:/icons/usbooty.svg"
+                    sourceSize.width: 64
+                    sourceSize.height: 64
+                    Layout.preferredWidth: 64
+                    Layout.preferredHeight: 64
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
                 }
-                Label {
-                    text: "Version " + app.appVersion
-                    color: palette.placeholderText
-                    font.pointSize: 9
+                ColumnLayout {
+                    spacing: 0
+                    Layout.fillWidth: true
+                    Label {
+                        text: "usbooty"
+                        font.bold: true
+                        font.pointSize: 16
+                    }
+                    Label {
+                        text: "Version " + app.appVersion
+                        color: palette.placeholderText
+                        font.pointSize: 9
+                    }
                 }
             }
 
