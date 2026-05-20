@@ -1,36 +1,33 @@
 # usbooty-git
 
-Arch User Repository package for [usbooty](https://git.thoxy.xyz/thoxy/usbooty) —
+Arch User Repository package for [usbooty](https://git.thoxy.xyz/thoxy/usbooty),
 a Rufus-like tool that creates bootable USB drives from ISO images.
 
-This is the **git** package: it builds the latest commit from upstream.
-
-## Features
-
-- **DD** raw image write (isohybrid ISOs, BSD memstick images, …)
-- **Partition & copy** — FAT32 / NTFS / exFAT / ext4, including the Windows
-  **UEFI:NTFS** layout for ISOs with a large `install.wim`
-- **Windows 11 setup customization** — bypass TPM / Secure Boot / RAM checks,
-  skip the Microsoft-account requirement, create a local account
-- **Linux live-USB persistence** (Debian / Ubuntu family)
-- **Format only** — a blank FAT32 / NTFS / exFAT / ext4 drive
-- **Ventoy** multi-boot USB creation (install / update + drop an ISO)
-- Built-in Windows ISO downloader, write verification, SHA-256 display
+This is the **git** package: it builds the latest commit from upstream on
+every invocation.
 
 ## Install
 
 ```sh
 git clone https://git.thoxy.xyz/AUR/usbooty-git.git
 cd usbooty-git
-makepkg -si
+makepkg -fsi
 ```
 
-## Optional dependencies
+## Optional runtime dependencies
 
-`dosfstools`, `ntfs-3g`, `exfatprogs`, `e2fsprogs` provide the respective
-filesystem formatters; `ventoy` enables the Ventoy method. Install whichever
-you need.
+`dosfstools`, `ntfs-3g`, `exfatprogs`, and `e2fsprogs` provide the respective
+filesystem formatters. `wimlib` provides `wimlib-imagex` for splitting large
+Windows `install.wim` files. `ventoy` enables the Ventoy method. Install
+whichever you need.
+
+## More information
+
+* Source repository: <https://git.thoxy.xyz/thoxy/usbooty>
+* Full documentation: see the [`docs/`](https://git.thoxy.xyz/thoxy/usbooty/src/branch/main/docs)
+  directory in the source repo for architecture, write methods,
+  Windows-specific behaviour, and troubleshooting.
 
 ## License
 
-MIT — see the project repository.
+GPL-3.0-or-later. See the project repository.

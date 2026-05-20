@@ -6,7 +6,7 @@ pkgrel=1
 pkgdesc="Create bootable USB drives from ISO images — a Rufus-like tool (git version)"
 arch=('x86_64' 'aarch64')
 url="https://git.thoxy.xyz/thoxy/usbooty"
-license=('MIT')
+license=('GPL-3.0-or-later')
 depends=(
     'qt6-base'
     'qt6-declarative'
