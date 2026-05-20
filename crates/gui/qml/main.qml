@@ -1226,7 +1226,7 @@ ApplicationWindow {
                 Label { text: "Author"; font.bold: true }
                 Label { text: "Thoxy" }
                 Label { text: "License"; font.bold: true }
-                Label { text: "MIT" }
+                Label { text: "GPL-3.0-or-later" }
             }
 
             Label {
