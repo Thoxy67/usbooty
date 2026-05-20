@@ -7,9 +7,9 @@ import com.usbooty
 ApplicationWindow {
     id: window
     visible: true
-    width: 600
+    width: 660
     height: 860
-    minimumWidth: 520
+    minimumWidth: 600
     minimumHeight: 620
     title: "usbooty — Bootable USB Creator"
 
@@ -18,6 +18,7 @@ ApplicationWindow {
         Component.onCompleted: app.refreshDevices()
         onJobFinished: function(success, message) {
             resultDialog.title = success ? "Success" : "Failed"
+            resultDialog.success = success
             resultLabel.text = message
             resultDialog.open()
         }
@@ -66,6 +67,9 @@ ApplicationWindow {
         id: card
         property int step: 0
         property string heading: ""
+        // Per-step accent — colours the round step badge and the card's left
+        // edge so the three cards have a quick visual rhythm.
+        property color accent: card.palette.highlight
         default property alias body: bodyColumn.data
         Layout.fillWidth: true
         padding: 10
@@ -73,6 +77,16 @@ ApplicationWindow {
             radius: 8
             color: card.palette.base
             border.color: card.palette.mid
+            // 3-pixel coloured stripe down the left edge; clipped by `radius`
+            // so it follows the card's rounded corners.
+            Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 3
+                color: card.accent
+                opacity: 0.85
+            }
         }
         contentItem: ColumnLayout {
             spacing: 8
@@ -83,11 +97,11 @@ ApplicationWindow {
                     width: 22
                     height: 22
                     radius: 11
-                    color: card.palette.highlight
+                    color: card.accent
                     Label {
                         anchors.centerIn: parent
                         text: card.step
-                        color: card.palette.highlightedText
+                        color: "white"
                         font.bold: true
                     }
                 }
@@ -103,6 +117,49 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 spacing: 6
             }
+        }
+    }
+
+    // ---- Reusable Windows logo (modern 2×2 squares, Microsoft blue) ----
+    component WindowsLogo: Item {
+        id: wlogo
+        property real size: 18
+        property color tint: "#0078D4"
+        implicitWidth: size
+        implicitHeight: size
+        Grid {
+            anchors.fill: parent
+            columns: 2
+            rows: 2
+            spacing: Math.max(1, wlogo.size * 0.08)
+            Repeater {
+                model: 4
+                Rectangle {
+                    width: (wlogo.size - parent.spacing) / 2
+                    height: (wlogo.size - parent.spacing) / 2
+                    color: wlogo.tint
+                }
+            }
+        }
+    }
+
+    // ---- Reusable coloured pill (used for OS chips, phase chips, …) ----
+    component Pill: Rectangle {
+        id: pill
+        property string label: ""
+        property color tint: "#3498db"
+        property color ink: "white"
+        implicitWidth: pillLabel.implicitWidth + 16
+        implicitHeight: pillLabel.implicitHeight + 6
+        radius: implicitHeight / 2
+        color: tint
+        Label {
+            id: pillLabel
+            anchors.centerIn: parent
+            text: pill.label
+            color: pill.ink
+            font.bold: true
+            font.pointSize: 8
         }
     }
 
@@ -234,6 +291,7 @@ ApplicationWindow {
         StepCard {
             step: 1
             heading: "Source image"
+            accent: "#3498db"
             // The format-only method takes no source image.
             enabled: app.method !== 2
 
@@ -264,11 +322,38 @@ ApplicationWindow {
                     }
                 }
             }
-            Label {
-                text: app.isoSummary
-                color: palette.placeholderText
-                elide: Text.ElideMiddle
+            // ISO summary line with an OS-detection chip alongside it. The
+            // chip surfaces the result of usbooty's ISO classification so the
+            // user can confirm at a glance that their Windows / Linux ISO was
+            // recognised (and thus the relevant options will be available).
+            RowLayout {
                 Layout.fillWidth: true
+                spacing: 8
+                Row {
+                    spacing: 6
+                    visible: app.windowsIso || app.linuxIso
+                    WindowsLogo {
+                        size: 14
+                        visible: app.windowsIso
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Pill {
+                        visible: app.windowsIso
+                        label: "Windows"
+                        tint: "#0078D4"
+                    }
+                    Pill {
+                        visible: app.linuxIso
+                        label: "Linux"
+                        tint: "#E67E22"
+                    }
+                }
+                Label {
+                    text: app.isoSummary
+                    color: palette.placeholderText
+                    elide: Text.ElideMiddle
+                    Layout.fillWidth: true
+                }
             }
             TextEdit {
                 // Selectable so the user can copy the hash to cross-check it
@@ -289,6 +374,7 @@ ApplicationWindow {
         StepCard {
             step: 2
             heading: "Target device"
+            accent: "#E67E22"
 
             RowLayout {
                 Layout.fillWidth: true
@@ -351,6 +437,7 @@ ApplicationWindow {
         StepCard {
             step: 3
             heading: "Options"
+            accent: "#16A085"
 
             GridLayout {
                 Layout.fillWidth: true
@@ -524,34 +611,82 @@ ApplicationWindow {
 
         // ---- Progress ---------------------------------------------------
         Frame {
+            id: progressFrame
             Layout.fillWidth: true
             visible: app.busy || app.progress > 0
             padding: 12
+            // A colour for the active phase, so the user can tell at a glance
+            // whether we are still writing or already verifying the bytes back.
+            readonly property color phaseColor: {
+                var p = app.phase.toLowerCase()
+                if (p.indexOf("verif") >= 0)  return "#27AE60" // green
+                if (p.indexOf("flush") >= 0)  return "#F39C12" // amber
+                if (p.indexOf("format") >= 0) return "#8E44AD" // violet
+                if (p.indexOf("ventoy") >= 0) return "#16A085" // teal
+                if (p.indexOf("download") >= 0) return "#0078D4" // Windows blue
+                return "#3498DB"                                 // default blue
+            }
             background: Rectangle {
                 radius: 8
                 color: palette.base
                 border.color: palette.mid
+                // A thin coloured stripe along the top edge mirroring the
+                // active phase. Reads as "this is currently a Writing pass"
+                // even before the user looks at the chip below.
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    height: 3
+                    radius: parent.radius
+                    color: progressFrame.phaseColor
+                    opacity: app.busy ? 0.95 : 0.45
+                }
             }
             contentItem: ColumnLayout {
                 spacing: 8
                 ProgressBar {
+                    id: phaseBar
                     Layout.fillWidth: true
                     from: 0
                     to: 1
                     value: app.progress
+                    // Re-tint the fill bar to match the phase. The Qt default
+                    // contentItem is a Rectangle, so we override it cleanly.
+                    contentItem: Item {
+                        implicitHeight: 6
+                        Rectangle {
+                            width: phaseBar.visualPosition * parent.width
+                            height: parent.height
+                            radius: 3
+                            color: progressFrame.phaseColor
+                        }
+                    }
+                    background: Rectangle {
+                        implicitHeight: 6
+                        color: Qt.rgba(0, 0, 0, 0.08)
+                        radius: 3
+                    }
                 }
                 RowLayout {
                     Layout.fillWidth: true
+                    spacing: 8
+                    Pill {
+                        visible: app.phase !== ""
+                        label: app.phase
+                        tint: progressFrame.phaseColor
+                    }
                     Label {
-                        text: app.phase !== "" ? app.phase : "Working"
+                        text: app.phase === "" ? "Working" : ""
                         font.bold: true
+                        visible: text !== ""
                     }
                     Item { Layout.fillWidth: true }
                     Label {
                         text: app.progress > 0
                               ? Math.round(app.progress * 100) + " %" : ""
                         font.bold: true
-                        color: palette.highlight
+                        color: progressFrame.phaseColor
                     }
                 }
                 // Live transfer statistics: speed · ETA · elapsed.
@@ -675,52 +810,304 @@ ApplicationWindow {
     }
 
     // Shown when Start is pressed on a Windows ISO — optional install tweaks.
+    // All settings flow into a generated `autounattend.xml` on the USB root.
     Dialog {
         id: windowsSetupDialog
-        title: "Windows setup (optional)"
         anchors.centerIn: parent
-        width: 480
+        width: 600
+        // Cap the dialog height to the window minus chrome so the content
+        // scrolls instead of overflowing on smaller displays.
+        height: Math.min(window.height - 80, 760)
         modal: true
+        // Inset the contentItem from the dialog frame on every side; the
+        // header and footer carry their own spacing.
+        topPadding: 14
+        bottomPadding: 14
+        leftPadding: 18
+        rightPadding: 18
+        // Custom header replacing the default text-only title bar: the
+        // Microsoft blue accent and the Windows flag immediately identify
+        // this as the Windows installer tweak panel.
+        header: Rectangle {
+            color: "#0078D4"
+            implicitHeight: 52
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+                WindowsLogo {
+                    size: 24
+                    tint: "white"
+                }
+                ColumnLayout {
+                    spacing: 0
+                    Layout.fillWidth: true
+                    Label {
+                        text: "Windows setup"
+                        color: "white"
+                        font.bold: true
+                        font.pointSize: 12
+                    }
+                    Label {
+                        text: "Optional install tweaks — written to autounattend.xml"
+                        color: Qt.rgba(1, 1, 1, 0.82)
+                        font.pointSize: 8
+                    }
+                }
+            }
+        }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {
             confirmLabel.text = app.confirmText()
             confirmDialog.open()
         }
-        contentItem: ColumnLayout {
-            spacing: 8
+        contentItem: ScrollView {
+            id: setupScroll
+            clip: true
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ColumnLayout {
+                // Reserve room on the right so the vertical scrollbar never
+                // sits on top of long checkbox labels or section dividers.
+                width: setupScroll.availableWidth - 14
+                spacing: 10
             Label {
-                text: "Customize the Windows installation, or just press OK to skip."
+                text: "Customize the installation below, or just press OK to skip — "
+                    + "every option is optional."
+                color: palette.placeholderText
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
+
+            // --- Setup-time tweaks --------------------------------------
+            Label { text: "Setup"; font.bold: true; Layout.topMargin: 6 }
+            Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             CheckBox {
-                text: "Bypass Windows 11 checks — TPM 2.0, Secure Boot, RAM"
+                text: "Bypass Windows 11 hardware checks — TPM, Secure Boot, RAM, Storage, CPU, Disk"
                 checked: app.bypassTpm
                 onToggled: {
                     app.bypassTpm = checked
                     app.bypassSecureboot = checked
                     app.bypassRam = checked
+                    app.bypassStorage = checked
+                    app.bypassCpu = checked
+                    app.bypassDisk = checked
                 }
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Writes six LabConfig registry keys during Setup so Win 11 skips its " +
+                    "hardware requirements: TPM 2.0, Secure Boot, 8 GB RAM, 64 GB system disk, " +
+                    "supported-CPU allowlist, and disk-geometry check. Harmless on Windows 10."
             }
             CheckBox {
-                text: "Skip the Microsoft-account requirement"
+                text: "Auto-accept the Setup EULA"
+                checked: app.acceptEula
+                onToggled: app.acceptEula = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Sets <AcceptEula>true</AcceptEula> in the windowsPE UserData block " +
+                    "so the Setup-time license prompt is skipped."
+            }
+            CheckBox {
+                text: "Enable .NET Framework 3.5 from the install media"
+                checked: app.enableDotnet35
+                onToggled: app.enableDotnet35 = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Runs DISM in the specialize pass to enable NetFx3 from the install " +
+                    "media's sources\\sxs folder. Needed by many legacy apps; no network required."
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Product key"; Layout.minimumWidth: 110 }
+                TextField {
+                    Layout.fillWidth: true
+                    placeholderText: "Optional — e.g. VK7JG-NPHTM-C97JM-9MPGT-3V66T (Win 11 Pro)"
+                    text: app.productKey
+                    onTextEdited: app.productKey = text
+                }
+            }
+
+            // --- OOBE (first-boot) skips --------------------------------
+            Label { text: "Out-of-box experience"; font.bold: true; Layout.topMargin: 6 }
+            Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
+            CheckBox {
+                text: "Skip Microsoft-account requirement (works on Win 10 and all Win 11)"
                 checked: app.skipMsaccount
                 onToggled: app.skipMsaccount = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Emits both BypassNRO (Win 10 / Win 11 pre-24H2) and " +
+                    "<HideOnlineAccountScreens>true</HideOnlineAccountScreens> (Win 11 24H2+), " +
+                    "so a single toggle covers the whole supported matrix."
+            }
+            CheckBox {
+                text: "Disable network during OOBE — force local account on Win 11 24H2+"
+                checked: app.disableNetworkDuringOobe
+                onToggled: app.disableNetworkDuringOobe = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Runs `Get-NetAdapter | Disable-NetAdapter` in specialize, then a " +
+                    "matching Enable-NetAdapter in FirstLogonCommands. With no network during OOBE, " +
+                    "Windows falls back to local-account creation — the most robust workaround when " +
+                    "BypassNRO and HideOnlineAccountScreens are ignored."
+            }
+            CheckBox {
+                text: "Skip the \"connect to a network\" Wi-Fi screen"
+                checked: app.hideWirelessSetup
+                onToggled: app.hideWirelessSetup = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Sets <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE> so the " +
+                    "OOBE \"Let's connect you to a network\" page is skipped entirely."
+            }
+            CheckBox {
+                text: "Hide the OEM-registration screen"
+                checked: app.hideOemRegistration
+                onToggled: app.hideOemRegistration = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Sets <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen> " +
+                    "so OEM-branded OOBE pages do not appear (irrelevant on clean Microsoft ISOs)."
+            }
+            CheckBox {
+                text: "Pre-answer the network-type prompt as \"Work\" (private/trusted)"
+                checked: app.networkLocationWork
+                onToggled: app.networkLocationWork = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Sets <NetworkLocation>Work</NetworkLocation> so OOBE classifies the " +
+                    "network as private/trusted without prompting (file sharing and discovery enabled)."
             }
             CheckBox {
                 text: "Disable data-collection / telemetry prompts"
                 checked: app.disableTelemetry
                 onToggled: app.disableTelemetry = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Sets <HideEULAPage>true</HideEULAPage> and <ProtectYourPC>3</ProtectYourPC> " +
+                    "— the OOBE \"skip Express settings\" answer that opts out of every diagnostic / " +
+                    "advertising / tailored-experience prompt."
             }
+
+            // --- Local account ------------------------------------------
+            Label { text: "Local account"; font.bold: true; Layout.topMargin: 6 }
+            Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Local account" }
+                Label { text: "Name"; Layout.minimumWidth: 110 }
                 TextField {
                     Layout.fillWidth: true
-                    placeholderText: "Optional — name for a local account"
+                    placeholderText: "Optional — leave empty to keep the OOBE prompt"
                     text: app.localAccount
                     onTextEdited: app.localAccount = text
                 }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Password"; Layout.minimumWidth: 110 }
+                TextField {
+                    Layout.fillWidth: true
+                    placeholderText: "Optional — sets a password and enables one-shot auto-logon"
+                    echoMode: TextInput.Password
+                    text: app.localAccountPassword
+                    onTextEdited: app.localAccountPassword = text
+                }
+            }
+
+            // --- System identity ----------------------------------------
+            Label { text: "System"; font.bold: true; Layout.topMargin: 6 }
+            Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Computer name"; Layout.minimumWidth: 110 }
+                TextField {
+                    Layout.fillWidth: true
+                    placeholderText: "Optional — up to 15 characters, no whitespace"
+                    text: app.computerName
+                    onTextEdited: app.computerName = text
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Locale"; Layout.minimumWidth: 110 }
+                TextField {
+                    Layout.fillWidth: true
+                    placeholderText: "Optional — e.g. en-US, fr-FR, de-DE"
+                    text: app.locale
+                    onTextEdited: app.locale = text
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Time zone"; Layout.minimumWidth: 110 }
+                ComboBox {
+                    id: timezoneCombo
+                    Layout.fillWidth: true
+                    // Parallel newline-separated lists built once in Rust from
+                    // the Microsoft TimeZone catalog, sorted by UTC offset.
+                    readonly property var tzIds: app.timezoneIds.split("\n")
+                    model: app.timezoneLabels.split("\n")
+                    // Restore the previously-chosen ID on dialog open.
+                    Component.onCompleted: currentIndex = Math.max(0, tzIds.indexOf(app.timezone))
+                    onActivated: app.timezone = tzIds[currentIndex] || ""
+                }
+            }
+
+            // --- Debloat ------------------------------------------------
+            Label { text: "Privacy & debloat"; font.bold: true; Layout.topMargin: 6 }
+            Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
+            CheckBox {
+                id: debloatBox
+                text: "Apply debloat profile"
+                checked: app.applyDebloat
+                onToggled: app.applyDebloat = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Writes usbooty-debloat.reg to the USB and imports it during specialize " +
+                    "(HKLM machine policies + HKU\\DFT default-user policies). Disables Cortana, " +
+                    "Copilot, Recall, telemetry, lockscreen ads, suggested apps, advertising ID, " +
+                    "and assorted recommendation surfaces. Win 11-only keys are no-ops on Win 10."
+            }
+            Label {
+                visible: debloatBox.checked
+                Layout.fillWidth: true
+                Layout.leftMargin: 24
+                wrapMode: Text.Wrap
+                color: palette.placeholderText
+                font.pointSize: 9
+                textFormat: Text.RichText
+                text:
+                    "<b>Applied machine-wide (HKLM Group Policy):</b><br>" +
+                    "&nbsp;• News &amp; Interests feed (taskbar widget)<br>" +
+                    "&nbsp;• Consumer-feature ads — suggested Store apps, OEM-style inserts<br>" +
+                    "&nbsp;• Activity History sync to Microsoft<br>" +
+                    "&nbsp;• Cortana in Search<br>" +
+                    "&nbsp;• Windows Copilot service<br>" +
+                    "&nbsp;• Windows Recall — the rolling-screenshot AI history (Win 11 24H2+)<br>" +
+                    "&nbsp;• Diagnostic data — set to Required only<br>" +
+                    "<br>" +
+                    "<b>Applied to the default user profile (inherited by every new account):</b><br>" +
+                    "&nbsp;• Bing / web suggestions in Start &amp; Search<br>" +
+                    "&nbsp;• File extensions shown (instead of hidden)<br>" +
+                    "&nbsp;• Copilot, Task View, Widgets and \"People\" buttons hidden from the taskbar<br>" +
+                    "&nbsp;• Sync-provider ads in Explorer suppressed<br>" +
+                    "&nbsp;• Start menu \"recommendations\" and Iris suggestions disabled<br>" +
+                    "&nbsp;• ContentDeliveryManager: lock-screen rotation ads, pre-installed-app suggestions, \"subscribed content\" tiles<br>" +
+                    "&nbsp;• Cortana / Bing inside per-user Search<br>" +
+                    "&nbsp;• Advertising ID disabled<br>" +
+                    "&nbsp;• \"Tailored experiences\" derived from diagnostic data<br>" +
+                    "&nbsp;• \"Suggested\" toast notifications<br>" +
+                    "&nbsp;• Phone Link / \"use your mobile with Windows\" prompts<br>" +
+                    "&nbsp;• Online speech recognition (voice stays local)<br>" +
+                    "&nbsp;• Contact harvesting for input personalization<br>" +
+                    "&nbsp;• Feedback Hub frequency set to Never<br>" +
+                    "&nbsp;• \"Finish setting up your device\" prompts<br>" +
+                    "<br>" +
+                    "Windows 11-only keys (Copilot, Widgets, News &amp; Interests, Recall) " +
+                    "are silently ignored on Windows 10."
+            }
             }
         }
     }
@@ -752,12 +1139,37 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: 440
         modal: true
+        // Set by the AppController.onJobFinished handler; drives the colour
+        // of the header strip and the success / failure glyph below.
+        property bool success: true
         standardButtons: Dialog.Ok
-        contentItem: ColumnLayout {
+        // A thin coloured strip across the top of the dialog — instant
+        // green/red signal before the user even reads the message.
+        header: Rectangle {
+            implicitHeight: 4
+            color: resultDialog.success ? "#27AE60" : "#E74C3C"
+        }
+        contentItem: RowLayout {
+            spacing: 14
+            Rectangle {
+                width: 40
+                height: 40
+                radius: 20
+                color: resultDialog.success ? "#27AE60" : "#E74C3C"
+                Layout.alignment: Qt.AlignTop
+                Label {
+                    anchors.centerIn: parent
+                    text: resultDialog.success ? "✓" : "✕"
+                    color: "white"
+                    font.bold: true
+                    font.pointSize: 18
+                }
+            }
             Label {
                 id: resultLabel
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
             }
         }
     }
@@ -814,8 +1226,8 @@ ApplicationWindow {
             }
 
             Label {
-                text: "<a href=\"https://github.com/thoxy/usbooty\">"
-                    + "github.com/thoxy/usbooty</a>"
+                text: "<a href=\"https://git.thoxy.xyz/thoxy/usbooty\">"
+                    + "git.thoxy.xyz/thoxy/usbooty</a>"
                 textFormat: Text.RichText
                 font.pointSize: 9
                 onLinkActivated: function(link) { Qt.openUrlExternally(link) }

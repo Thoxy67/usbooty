@@ -1,0 +1,129 @@
+Windows Registry Editor Version 5.00
+
+; ---------------------------------------------------------------------------
+; usbooty debloat profile — applied during the autounattend `specialize` pass.
+;
+; The HKEY_USERS\DFT keys target Windows' "Default user" profile, which is
+; copied to every NEW account created on this install. The autounattend wraps
+; this file with `reg load HKU\DFT C:\Users\Default\NTUSER.DAT` and the
+; matching `reg unload` so those HKU\DFT entries land in the right hive.
+;
+; Every key here is safe on both Windows 10 (1809+) and Windows 11. Keys that
+; only exist on Windows 11 (Copilot, Widgets, News & Interests) sit unused on
+; Windows 10; HKLM Group Policy paths apply uniformly to both.
+; ---------------------------------------------------------------------------
+
+; --- HKLM: machine-wide Group Policy ---------------------------------------
+
+; Disable Windows 11 News & Interests feed
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Dsh]
+"AllowNewsAndInterests"=dword:00000000
+
+; Disable consumer-feature ads (suggested Store apps, OEM-style inserts)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\CloudContent]
+"DisableWindowsConsumerFeatures"=dword:00000001
+
+; Disable Activity History upload
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\System]
+"PublishUserActivities"=dword:00000000
+
+; Disable Cortana in Search
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\Windows Search]
+"AllowCortana"=dword:00000000
+"CortanaConsent"=dword:00000000
+
+; Disable the Copilot service (Windows 11)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot]
+"TurnOffWindowsCopilot"=dword:00000001
+
+; Disable Windows Recall — the rolling-screenshot AI history introduced in
+; Windows 11 24H2 and prominent on 25H2 / Copilot+ devices. No-op on
+; Windows 10 and pre-24H2 Windows 11.
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsAI]
+"DisableAIDataAnalysis"=dword:00000001
+
+; Send minimum diagnostic data (Required only)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection]
+"AllowTelemetry"=dword:00000000
+
+; --- HKU\DFT: default-user profile (inherited by every new account) --------
+
+; Disable Bing/web suggestions in the Start/Search box
+[HKEY_USERS\DFT\Software\Policies\Microsoft\Windows\Explorer]
+"DisableSearchBoxSuggestions"=dword:00000001
+
+; Show file extensions, hide the Copilot/TaskView/Widgets taskbar buttons,
+; suppress sync-provider ads and Start "recommendations".
+[HKEY_USERS\DFT\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"HideFileExt"=dword:00000000
+"ShowCopilotButton"=dword:00000000
+"ShowSyncProviderNotifications"=dword:00000000
+"ShowTaskViewButton"=dword:00000000
+"Start_AccountNotifications"=dword:00000000
+"Start_IrisRecommendations"=dword:00000000
+"Start_TrackProgs"=dword:00000000
+"TaskbarDa"=dword:00000000
+"TaskbarMn"=dword:00000000
+
+; Strip the "People" band from the taskbar
+[HKEY_USERS\DFT\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\People]
+"PeopleBand"=dword:00000000
+
+; Turn off every flavour of ContentDeliveryManager (preinstalled-app suggestions,
+; lockscreen rotation ads, soft-landing suggestions, "subscribed content" tiles).
+[HKEY_USERS\DFT\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"FeatureManagementEnabled"=dword:00000000
+"OemPreInstalledAppsEnabled"=dword:00000000
+"PreInstalledAppsEnabled"=dword:00000000
+"RotatingLockScreenEnabled"=dword:00000000
+"RotatingLockScreenOverlayEnabled"=dword:00000000
+"SilentInstalledAppsEnabled"=dword:00000000
+"SoftLandingEnabled"=dword:00000000
+"SubscribedContent-310093Enabled"=dword:00000000
+"SubscribedContent-338387Enabled"=dword:00000000
+"SubscribedContent-338388Enabled"=dword:00000000
+"SubscribedContent-338389Enabled"=dword:00000000
+"SubscribedContent-338393Enabled"=dword:00000000
+"SubscribedContent-353694Enabled"=dword:00000000
+"SubscribedContent-353696Enabled"=dword:00000000
+"SubscribedContentEnabled"=dword:00000000
+"SystemPaneSuggestionsEnabled"=dword:00000000
+
+; Disable Cortana in the per-user search component
+[HKEY_USERS\DFT\Software\Microsoft\Windows\CurrentVersion\Search]
+"CortanaConsent"=dword:00000000
+"CanCortanaBeEnabled"=dword:00000000
+"CortanaEnabled"=dword:00000000
+"SearchboxTaskbarMode"=dword:00000000
+
+; Disable the per-user advertising ID
+[HKEY_USERS\DFT\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo]
+"Enabled"=dword:00000000
+
+; Disable "tailored experiences" derived from diagnostic data
+[HKEY_USERS\DFT\Software\Microsoft\Windows\CurrentVersion\Privacy]
+"TailoredExperiencesWithDiagnosticDataEnabled"=dword:00000000
+
+; Silence "Suggested" app toasts (ads for Microsoft services)
+[HKEY_USERS\DFT\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.Suggested]
+"Enabled"=dword:00000000
+
+; Decline Phone Link / "use your mobile with Windows" prompts
+[HKEY_USERS\DFT\Software\Microsoft\Windows\CurrentVersion\Mobility]
+"OptedIn"=dword:00000000
+
+; Suppress "Finish setting up your device" prompts after sign-in
+[HKEY_USERS\DFT\SOFTWARE\Microsoft\Windows\CurrentVersion\UserProfileEngagement]
+"ScoobeSystemSettingEnabled"=dword:00000000
+
+; Decline online speech recognition (keeps voice data local)
+[HKEY_USERS\DFT\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy]
+"HasAccepted"=dword:00000000
+
+; Don't harvest contacts for the input-personalization data store
+[HKEY_USERS\DFT\Software\Microsoft\InputPersonalization\TrainedDataStore]
+"HarvestContacts"=dword:00000000
+
+; Set the Feedback Hub frequency to "Never"
+[HKEY_USERS\DFT\SOFTWARE\Microsoft\Siuf\Rules]
+"NumberOfSIUFInPeriod"=dword:00000000

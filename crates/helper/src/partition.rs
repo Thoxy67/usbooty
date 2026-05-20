@@ -61,12 +61,16 @@ fn mbr_type_byte(filesystem: FileSystem) -> u8 {
 }
 
 /// Read `N` random bytes from `/dev/urandom`, for GUIDs and disk signatures.
-fn random_bytes<const N: usize>() -> [u8; N] {
+/// Fails loudly rather than silently returning zeros — an all-zero GPT disk
+/// GUID or MBR disk signature violates the spec and has been known to confuse
+/// Windows and firmware (two zero-signature disks look identical to the boot
+/// manager), so silently degrading here would defeat the point of the tool.
+fn random_bytes<const N: usize>() -> Result<[u8; N]> {
     let mut buf = [0u8; N];
-    if let Ok(mut f) = File::open("/dev/urandom") {
-        let _ = f.read_exact(&mut buf);
-    }
-    buf
+    let mut f = File::open("/dev/urandom").context("opening /dev/urandom for GUIDs/signatures")?;
+    f.read_exact(&mut buf)
+        .context("reading /dev/urandom for GUIDs/signatures")?;
+    Ok(buf)
 }
 
 /// Zero the first and last mebibyte of the device, erasing stale partition
@@ -105,7 +109,7 @@ fn write_gpt<D: Read + Write + Seek>(
     name: &str,
 ) -> Result<()> {
     let mut gpt =
-        gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()).context("creating GPT")?;
+        gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()?).context("creating GPT")?;
     // Recompute usable LBAs from the device's real size.
     gpt.header
         .update_from(device, SECTOR)
@@ -113,7 +117,7 @@ fn write_gpt<D: Read + Write + Seek>(
 
     gpt[1] = gptman::GPTPartitionEntry {
         partition_type_guid: gpt_type_guid(filesystem),
-        unique_partition_guid: random_bytes::<16>(),
+        unique_partition_guid: random_bytes::<16>()?,
         starting_lba: gpt.header.first_usable_lba.max(ALIGN_SECTORS),
         ending_lba: gpt.header.last_usable_lba,
         attribute_bits: 0,
@@ -126,7 +130,7 @@ fn write_gpt<D: Read + Write + Seek>(
 }
 
 fn write_mbr<D: Read + Write + Seek>(device: &mut D, filesystem: FileSystem) -> Result<()> {
-    let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>())
+    let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>()?)
         .context("creating MBR")?;
     let sectors = mbr.disk_size.saturating_sub(ALIGN_SECTORS as u32);
 
@@ -165,7 +169,7 @@ fn write_gpt_uefi_ntfs<D: Read + Write + Seek>(
     main_name: &str,
 ) -> Result<()> {
     let mut gpt =
-        gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()).context("creating GPT")?;
+        gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()?).context("creating GPT")?;
     gpt.header
         .update_from(device, SECTOR)
         .context("sizing GPT to the device")?;
@@ -180,7 +184,7 @@ fn write_gpt_uefi_ntfs<D: Read + Write + Seek>(
     // Partition 1: NTFS, holds the Windows files.
     gpt[1] = gptman::GPTPartitionEntry {
         partition_type_guid: BASIC_DATA_GUID,
-        unique_partition_guid: random_bytes::<16>(),
+        unique_partition_guid: random_bytes::<16>()?,
         starting_lba: first,
         ending_lba: fat_start - 1,
         attribute_bits: 0,
@@ -191,7 +195,7 @@ fn write_gpt_uefi_ntfs<D: Read + Write + Seek>(
     // Windows via the no-drive-letter attribute.
     gpt[2] = gptman::GPTPartitionEntry {
         partition_type_guid: BASIC_DATA_GUID,
-        unique_partition_guid: random_bytes::<16>(),
+        unique_partition_guid: random_bytes::<16>()?,
         starting_lba: fat_start,
         ending_lba: last,
         attribute_bits: GPT_ATTR_NO_DRIVE_LETTER,
@@ -204,7 +208,7 @@ fn write_gpt_uefi_ntfs<D: Read + Write + Seek>(
 }
 
 fn write_mbr_uefi_ntfs<D: Read + Write + Seek>(device: &mut D, fat_sectors: u64) -> Result<()> {
-    let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>())
+    let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>()?)
         .context("creating MBR")?;
 
     let total = mbr.disk_size;
@@ -263,7 +267,7 @@ fn write_gpt_persistence<D: Read + Write + Seek>(
     main_name: &str,
 ) -> Result<()> {
     let mut gpt =
-        gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()).context("creating GPT")?;
+        gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()?).context("creating GPT")?;
     gpt.header
         .update_from(device, SECTOR)
         .context("sizing GPT to the device")?;
@@ -277,7 +281,7 @@ fn write_gpt_persistence<D: Read + Write + Seek>(
 
     gpt[1] = gptman::GPTPartitionEntry {
         partition_type_guid: gpt_type_guid(filesystem),
-        unique_partition_guid: random_bytes::<16>(),
+        unique_partition_guid: random_bytes::<16>()?,
         starting_lba: first,
         ending_lba: pers_start - 1,
         attribute_bits: 0,
@@ -285,7 +289,7 @@ fn write_gpt_persistence<D: Read + Write + Seek>(
     };
     gpt[2] = gptman::GPTPartitionEntry {
         partition_type_guid: LINUX_DATA_GUID,
-        unique_partition_guid: random_bytes::<16>(),
+        unique_partition_guid: random_bytes::<16>()?,
         starting_lba: pers_start,
         ending_lba: last,
         attribute_bits: 0,
@@ -302,7 +306,7 @@ fn write_mbr_persistence<D: Read + Write + Seek>(
     filesystem: FileSystem,
     pers_sectors: u64,
 ) -> Result<()> {
-    let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>())
+    let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>()?)
         .context("creating MBR")?;
 
     let total = mbr.disk_size;

@@ -4,7 +4,7 @@
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
 <policyconfig>
   <vendor>usbooty</vendor>
-  <vendor_url>https://github.com/thoxy/usbooty</vendor_url>
+  <vendor_url>https://git.thoxy.xyz/thoxy/usbooty</vendor_url>
 
   <action id="org.usbooty.helper.run">
     <description>Write a bootable image to a USB drive</description>

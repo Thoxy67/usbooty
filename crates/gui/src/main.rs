@@ -13,6 +13,7 @@ mod devices;
 mod iso;
 mod resources;
 mod runner;
+mod timezones;
 mod windisco;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};

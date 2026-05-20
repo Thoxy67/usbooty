@@ -92,6 +92,13 @@ pub struct Persistence {
 
 /// Optional customization of a Windows installation, applied via a generated
 /// `autounattend.xml` placed on the USB.
+///
+/// Every field is independent and emits its own block in the XML; an empty
+/// [`WindowsSetup`] produces an unattend file with no `<settings>` elements,
+/// which Windows ignores. The whole struct is designed for cross-version
+/// compatibility — registry keys that exist only on Windows 11 (TPM bypass,
+/// Copilot disable) are silently ignored on Windows 10, and the OOBE settings
+/// used here are valid across all supported versions back to Windows 10 1809.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WindowsSetup {
     /// Bypass the Windows 11 TPM 2.0 requirement.
@@ -103,15 +110,80 @@ pub struct WindowsSetup {
     /// Bypass the Windows 11 8 GB RAM requirement.
     #[serde(default)]
     pub bypass_ram: bool,
-    /// Skip the forced Microsoft-account requirement during OOBE.
+    /// Bypass the Windows 11 64 GB system-disk minimum-size check.
+    #[serde(default)]
+    pub bypass_storage: bool,
+    /// Bypass the Windows 11 supported-CPU allowlist check.
+    #[serde(default)]
+    pub bypass_cpu: bool,
+    /// Bypass the Windows 11 disk geometry / partition style check.
+    #[serde(default)]
+    pub bypass_disk: bool,
+    /// Skip the forced Microsoft-account requirement during OOBE. Emits both
+    /// the `BypassNRO` registry write (Win 10 / Win 11 pre-24H2) and the
+    /// `HideOnlineAccountScreens` OOBE element (Win 11 24H2+) so a single
+    /// toggle works across the whole supported matrix.
     #[serde(default)]
     pub skip_msaccount: bool,
+    /// Disable every network adapter during the `specialize` pass, then
+    /// re-enable them in `FirstLogonCommands`. With no network during OOBE,
+    /// Windows 11 24H2+ falls back to local-account creation even when
+    /// `BypassNRO` and `HideOnlineAccountScreens` are silently ignored — the
+    /// most robust local-account workaround currently known.
+    #[serde(default)]
+    pub disable_network_during_oobe: bool,
+    /// Skip the forced Wi-Fi connection screen during OOBE — the Windows 11
+    /// "Let's connect you to a network" page.
+    #[serde(default)]
+    pub hide_wireless_setup: bool,
+    /// Hide the OEM-registration screen during OOBE.
+    #[serde(default)]
+    pub hide_oem_registration: bool,
+    /// Pre-answer the OOBE "is this network private / a work network?" prompt
+    /// with `Work` (a private trusted network).
+    #[serde(default)]
+    pub network_location_work: bool,
+    /// Disable telemetry / data-collection prompts (hides the EULA page and
+    /// sets `ProtectYourPC=3`, the "skip Express settings" answer).
+    #[serde(default)]
+    pub disable_telemetry: bool,
+    /// Auto-accept the Setup-time EULA, so Setup proceeds without prompting.
+    #[serde(default)]
+    pub accept_eula: bool,
+    /// Enable the legacy .NET Framework 3.5 component from the Windows
+    /// installation media's `sources\sxs` folder — needed by many older apps
+    /// and not installed by default since Windows 8.
+    #[serde(default)]
+    pub enable_dotnet35: bool,
     /// Create a local account with this name (skips account creation in OOBE).
     #[serde(default)]
     pub local_account: Option<String>,
-    /// Disable telemetry / data-collection prompts.
+    /// Password for [`local_account`](Self::local_account). When set, also
+    /// emits an `<AutoLogon>` block so the first boot logs in directly.
     #[serde(default)]
-    pub disable_telemetry: bool,
+    pub local_account_password: Option<String>,
+    /// Set the machine name (a.k.a. hostname). 1-15 chars, no whitespace and
+    /// no `\/:*?"<>|`; longer values are truncated by the helper.
+    #[serde(default)]
+    pub computer_name: Option<String>,
+    /// Locale tag applied to setup UI, system locale, UI language, user
+    /// locale, and the default keyboard input layout — e.g. `"en-US"`.
+    #[serde(default)]
+    pub locale: Option<String>,
+    /// Microsoft time-zone identifier (e.g. `"UTC"`, `"Pacific Standard Time"`,
+    /// `"Romance Standard Time"`). Free-form; Windows rejects unknown values.
+    #[serde(default)]
+    pub timezone: Option<String>,
+    /// Product key to feed Setup. A generic VL key (e.g. the public Win 11 Pro
+    /// `VK7JG-NPHTM-C97JM-9MPGT-3V66T`) lets Setup skip its activation prompt
+    /// without actually activating the installation.
+    #[serde(default)]
+    pub product_key: Option<String>,
+    /// Apply the vendored debloat policy: write `usbooty-debloat.reg` to the
+    /// USB root and import it during the `specialize` pass (machine-wide
+    /// policies via `HKLM`, default-user policies via `HKU\DFT`).
+    #[serde(default)]
+    pub apply_debloat: bool,
 }
 
 impl WindowsSetup {
@@ -120,9 +192,24 @@ impl WindowsSetup {
         self.bypass_tpm
             || self.bypass_secureboot
             || self.bypass_ram
+            || self.bypass_storage
+            || self.bypass_cpu
+            || self.bypass_disk
             || self.skip_msaccount
-            || self.local_account.is_some()
+            || self.disable_network_during_oobe
+            || self.hide_wireless_setup
+            || self.hide_oem_registration
+            || self.network_location_work
             || self.disable_telemetry
+            || self.accept_eula
+            || self.enable_dotnet35
+            || self.local_account.is_some()
+            || self.local_account_password.is_some()
+            || self.computer_name.is_some()
+            || self.locale.is_some()
+            || self.timezone.is_some()
+            || self.product_key.is_some()
+            || self.apply_debloat
     }
 }
 

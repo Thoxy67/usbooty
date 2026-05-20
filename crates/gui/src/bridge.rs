@@ -63,9 +63,28 @@ pub mod qobject {
         #[qproperty(bool, bypass_tpm)]
         #[qproperty(bool, bypass_secureboot)]
         #[qproperty(bool, bypass_ram)]
+        #[qproperty(bool, bypass_storage)]
+        #[qproperty(bool, bypass_cpu)]
+        #[qproperty(bool, bypass_disk)]
         #[qproperty(bool, skip_msaccount)]
+        #[qproperty(bool, disable_network_during_oobe)]
+        #[qproperty(bool, hide_wireless_setup)]
+        #[qproperty(bool, hide_oem_registration)]
+        #[qproperty(bool, network_location_work)]
         #[qproperty(bool, disable_telemetry)]
+        #[qproperty(bool, accept_eula)]
+        #[qproperty(bool, enable_dotnet35)]
+        #[qproperty(bool, apply_debloat)]
         #[qproperty(QString, local_account)]
+        #[qproperty(QString, local_account_password)]
+        #[qproperty(QString, computer_name)]
+        #[qproperty(QString, locale)]
+        #[qproperty(QString, timezone)]
+        #[qproperty(QString, product_key)]
+        // Read-only catalogs for the Windows-setup dialog's time-zone picker:
+        // parallel lists of friendly labels and Microsoft TimeZone IDs.
+        #[qproperty(QString, timezone_labels)]
+        #[qproperty(QString, timezone_ids)]
         // Job state.
         #[qproperty(bool, busy)]
         #[qproperty(f64, progress)]
@@ -162,9 +181,26 @@ pub struct AppControllerRust {
     bypass_tpm: bool,
     bypass_secureboot: bool,
     bypass_ram: bool,
+    bypass_storage: bool,
+    bypass_cpu: bool,
+    bypass_disk: bool,
     skip_msaccount: bool,
+    disable_network_during_oobe: bool,
+    hide_wireless_setup: bool,
+    hide_oem_registration: bool,
+    network_location_work: bool,
     disable_telemetry: bool,
+    accept_eula: bool,
+    enable_dotnet35: bool,
+    apply_debloat: bool,
     local_account: QString,
+    local_account_password: QString,
+    computer_name: QString,
+    locale: QString,
+    timezone: QString,
+    product_key: QString,
+    timezone_labels: QString,
+    timezone_ids: QString,
     busy: bool,
     progress: f64,
     phase: QString,
@@ -213,9 +249,26 @@ impl Default for AppControllerRust {
             bypass_tpm: false,
             bypass_secureboot: false,
             bypass_ram: false,
+            bypass_storage: false,
+            bypass_cpu: false,
+            bypass_disk: false,
             skip_msaccount: false,
+            disable_network_during_oobe: false,
+            hide_wireless_setup: false,
+            hide_oem_registration: false,
+            network_location_work: false,
             disable_telemetry: false,
+            accept_eula: false,
+            enable_dotnet35: false,
+            apply_debloat: false,
             local_account: QString::default(),
+            local_account_password: QString::default(),
+            computer_name: QString::default(),
+            locale: QString::default(),
+            timezone: QString::default(),
+            product_key: QString::default(),
+            timezone_labels: QString::from(&crate::timezones::labels()),
+            timezone_ids: QString::from(&crate::timezones::ids()),
             busy: false,
             progress: 0.0,
             phase: QString::default(),
@@ -494,12 +547,26 @@ impl qobject::AppController {
                         bypass_tpm: *self.bypass_tpm(),
                         bypass_secureboot: *self.bypass_secureboot(),
                         bypass_ram: *self.bypass_ram(),
+                        bypass_storage: *self.bypass_storage(),
+                        bypass_cpu: *self.bypass_cpu(),
+                        bypass_disk: *self.bypass_disk(),
                         skip_msaccount: *self.skip_msaccount(),
+                        disable_network_during_oobe: *self.disable_network_during_oobe(),
+                        hide_wireless_setup: *self.hide_wireless_setup(),
+                        hide_oem_registration: *self.hide_oem_registration(),
+                        network_location_work: *self.network_location_work(),
                         disable_telemetry: *self.disable_telemetry(),
-                        local_account: {
-                            let name = self.local_account().to_string();
-                            (!name.trim().is_empty()).then(|| name.trim().to_string())
-                        },
+                        accept_eula: *self.accept_eula(),
+                        enable_dotnet35: *self.enable_dotnet35(),
+                        apply_debloat: *self.apply_debloat(),
+                        local_account: trimmed_opt(&self.local_account().to_string()),
+                        local_account_password: non_empty_opt(
+                            &self.local_account_password().to_string(),
+                        ),
+                        computer_name: trimmed_opt(&self.computer_name().to_string()),
+                        locale: trimmed_opt(&self.locale().to_string()),
+                        timezone: trimmed_opt(&self.timezone().to_string()),
+                        product_key: trimmed_opt(&self.product_key().to_string()),
                     };
                     setup.is_active().then_some(setup)
                 } else {
@@ -651,4 +718,19 @@ fn filesystem_from_index(index: i32) -> FileSystem {
         3 => FileSystem::Ext4,
         _ => FileSystem::Fat32,
     }
+}
+
+/// `Some(trimmed)` when `s` has any non-whitespace content; `None` otherwise.
+///
+/// The unattend generator treats `Some("")` the same as `None`, but using
+/// `None` keeps the resulting JSON tidy and round-trips cleanly.
+fn trimmed_opt(s: &str) -> Option<String> {
+    let t = s.trim();
+    (!t.is_empty()).then(|| t.to_string())
+}
+
+/// `Some(s)` when `s` is non-empty *without* trimming — passwords keep their
+/// leading and trailing whitespace because Windows compares them exactly.
+fn non_empty_opt(s: &str) -> Option<String> {
+    (!s.is_empty()).then(|| s.to_string())
 }

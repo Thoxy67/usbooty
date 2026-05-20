@@ -74,7 +74,7 @@ pub fn run(
 
     emit::phase("Flushing");
     emit::log("Flushing buffers to the device — this can take a while");
-    dev.flush().ok();
+    dev.flush().context("flushing the target device")?;
     nix::unistd::fsync(&dev).context("fsync on the target device")?;
 
     if opts.verify {

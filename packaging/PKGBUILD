@@ -1,7 +1,7 @@
 # Maintainer: Thoxy <the.thi67@gmail.com>
 pkgname=usbooty-git
 _pkgname=usbooty
-pkgver=0.1.0
+pkgver=0.1.0.r4.g6fe7f6d
 pkgrel=1
 pkgdesc="Create bootable USB drives from ISO images — a Rufus-like tool (git version)"
 arch=('x86_64' 'aarch64')

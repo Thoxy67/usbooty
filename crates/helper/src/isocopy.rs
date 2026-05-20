@@ -161,7 +161,10 @@ fn tree_size(src: &Path, rel: &str, skip: &dyn Fn(&str) -> bool) -> Result<u64> 
         if file_type.is_dir() {
             total += tree_size(&entry.path(), &child_rel, skip)?;
         } else if file_type.is_file() && !skip(&child_rel) {
-            total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+            total += entry
+                .metadata()
+                .with_context(|| format!("stat of {}", entry.path().display()))?
+                .len();
         }
     }
     Ok(total)
