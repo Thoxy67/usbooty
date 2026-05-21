@@ -13,6 +13,13 @@ pub enum PersistenceKind {
     CasperRw,
     /// Debian-live — a `persistence` partition carrying a `persistence.conf` file.
     DebianLive,
+    /// Fedora live — an ext4 partition whose label matches the ISO's volume
+    /// label with an `-Live-overlay` suffix. dracut detects it at boot via the
+    /// `rd.live.overlay` kernel parameter (which we add when patching configs).
+    FedoraOverlay,
+    /// openSUSE live (kiwi-live) — an ext4 partition labelled `cow`, picked up
+    /// automatically by the live system; no kernel parameter required.
+    OpenSuseCow,
 }
 
 /// The kind of operating system an ISO contains.
@@ -60,6 +67,11 @@ pub struct IsoReport {
     pub total_size: u64,
     /// Live-USB persistence support, if the ISO is a Linux live system.
     pub persistence: Option<PersistenceKind>,
+    /// Warnings raised by scanning the ISO's signed EFI binaries against the
+    /// current UEFI revocation database (SBAT levels, DBX hashes). Empty when
+    /// no concern was found or the ISO carries no signed EFI binaries.
+    #[serde(default)]
+    pub revocation_warnings: Vec<String>,
 }
 
 impl IsoReport {
@@ -80,6 +92,7 @@ impl IsoReport {
             label: String::new(),
             total_size,
             persistence: None,
+            revocation_warnings: Vec::new(),
         }
     }
 

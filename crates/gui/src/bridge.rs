@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use usbooty_core::{
-    DeviceInfo, FileSystem, IsoReport, Job, JobOptions, OsKind, PartitionTable, Persistence,
-    WimStrategy, WindowsSetup,
+    CheckMode, DeviceInfo, FileSystem, IsoReport, Job, JobOptions, OsKind, PartitionTable,
+    Persistence, WimStrategy, WindowsSetup,
 };
 
 /// The bridge module exposed to C++/QML.
@@ -31,8 +31,13 @@ pub mod qobject {
         #[qproperty(QString, iso_summary)]
         // Editable volume label, pre-filled from the ISO's own label.
         #[qproperty(QString, label)]
-        // SHA-256 of the source ISO ("Computing…" while it is calculated).
+        // Digests of the source ISO ("Computing…" while they are calculated).
+        // SHA-256 is the most commonly published, kept first for back-compat.
         #[qproperty(QString, iso_sha256)]
+        #[qproperty(QString, iso_md5)]
+        #[qproperty(QString, iso_sha1)]
+        #[qproperty(QString, iso_sha512)]
+        #[qproperty(QString, iso_blake3)]
         // The application version, for the About dialog.
         #[qproperty(QString, app_version)]
         // Target devices: newline-separated display strings for the combo box.
@@ -60,6 +65,9 @@ pub mod qobject {
         // `windows_iso` / `linux_iso` reflect the detected OS of the source ISO.
         #[qproperty(bool, windows_iso)]
         #[qproperty(bool, linux_iso)]
+        // For Windows ISOs with install.wim larger than 4 GiB, choose between
+        // UEFI:NTFS (false, default) and wimlib-imagex split onto FAT32 (true).
+        #[qproperty(bool, split_wim)]
         #[qproperty(bool, bypass_tpm)]
         #[qproperty(bool, bypass_secureboot)]
         #[qproperty(bool, bypass_ram)]
@@ -96,6 +104,9 @@ pub mod qobject {
         #[qproperty(QString, eta)]
         // Non-empty when the selected ISO is too large for the chosen device.
         #[qproperty(QString, fit_warning)]
+        // Newline-joined warnings raised by the SBAT/DBX revocation scan of
+        // the ISO's signed EFI binaries; empty when no issue was found.
+        #[qproperty(QString, revocation_warnings)]
         // Advisory warning about missing external tools (empty if all present).
         #[qproperty(QString, dep_warning)]
         // Windows-download dialog: newline-separated language / option lists.
@@ -139,6 +150,20 @@ pub mod qobject {
         /// Open Microsoft's official download page in the system browser.
         #[qinvokable]
         fn open_microsoft_page(self: &AppController, version_index: i32);
+        /// Compute every digest (MD5/SHA-1/SHA-256/SHA-512/BLAKE3) of the
+        /// currently-loaded source ISO on a worker thread. CPU-heavy and
+        /// disk-bound, so the GUI only runs it on demand.
+        #[qinvokable]
+        fn compute_hashes(self: Pin<&mut AppController>);
+        /// Read the selected device into the given image file (a snapshot /
+        /// backup — the inverse of writing). The output is compressed when
+        /// the path ends in `.gz`, `.xz`, `.zst`, or `.bz2`.
+        #[qinvokable]
+        fn start_backup(self: Pin<&mut AppController>, image_path: &QString);
+        /// Run an integrity check on the selected device: `mode_index == 0`
+        /// is the fast F3 fake-capacity check, `1` is the full bad-blocks scan.
+        #[qinvokable]
+        fn start_check(self: Pin<&mut AppController>, mode_index: i32);
     }
 
     #[auto_cxx_name]
@@ -163,6 +188,10 @@ pub struct AppControllerRust {
     iso_summary: QString,
     label: QString,
     iso_sha256: QString,
+    iso_md5: QString,
+    iso_sha1: QString,
+    iso_sha512: QString,
+    iso_blake3: QString,
     app_version: QString,
     devices: QString,
     selected_device: i32,
@@ -178,6 +207,7 @@ pub struct AppControllerRust {
     persistence_size: i32,
     windows_iso: bool,
     linux_iso: bool,
+    split_wim: bool,
     bypass_tpm: bool,
     bypass_secureboot: bool,
     bypass_ram: bool,
@@ -209,6 +239,7 @@ pub struct AppControllerRust {
     speed: QString,
     eta: QString,
     fit_warning: QString,
+    revocation_warnings: QString,
     dep_warning: QString,
     win_languages: QString,
     win_options: QString,
@@ -231,6 +262,10 @@ impl Default for AppControllerRust {
             iso_summary: QString::from("No image selected"),
             label: QString::default(),
             iso_sha256: QString::default(),
+            iso_md5: QString::default(),
+            iso_sha1: QString::default(),
+            iso_sha512: QString::default(),
+            iso_blake3: QString::default(),
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
             devices: QString::default(),
             selected_device: -1,
@@ -246,6 +281,7 @@ impl Default for AppControllerRust {
             persistence_size: 0,
             windows_iso: false,
             linux_iso: false,
+            split_wim: false,
             bypass_tpm: false,
             bypass_secureboot: false,
             bypass_ram: false,
@@ -277,6 +313,7 @@ impl Default for AppControllerRust {
             speed: QString::default(),
             eta: QString::default(),
             fit_warning: QString::default(),
+            revocation_warnings: QString::default(),
             dep_warning: QString::from(&crate::deps::warning()),
             win_languages: QString::default(),
             win_options: QString::default(),
@@ -354,20 +391,25 @@ impl qobject::AppController {
         self.apply_iso(&path, report, None);
     }
 
-    /// Set the source ISO from a just-downloaded file whose SHA-256 was
-    /// already computed as it streamed — so no re-read of the ISO is needed.
-    pub fn set_downloaded_iso(self: core::pin::Pin<&mut Self>, path: &str, sha256: &str) {
+    /// Set the source ISO from a just-downloaded file whose digests were
+    /// already computed as it streamed, so no re-read of the ISO is needed.
+    pub fn set_downloaded_iso(
+        self: core::pin::Pin<&mut Self>,
+        path: &str,
+        hashes: &crate::iso::IsoHashes,
+    ) {
         let report = crate::iso::analyze(std::path::Path::new(path));
-        self.apply_iso(path, report, Some(sha256));
+        self.apply_iso(path, report, Some(hashes));
     }
 
-    /// Apply an analyzed ISO to the UI state. When `sha256` is `Some` the hash
-    /// is already known (a downloaded ISO); otherwise it is computed off-thread.
+    /// Apply an analyzed ISO to the UI state. When `hashes` is `Some` the
+    /// digests are already known (a downloaded ISO); otherwise they are
+    /// computed off-thread.
     fn apply_iso(
         mut self: core::pin::Pin<&mut Self>,
         path: &str,
         report: IsoReport,
-        sha256: Option<&str>,
+        hashes: Option<&crate::iso::IsoHashes>,
     ) {
         let name = std::path::Path::new(path)
             .file_name()
@@ -396,18 +438,30 @@ impl qobject::AppController {
             let auto_method = if is_windows || is_linux { 1 } else { 0 };
             self.as_mut().set_method(auto_method);
         }
+        let rev_text = report.revocation_warnings.join("\n");
+        self.as_mut()
+            .set_revocation_warnings(QString::from(&rev_text));
         self.as_mut().rust_mut().iso_report = Some(report);
 
-        match sha256 {
-            // Downloaded ISO — the hash was computed during the download.
-            Some(hash) => self.as_mut().set_iso_sha256(QString::from(hash)),
-            // Local ISO — the SHA-256 of a multi-gigabyte file is slow, so
-            // compute it on a worker thread without blocking the UI.
+        match hashes {
+            // Downloaded ISO — every digest was computed during the download.
+            Some(h) => {
+                self.as_mut().set_iso_md5(QString::from(&h.md5));
+                self.as_mut().set_iso_sha1(QString::from(&h.sha1));
+                self.as_mut().set_iso_sha256(QString::from(&h.sha256));
+                self.as_mut().set_iso_sha512(QString::from(&h.sha512));
+                self.as_mut().set_iso_blake3(QString::from(&h.blake3));
+            }
+            // Local ISO — hashing a multi-gigabyte file is CPU-heavy (five
+            // hashers updated per chunk), so leave the digests blank until
+            // the user explicitly asks for them via `compute_hashes()`.
             None => {
-                self.as_mut().set_iso_sha256(QString::from("Computing…"));
-                let qt = self.qt_thread();
-                let path = path.to_string();
-                std::thread::spawn(move || crate::runner::compute_iso_sha256(qt, path));
+                let placeholder = QString::default();
+                self.as_mut().set_iso_md5(placeholder.clone());
+                self.as_mut().set_iso_sha1(placeholder.clone());
+                self.as_mut().set_iso_sha256(placeholder.clone());
+                self.as_mut().set_iso_sha512(placeholder.clone());
+                self.as_mut().set_iso_blake3(placeholder);
             }
         }
 
@@ -523,12 +577,18 @@ impl qobject::AppController {
                 // Filesystem and large-`install.wim` handling are decided
                 // automatically from the ISO analysis: NTFS + UEFI:NTFS for a
                 // Windows ISO with an oversized install.wim, FAT32 otherwise.
-                let (filesystem, wim) = self
+                // When the user chose `Split`, override the layout to FAT32
+                // and let `wimsplit` chunk install.wim after the copy.
+                let (mut filesystem, mut wim) = self
                     .rust()
                     .iso_report
                     .as_ref()
                     .map(usbooty_core::auto_filesystem)
                     .unwrap_or((FileSystem::Fat32, WimStrategy::None));
+                if *self.split_wim() && wim == WimStrategy::UefiNtfs {
+                    filesystem = FileSystem::Fat32;
+                    wim = WimStrategy::Split;
+                }
                 // A persistent overlay, when the ISO supports it and the user
                 // gave the slider a non-zero size.
                 let persistence = self
@@ -572,6 +632,15 @@ impl qobject::AppController {
                 } else {
                     None
                 };
+                // Offer the legacy-BIOS Syslinux/extlinux installer for Linux
+                // ISOs that ship an isolinux config — Windows ISOs already
+                // come with their own boot loader, so skip them.
+                let install_bootloader = *self.linux_iso()
+                    && self
+                        .rust()
+                        .iso_report
+                        .as_ref()
+                        .is_some_and(|r| r.has_isolinux);
                 Job::Partitioned {
                     iso_path: iso.into(),
                     device_path: device.into(),
@@ -582,6 +651,7 @@ impl qobject::AppController {
                     uefi_ntfs_img: None,
                     persistence,
                     windows_setup,
+                    install_bootloader,
                     opts: JobOptions {
                         label,
                         full_format,
@@ -683,6 +753,112 @@ impl qobject::AppController {
             "https://www.microsoft.com/software-download/windows11"
         };
         let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    }
+
+    /// Kick off off-thread digest computation for the currently-loaded ISO.
+    /// Sets every digest field to a "Computing…" placeholder while the work
+    /// runs and fills them in as soon as it finishes.
+    pub fn compute_hashes(mut self: core::pin::Pin<&mut Self>) {
+        let path = self.iso_path().to_string();
+        if path.is_empty() {
+            return;
+        }
+        let placeholder = QString::from("Computing…");
+        self.as_mut().set_iso_md5(placeholder.clone());
+        self.as_mut().set_iso_sha1(placeholder.clone());
+        self.as_mut().set_iso_sha256(placeholder.clone());
+        self.as_mut().set_iso_sha512(placeholder.clone());
+        self.as_mut().set_iso_blake3(placeholder);
+
+        let qt = self.qt_thread();
+        std::thread::spawn(move || crate::runner::compute_iso_hashes(qt, path));
+    }
+
+    /// Build a [`Job::Check`] for the currently-selected device and run it.
+    pub fn start_check(mut self: core::pin::Pin<&mut Self>, mode_index: i32) {
+        if *self.busy() {
+            return;
+        }
+        let Some(selected) = self.selected_info().cloned() else {
+            self.as_mut()
+                .set_status(QString::from("Select a target device first"));
+            return;
+        };
+        let mode = if mode_index == 1 {
+            CheckMode::Full
+        } else {
+            CheckMode::Quick
+        };
+
+        let job = Job::Check {
+            device_path: selected.path.clone().into(),
+            mode,
+        };
+
+        self.as_mut().set_busy(true);
+        self.as_mut().set_progress(0.0);
+        self.as_mut().set_phase(QString::from("Starting"));
+        self.as_mut().set_log_text(QString::default());
+        self.as_mut().set_speed(QString::default());
+        self.as_mut().set_eta(QString::default());
+        self.as_mut().set_status(QString::from("Checking device…"));
+
+        let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
+        let handle = JobHandle {
+            stdin: stdin_slot.clone(),
+        };
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            crate::runner::run_job(job, qt_thread, stdin_slot);
+        });
+        self.as_mut().rust_mut().job = Some(handle);
+    }
+
+    /// Build a [`Job::Backup`] for the currently-selected device and run it.
+    pub fn start_backup(mut self: core::pin::Pin<&mut Self>, image_path: &QString) {
+        if *self.busy() {
+            return;
+        }
+        let Some(selected) = self.selected_info().cloned() else {
+            self.as_mut()
+                .set_status(QString::from("Select a target device first"));
+            return;
+        };
+        let raw = image_path.to_string();
+        let path = raw.strip_prefix("file://").unwrap_or(&raw).to_string();
+        if path.is_empty() {
+            self.as_mut()
+                .set_status(QString::from("Pick an output file for the backup"));
+            return;
+        }
+
+        let job = Job::Backup {
+            device_path: selected.path.clone().into(),
+            image_path: path.into(),
+            opts: JobOptions {
+                label: String::new(),
+                full_format: false,
+                verify: *self.verify(),
+            },
+        };
+
+        self.as_mut().set_busy(true);
+        self.as_mut().set_progress(0.0);
+        self.as_mut().set_phase(QString::from("Starting"));
+        self.as_mut().set_log_text(QString::default());
+        self.as_mut().set_speed(QString::default());
+        self.as_mut().set_eta(QString::default());
+        self.as_mut().set_status(QString::from("Backing up…"));
+
+        let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
+        let handle = JobHandle {
+            stdin: stdin_slot.clone(),
+        };
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            crate::runner::run_job(job, qt_thread, stdin_slot);
+        });
+        self.as_mut().rust_mut().job = Some(handle);
     }
 
     /// Ask the running helper to abort by writing `cancel` to its stdin.

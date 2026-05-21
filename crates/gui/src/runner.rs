@@ -355,7 +355,7 @@ pub fn download_windows_url(qt: CxxQtThread<AppController>, url: String) {
     });
 
     match result {
-        Ok((path, sha256)) => {
+        Ok((path, hashes)) => {
             let elapsed = meter.start.elapsed().as_secs();
             let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             let summary = if elapsed > 0 && bytes > 0 {
@@ -370,7 +370,7 @@ pub fn download_windows_url(qt: CxxQtThread<AppController>, url: String) {
             };
             let path = path.to_string_lossy().into_owned();
             apply(&qt, ProgressMsg::info(format!("{summary} → {path}")));
-            apply(&qt, ProgressMsg::info(format!("SHA-256: {sha256}")));
+            apply(&qt, ProgressMsg::info(format!("SHA-256: {}", hashes.sha256)));
             let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
                 ctrl.as_mut().set_busy(false);
                 ctrl.as_mut().set_progress(1.0);
@@ -378,9 +378,9 @@ pub fn download_windows_url(qt: CxxQtThread<AppController>, url: String) {
                 ctrl.as_mut().set_speed(QString::default());
                 ctrl.as_mut().set_eta(QString::default());
                 ctrl.as_mut().set_status(QString::from(&summary));
-                // The SHA-256 was computed during the download — use it
+                // Every digest was computed during the download — use them
                 // directly instead of re-reading the whole ISO.
-                ctrl.as_mut().set_downloaded_iso(&path, &sha256);
+                ctrl.as_mut().set_downloaded_iso(&path, &hashes);
                 ctrl.as_mut().job_finished(true, QString::from(&summary));
             });
         }
@@ -407,11 +407,16 @@ fn append_log(mut ctrl: Pin<&mut AppController>, level: LogLevel, text: &str) {
     ctrl.as_mut().set_log_text(QString::from(&updated));
 }
 
-/// Compute the source ISO's SHA-256 on a worker thread and publish it to the
-/// `iso_sha256` property. Slow for a multi-gigabyte ISO, hence off-thread.
-pub fn compute_iso_sha256(qt: CxxQtThread<AppController>, path: String) {
-    let hash = crate::iso::sha256(std::path::Path::new(&path));
+/// Compute all of the source ISO's digests on a worker thread and publish them
+/// to the matching `iso_*` properties. Slow for a multi-gigabyte ISO (disk
+/// bound), hence off-thread.
+pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String) {
+    let hashes = crate::iso::compute_hashes(std::path::Path::new(&path));
     let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
-        ctrl.as_mut().set_iso_sha256(QString::from(&hash));
+        ctrl.as_mut().set_iso_md5(QString::from(&hashes.md5));
+        ctrl.as_mut().set_iso_sha1(QString::from(&hashes.sha1));
+        ctrl.as_mut().set_iso_sha256(QString::from(&hashes.sha256));
+        ctrl.as_mut().set_iso_sha512(QString::from(&hashes.sha512));
+        ctrl.as_mut().set_iso_blake3(QString::from(&hashes.blake3));
     });
 }

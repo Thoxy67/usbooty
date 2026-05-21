@@ -64,6 +64,11 @@ pub enum WimStrategy {
     /// The UEFI:NTFS two-partition layout: a large NTFS partition keeps
     /// `install.wim` intact, plus a tiny FAT partition with a signed bootloader.
     UefiNtfs,
+    /// Split `install.wim` into <4 GiB chunks (`install.swm`, `install2.swm`,
+    /// …) with `wimlib-imagex` and place them on a single FAT32 partition.
+    /// Windows Setup loads `.swm` chunks natively. Broader firmware support
+    /// than UEFI:NTFS, at the cost of needing `wimlib-imagex` on the host.
+    Split,
 }
 
 /// Cross-cutting options that apply to every job mode.
@@ -244,6 +249,11 @@ pub enum Job {
         /// Optional Windows-installer customization.
         #[serde(default)]
         windows_setup: Option<WindowsSetup>,
+        /// When true, run `syslinux`/`extlinux` against the new partition and
+        /// stamp a Syslinux MBR onto the device so the result boots on legacy
+        /// BIOS. The GUI sets this for isolinux-based Linux ISOs.
+        #[serde(default)]
+        install_bootloader: bool,
         #[serde(default)]
         opts: JobOptions,
     },
@@ -271,6 +281,31 @@ pub enum Job {
         #[serde(default)]
         iso_path: Option<PathBuf>,
     },
+    /// Snapshot a device into an image file — the inverse of [`Job::Dd`].
+    /// The output is compressed transparently when `image_path` ends in
+    /// `.gz` / `.xz` / `.zst` / `.bz2`; otherwise the bytes are written raw.
+    Backup {
+        device_path: PathBuf,
+        image_path: PathBuf,
+        #[serde(default)]
+        opts: JobOptions,
+    },
+    /// Run integrity checks on a device: a fast sample-based fake-capacity
+    /// check, or a slow destructive bad-blocks scan.
+    Check {
+        device_path: PathBuf,
+        mode: CheckMode,
+    },
+}
+
+/// Intensity of a [`Job::Check`] run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckMode {
+    /// F3-style sampling check — finishes in seconds; catches counterfeit drives.
+    Quick,
+    /// Two-pattern destructive bad-blocks scan over every sector.
+    Full,
 }
 
 impl Job {
@@ -280,7 +315,9 @@ impl Job {
             Job::Dd { device_path, .. }
             | Job::Partitioned { device_path, .. }
             | Job::Format { device_path, .. }
-            | Job::Ventoy { device_path, .. } => device_path,
+            | Job::Ventoy { device_path, .. }
+            | Job::Backup { device_path, .. }
+            | Job::Check { device_path, .. } => device_path,
         }
     }
 
@@ -289,7 +326,7 @@ impl Job {
         match self {
             Job::Dd { iso_path, .. } | Job::Partitioned { iso_path, .. } => Some(iso_path),
             Job::Ventoy { iso_path, .. } => iso_path.as_ref(),
-            Job::Format { .. } => None,
+            Job::Format { .. } | Job::Backup { .. } | Job::Check { .. } => None,
         }
     }
 }
@@ -309,6 +346,7 @@ mod tests {
             uefi_ntfs_img: Some("/home/u/.cache/usbooty/uefi-ntfs.img".into()),
             persistence: None,
             windows_setup: None,
+            install_bootloader: false,
             opts: JobOptions {
                 label: "WIN11".into(),
                 full_format: false,

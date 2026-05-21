@@ -15,10 +15,15 @@ usbooty-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-nix = { version = "0.31", features = ["fs", "ioctl", "mount", "signal"] }
+nix = { version = "0.31", features = ["fs", "ioctl", "mount", "signal", "user"] }
 gptman = "3.1.1"
 mbrman = "0.6.1"
 blake3 = { workspace = true }
+# Streaming decompression of pre-compressed images (foo.iso.{gz,xz,zst,bz2}).
+flate2 = "1"
+xz2 = "0.1"
+zstd = "0.13"
+bzip2 = "0.6"
 
 # The source ISO is loop-mounted, so the kernel parses ISO9660/UDF for us —
 # no userspace ISO reader is needed in the helper (the GUI still uses `cdfs`).

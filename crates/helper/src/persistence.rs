@@ -8,6 +8,13 @@ use usbooty_core::PersistenceKind;
 
 use crate::{emit, fsutil};
 
+/// The fixed volume label used for the Fedora overlay partition. dracut picks
+/// the partition up at boot via the `rd.live.overlay=LABEL=…` kernel option.
+const FEDORA_OVERLAY_LABEL: &str = "OVERLAY";
+/// The fixed volume label kiwi-live (openSUSE) uses for its overlay partition.
+/// The live system reads it by label automatically; no kernel arg needed.
+const OPENSUSE_COW_LABEL: &str = "cow";
+
 /// Format and configure the persistence partition at `device` for `kind`.
 pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
     emit::phase("Persistence");
@@ -15,6 +22,8 @@ pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
     let label = match kind {
         PersistenceKind::CasperRw => "casper-rw",
         PersistenceKind::DebianLive => "persistence",
+        PersistenceKind::FedoraOverlay => FEDORA_OVERLAY_LABEL,
+        PersistenceKind::OpenSuseCow => OPENSUSE_COW_LABEL,
     };
     fsutil::mkfs_ext4(device, label)?;
 
@@ -33,12 +42,35 @@ pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
 /// actually activates persistence — without the kernel option the overlay
 /// partition is created but never used. Mirrors Rufus's `iso.c` patching.
 pub fn patch_boot_config(target: &Path, kind: PersistenceKind) -> Result<()> {
-    let (marker, replacement) = match kind {
-        PersistenceKind::CasperRw => ("boot=casper", "boot=casper persistent"),
-        PersistenceKind::DebianLive => ("boot=live", "boot=live persistence"),
-    };
     let mut patched = 0u32;
-    patch_dir(target, marker, replacement, &mut patched);
+    match kind {
+        PersistenceKind::CasperRw => patch_dir(
+            target,
+            "boot=casper",
+            "boot=casper persistent",
+            &mut patched,
+        ),
+        PersistenceKind::DebianLive => {
+            patch_dir(target, "boot=live", "boot=live persistence", &mut patched)
+        }
+        PersistenceKind::FedoraOverlay => {
+            // dracut activates the overlay when `rd.live.overlay=LABEL=<lbl>`
+            // is on the kernel command line. Insert it right after the
+            // `rd.live.image` marker the Fedora installer always ships.
+            let kernel_arg = format!("rd.live.overlay=LABEL={FEDORA_OVERLAY_LABEL}");
+            patch_dir(
+                target,
+                "rd.live.image",
+                &format!("rd.live.image {kernel_arg}"),
+                &mut patched,
+            );
+        }
+        PersistenceKind::OpenSuseCow => {
+            // No bootloader patching needed — kiwi-live finds the COW
+            // partition by label at boot. The mkfs label set in `setup` is
+            // the entire integration.
+        }
+    }
     emit::log(format!(
         "Enabled persistence in {patched} bootloader config file(s)"
     ));

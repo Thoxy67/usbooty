@@ -22,13 +22,25 @@ pub fn run(
     uefi_ntfs_img: Option<&Path>,
     persistence: Option<Persistence>,
     windows_setup: Option<&WindowsSetup>,
+    install_bootloader: bool,
     opts: &JobOptions,
     abort: &AtomicBool,
 ) -> Result<()> {
     match wim {
-        WimStrategy::None => {
-            plain_copy(iso, device, table, filesystem, persistence, windows_setup, opts, abort)
-        }
+        WimStrategy::None | WimStrategy::Split => plain_copy(
+            iso,
+            device,
+            table,
+            filesystem,
+            persistence,
+            windows_setup,
+            install_bootloader,
+            // Forward the split decision so plain_copy can replace
+            // install.wim after the file-by-file copy lands it on FAT32.
+            matches!(wim, WimStrategy::Split),
+            opts,
+            abort,
+        ),
         WimStrategy::UefiNtfs => {
             let img = uefi_ntfs_img
                 .context("the UEFI:NTFS layout requires the uefi-ntfs.img resource")?;
@@ -39,6 +51,8 @@ pub fn run(
 
 /// The common case: one partition spanning the device, ISO contents copied in.
 /// With `persistence`, a second ext4 partition is added for a writable overlay.
+/// With `split_wim`, the copied `sources/install.wim` is post-processed into
+/// FAT32-friendly `install.swm` chunks via `wimlib-imagex`.
 #[allow(clippy::too_many_arguments)]
 fn plain_copy(
     iso: &Path,
@@ -47,6 +61,8 @@ fn plain_copy(
     filesystem: FileSystem,
     persistence: Option<Persistence>,
     windows_setup: Option<&WindowsSetup>,
+    install_bootloader: bool,
+    split_wim: bool,
     opts: &JobOptions,
     abort: &AtomicBool,
 ) -> Result<()> {
@@ -58,19 +74,44 @@ fn plain_copy(
     }
 
     if let Some(p) = persistence {
-        return copy_with_persistence(iso, device, table, filesystem, iso_size, p, opts, abort);
+        // Persistence is a Linux-only flow; wim splitting does not apply.
+        let _ = split_wim;
+        return copy_with_persistence(
+            iso,
+            device,
+            table,
+            filesystem,
+            iso_size,
+            p,
+            install_bootloader,
+            opts,
+            abort,
+        );
     }
+
+    // When splitting install.wim, the file itself cannot land on FAT32 via
+    // the normal file-by-file copy (the source is >4 GiB), so it is excluded
+    // from the copy pass and `wimsplit` produces the chunked `install.swm`
+    // files directly on the destination from the source ISO.
+    let skip_install_wim: &dyn Fn(&str) -> bool =
+        if split_wim { &|rel| rel == "sources/install.wim" } else { &|_| false };
 
     let part = setup_single_partition(device, table, filesystem, iso_size, opts, abort)?;
     emit::phase("Copying");
     {
         let mount = fsutil::Mount::for_filesystem(&part, filesystem)?;
-        isocopy::copy_iso(iso, mount.path(), abort, &|_| false)?;
+        isocopy::copy_iso(iso, mount.path(), abort, skip_install_wim)?;
         if opts.verify {
-            isocopy::verify_iso(iso, mount.path(), abort, &|_| false)?;
+            isocopy::verify_iso(iso, mount.path(), abort, skip_install_wim)?;
+        }
+        if split_wim {
+            crate::wimsplit::split_install_wim(iso, mount.path(), abort)?;
         }
         if let Some(setup) = windows_setup {
             crate::unattend::write(mount.path(), setup)?;
+        }
+        if install_bootloader {
+            crate::syslinux::install(device, &part, mount.path(), filesystem)?;
         }
         emit::phase("Flushing");
         // `mount` drops here: sync + unmount.
@@ -128,6 +169,7 @@ pub fn setup_single_partition(
 }
 
 /// The persistence variant: a main partition plus a trailing ext4 overlay.
+#[allow(clippy::too_many_arguments)]
 fn copy_with_persistence(
     iso: &Path,
     device: &Path,
@@ -135,6 +177,7 @@ fn copy_with_persistence(
     filesystem: FileSystem,
     iso_size: u64,
     persistence: Persistence,
+    install_bootloader: bool,
     opts: &JobOptions,
     abort: &AtomicBool,
 ) -> Result<()> {
@@ -183,6 +226,9 @@ fn copy_with_persistence(
         // Add the persistence kernel option to the copied bootloader configs,
         // so the live system actually uses the overlay partition.
         crate::persistence::patch_boot_config(mount.path(), persistence.kind)?;
+        if install_bootloader {
+            crate::syslinux::install(device, &main_part, mount.path(), filesystem)?;
+        }
     }
 
     crate::persistence::setup(&pers_part, persistence.kind)?;

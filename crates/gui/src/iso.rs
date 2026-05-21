@@ -10,6 +10,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use cdfs::{DirectoryEntry, ISO9660};
+use usbooty_core::revocation::{self, RevocationDb};
 use usbooty_core::{IsoReport, OsKind, PersistenceKind};
 
 /// FAT32's single-file ceiling, used for the `has_4gb_file` flag.
@@ -77,10 +78,12 @@ pub fn analyze(path: &Path) -> IsoReport {
 
     report.os_kind = classify(&report);
 
-    // Linux live systems can carry a persistent overlay, but only the
-    // Debian/Ubuntu family supports the partition-label scheme. Ubuntu/casper
-    // uses a `casper*` directory; Debian-live uses exactly `live`. Anything
-    // else (Arch `arch`, Fedora `LiveOS`, …) cannot do partition persistence.
+    // Linux live systems carry a persistent overlay when usbooty can match
+    // the distro family to a known partition-label/kernel-arg scheme:
+    //   * Ubuntu / casper → label `casper-rw`, append `persistent`
+    //   * Debian live     → label `persistence`, append `persistence`
+    //   * Fedora live     → label `OVERLAY`, append `rd.live.overlay=LABEL=…`
+    //   * openSUSE live   → label `cow`, no kernel-arg change
     if report.os_kind == OsKind::Linux {
         let root = list_dir(&iso, &[]).unwrap_or_default();
         let has_casper = root
@@ -89,25 +92,44 @@ pub fn analyze(path: &Path) -> IsoReport {
         let has_live = root
             .iter()
             .any(|(name, is_dir, _)| *is_dir && name == "live");
-        if has_casper {
-            report.persistence = Some(PersistenceKind::CasperRw);
+        let has_liveos = root
+            .iter()
+            .any(|(name, is_dir, _)| *is_dir && name == "liveos");
+        // openSUSE / kiwi-live: marker file in /boot.
+        let opensuse = report.label.to_ascii_lowercase().contains("opensuse")
+            || list_dir(&iso, &["boot", "x86_64", "loader"]).is_some();
+        // Fedora live: /LiveOS/squashfs.img plus a Fedora-ish volume label.
+        let fedora = has_liveos
+            && (report.label.to_ascii_lowercase().contains("fedora")
+                || report.label.to_ascii_lowercase().starts_with("fed_"));
+
+        report.persistence = if has_casper {
+            Some(PersistenceKind::CasperRw)
         } else if has_live {
-            report.persistence = Some(PersistenceKind::DebianLive);
-        }
+            Some(PersistenceKind::DebianLive)
+        } else if fedora {
+            Some(PersistenceKind::FedoraOverlay)
+        } else if opensuse {
+            Some(PersistenceKind::OpenSuseCow)
+        } else {
+            None
+        };
     }
 
     // Modern Windows ISOs are UDF images carrying only a near-empty ISO9660
-    // stub, which `cdfs` (used above) cannot see into. Detect the UDF
-    // filesystem directly: unless the disc was clearly identified as Linux,
-    // treat it as a Windows installer with an oversized install.wim, so the
-    // partition method routes it to the NTFS / split layout rather than
-    // failing to fit it on FAT32. The helper loop-mounts the ISO for real.
+    // stub, which `cdfs` (used above) cannot see into. Re-open the file as a
+    // UDF image and *actually walk* the tree, populating every field that
+    // the ISO9660 pass left empty. Falls back to the heuristic ("assume
+    // Windows with oversized install.wim") only when UDF parsing fails.
     if report.os_kind != OsKind::Linux && detect_udf(path) {
-        report.os_kind = OsKind::Windows;
-        report.has_install_wim = true;
-        report.has_4gb_file = true;
-        if report.install_wim_size.map_or(true, |s| s <= FOUR_GIB) {
-            report.install_wim_size = Some(FOUR_GIB + 1);
+        if let Ok(file) = File::open(path) {
+            if let Some(mut udf) = usbooty_core::udf::UdfFs::open(file) {
+                augment_from_udf(&mut udf, &mut report);
+            } else {
+                fall_back_to_windows(&mut report);
+            }
+        } else {
+            fall_back_to_windows(&mut report);
         }
     }
 
@@ -118,34 +140,262 @@ pub fn analyze(path: &Path) -> IsoReport {
         report.os_kind = OsKind::Bsd;
     }
 
+    // SBAT-based revocation scan of the ISO's EFI bootloaders. Best-effort:
+    // failures (unreadable file, not a PE, no .sbat section) are silent.
+    if report.has_efi_boot_dir {
+        report.revocation_warnings = scan_efi_revocations(&iso);
+        // ISO9660 pass missed the EFI dir on a UDF image — try UDF for SBAT.
+        if report.revocation_warnings.is_empty() {
+            if let Ok(file) = File::open(path) {
+                if let Some(mut udf) = usbooty_core::udf::UdfFs::open(file) {
+                    report.revocation_warnings = scan_efi_revocations_udf(&mut udf);
+                }
+            }
+        }
+    } else if let Ok(file) = File::open(path) {
+        // ISO9660 pass said no EFI dir, but it might be UDF-only. Try UDF.
+        if let Some(mut udf) = usbooty_core::udf::UdfFs::open(file) {
+            if udf.list(&["efi", "boot"]).is_some() {
+                report.has_efi_boot_dir = true;
+                report.revocation_warnings = scan_efi_revocations_udf(&mut udf);
+            }
+        }
+    }
+
     report
 }
 
-/// Compute the SHA-256 of a file as a lowercase hex string (empty on error).
-///
-/// Linux distros and Microsoft publish SHA-256 sums, so this is the digest
-/// worth showing for cross-checking a downloaded ISO. It streams the whole
-/// file and is slow on a multi-gigabyte image — call it off the UI thread.
-pub fn sha256(path: &Path) -> String {
-    use sha2::{Digest, Sha256};
-    let Ok(mut file) = File::open(path) else {
-        return String::new();
+/// Fill in everything the ISO9660 pass missed by walking the UDF tree. The
+/// pass is best-effort: any sub-step that fails leaves that part of the
+/// report at its previous (ISO9660-derived) value.
+fn augment_from_udf(udf: &mut usbooty_core::udf::UdfFs<File>, report: &mut IsoReport) {
+    // Volume label: keep the ISO9660 label if it's non-empty (it usually is
+    // even on UDF discs, since the stub PVD carries the same name); fall back
+    // to the UDF label otherwise.
+    if report.label.is_empty() {
+        let label = udf.label().to_string();
+        if !label.is_empty() {
+            report.label = label;
+        }
+    }
+
+    // Root-level marker files (`bootmgr` / `setup.exe`).
+    if let Some(root) = udf.list(&[]) {
+        for entry in &root {
+            let name = entry.name.to_ascii_lowercase();
+            match name.as_str() {
+                "bootmgr" => report.has_bootmgr = true,
+                "setup.exe" => report.has_setup_exe = true,
+                _ => {}
+            }
+        }
+    }
+
+    // Windows install image under /sources/.
+    if let Some(sources) = udf.list(&["sources"]) {
+        let mut wim_size = 0u64;
+        for entry in &sources {
+            let name = entry.name.to_ascii_lowercase();
+            if name == "install.wim" || name == "install.esd" || name == "install.swm" {
+                report.has_install_wim = true;
+                report.install_wim_is_esd |= name == "install.esd";
+                wim_size += entry.icb.length as u64;
+            }
+        }
+        if report.has_install_wim {
+            report.install_wim_size = Some(wim_size);
+            report.has_4gb_file = wim_size > FOUR_GIB;
+        }
+    }
+
+    // UEFI bootloader directory.
+    if let Some(efi_boot) = udf.list(&["efi", "boot"]) {
+        report.has_efi_boot_dir = efi_boot
+            .iter()
+            .any(|e| e.name.to_ascii_lowercase().ends_with(".efi"));
+    }
+
+    // Classify now that the install.wim / bootmgr / setup.exe flags are set.
+    report.os_kind = if report.has_install_wim && (report.has_bootmgr || report.has_setup_exe) {
+        OsKind::Windows
+    } else if report.has_isolinux || report.has_grub {
+        OsKind::Linux
+    } else {
+        report.os_kind
     };
-    let mut hasher = Sha256::new();
+}
+
+/// Fallback when UDF parsing fails entirely: keep the legacy heuristic so
+/// the user still lands on the NTFS / split layout for what is almost
+/// certainly a Windows installer.
+fn fall_back_to_windows(report: &mut IsoReport) {
+    report.os_kind = OsKind::Windows;
+    report.has_install_wim = true;
+    report.has_4gb_file = true;
+    if report.install_wim_size.map_or(true, |s| s <= FOUR_GIB) {
+        report.install_wim_size = Some(FOUR_GIB + 1);
+    }
+}
+
+/// SBAT scan against EFI binaries surfaced by the UDF walker.
+fn scan_efi_revocations_udf(udf: &mut usbooty_core::udf::UdfFs<File>) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let Some(entries) = udf.list(&["efi", "boot"]) else {
+        return warnings;
+    };
+    let db = RevocationDb::baked_in();
+    let names: Vec<String> = entries
+        .into_iter()
+        .filter(|e| !e.is_dir && e.name.to_ascii_lowercase().ends_with(".efi"))
+        .map(|e| e.name)
+        .collect();
+    for name in names {
+        let Some(bytes) = udf.read_file(&["efi", "boot", &name]) else {
+            continue;
+        };
+        let Some(section) = revocation::extract_sbat(&bytes) else {
+            continue;
+        };
+        let parsed = revocation::parse_sbat_section(&section);
+        let lower = name.to_ascii_lowercase();
+        for w in revocation::evaluate_sbat(&parsed, &db.sbat) {
+            warnings.push(format!("{lower}: {w}"));
+        }
+    }
+    warnings
+}
+
+/// Walk `/EFI/BOOT/*.efi` and warn for any binary whose `.sbat` section
+/// reports a generation lower than the baked-in required level. Uses the same
+/// case-insensitive directory walk as [`list_dir`] so it works on ISO9660
+/// (upper-case) and UDF (case-preserving) media alike. Best-effort: any
+/// failure (unreadable file, not a PE, no `.sbat`) is silent.
+fn scan_efi_revocations(iso: &ISO9660<File>) -> Vec<String> {
+    // Resolve /EFI/BOOT case-insensitively and yield each child file directly,
+    // since `iso.open(path)` may not match arbitrary case combinations.
+    let mut warnings = Vec::new();
+    let db = RevocationDb::baked_in();
+
+    let Ok(Some(root)) = iso.open("/") else {
+        return warnings;
+    };
+    let DirectoryEntry::Directory(root_dir) = root else {
+        return warnings;
+    };
+    let Some(efi) = root_dir
+        .contents()
+        .flatten()
+        .find(|e| e.identifier().eq_ignore_ascii_case("efi"))
+    else {
+        return warnings;
+    };
+    let DirectoryEntry::Directory(efi_dir) = efi else {
+        return warnings;
+    };
+    let Some(boot) = efi_dir
+        .contents()
+        .flatten()
+        .find(|e| e.identifier().eq_ignore_ascii_case("boot"))
+    else {
+        return warnings;
+    };
+    let DirectoryEntry::Directory(boot_dir) = boot else {
+        return warnings;
+    };
+
+    for entry in boot_dir.contents().flatten() {
+        let DirectoryEntry::File(file) = entry else {
+            continue;
+        };
+        let name = file.identifier.to_ascii_lowercase();
+        if !name.ends_with(".efi") {
+            continue;
+        }
+        let mut bytes = Vec::with_capacity(file.size() as usize);
+        if file.read().read_to_end(&mut bytes).is_err() {
+            continue;
+        }
+        let Some(section) = revocation::extract_sbat(&bytes) else {
+            continue;
+        };
+        let entries = revocation::parse_sbat_section(&section);
+        for w in revocation::evaluate_sbat(&entries, &db.sbat) {
+            warnings.push(format!("{name}: {w}"));
+        }
+    }
+    warnings
+}
+
+/// The set of digests usbooty computes for a source ISO.
+///
+/// Distros and Microsoft publish hashes in a variety of formats (some still
+/// only MD5, some SHA-256, the most cautious publish SHA-512), so the GUI
+/// surfaces every common digest. BLAKE3 is kept too because the helper uses it
+/// internally for fast read-back verification and showing it gives the user
+/// the same value to cross-check the post-write integrity report against.
+///
+/// Each field is a lowercase hex string, empty when the ISO could not be read.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct IsoHashes {
+    pub md5: String,
+    pub sha1: String,
+    pub sha256: String,
+    pub sha512: String,
+    pub blake3: String,
+}
+
+/// Compute all five digests of `path` in a single read pass.
+///
+/// Slow on a multi-gigabyte image (disk-read bound, not CPU bound — running
+/// five hashers concurrently costs nothing on top of the read), so call this
+/// off the UI thread.
+pub fn compute_hashes(path: &Path) -> IsoHashes {
+    use md5::Md5;
+    use sha1::Sha1;
+    use sha2::{Digest, Sha256, Sha512};
+
+    let Ok(mut file) = File::open(path) else {
+        return IsoHashes::default();
+    };
+    let mut md5 = Md5::new();
+    let mut sha1 = Sha1::new();
+    let mut sha256 = Sha256::new();
+    let mut sha512 = Sha512::new();
+    let mut blake3 = blake3::Hasher::new();
+
     let mut buf = vec![0u8; 1024 * 1024];
     loop {
         match file.read(&mut buf) {
             Ok(0) => break,
-            Ok(n) => hasher.update(&buf[..n]),
-            Err(_) => return String::new(),
+            Ok(n) => {
+                let chunk = &buf[..n];
+                md5.update(chunk);
+                sha1.update(chunk);
+                sha256.update(chunk);
+                sha512.update(chunk);
+                blake3.update(chunk);
+            }
+            Err(_) => return IsoHashes::default(),
         }
     }
-    let mut hex = String::with_capacity(64);
-    for b in hasher.finalize() {
-        use std::fmt::Write;
-        let _ = write!(hex, "{b:02x}");
+
+    IsoHashes {
+        md5: hex(&md5.finalize()),
+        sha1: hex(&sha1.finalize()),
+        sha256: hex(&sha256.finalize()),
+        sha512: hex(&sha512.finalize()),
+        blake3: blake3.finalize().to_hex().to_string(),
     }
-    hex
+}
+
+/// Lowercase hex encoding of a fixed-size digest.
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
 }
 
 /// Read the volume label from the ISO9660 Primary Volume Descriptor.

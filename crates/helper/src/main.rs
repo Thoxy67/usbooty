@@ -17,19 +17,26 @@
 //! This binary contains no GUI and no networking — it is small and auditable
 //! on purpose, since it is the only component that runs as root.
 
+mod backup;
 mod blockdev;
+mod check;
 mod dd;
+mod devlock;
 mod emit;
 mod format;
 mod fsutil;
+mod image;
 mod isocopy;
 mod label;
 mod partition;
 mod partitioned;
 mod persistence;
+mod syslinux;
 mod uefi_ntfs;
 mod unattend;
 mod ventoy;
+mod vhd;
+mod wimsplit;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -120,6 +127,10 @@ fn run() -> Result<()> {
     ));
     emit::log(describe_job(&job));
 
+    // Block a second helper from racing this one on the same device. Released
+    // on drop at the end of the function (success or failure path alike).
+    let _device_lock = devlock::DeviceLock::acquire(job.device_path())?;
+
     match job {
         Job::Dd {
             iso_path,
@@ -135,6 +146,7 @@ fn run() -> Result<()> {
             uefi_ntfs_img,
             persistence,
             windows_setup,
+            install_bootloader,
             opts,
         } => partitioned::run(
             &iso_path,
@@ -145,6 +157,7 @@ fn run() -> Result<()> {
             uefi_ntfs_img.as_deref(),
             persistence,
             windows_setup.as_ref(),
+            install_bootloader,
             &opts,
             &ABORT,
         ),
@@ -168,6 +181,12 @@ fn run() -> Result<()> {
             iso_path.as_deref(),
             &ABORT,
         ),
+        Job::Backup {
+            device_path,
+            image_path,
+            opts,
+        } => backup::run(&device_path, &image_path, &opts, &ABORT),
+        Job::Check { device_path, mode } => check::run(&device_path, mode, &ABORT),
     }
 }
 
@@ -203,6 +222,23 @@ fn describe_job(job: &Job) -> String {
             "Job: {} Ventoy → {}",
             if *update { "update" } else { "install" },
             device_path.display()
+        ),
+        Job::Backup {
+            device_path,
+            image_path,
+            ..
+        } => format!(
+            "Job: backup {} → {}",
+            device_path.display(),
+            image_path.display()
+        ),
+        Job::Check { device_path, mode } => format!(
+            "Job: {} check on {}",
+            match mode {
+                usbooty_core::CheckMode::Quick => "quick",
+                usbooty_core::CheckMode::Full => "full",
+            },
+            device_path.display(),
         ),
     }
 }

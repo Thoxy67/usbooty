@@ -261,6 +261,25 @@ ApplicationWindow {
 
     menuBar: MenuBar {
         Menu {
+            title: "Device"
+            MenuItem {
+                text: "Quick check (fake-drive)…"
+                enabled: !app.busy && app.selectedDevice >= 0
+                onTriggered: checkConfirm.openFor(0)
+            }
+            MenuItem {
+                text: "Full bad-blocks scan…"
+                enabled: !app.busy && app.selectedDevice >= 0
+                onTriggered: checkConfirm.openFor(1)
+            }
+            MenuSeparator { }
+            MenuItem {
+                text: "Save snapshot to file…"
+                enabled: !app.busy && app.selectedDevice >= 0
+                onTriggered: backupDialog.open()
+            }
+        }
+        Menu {
             title: "?"
             MenuItem {
                 text: "About usbooty"
@@ -285,6 +304,15 @@ ApplicationWindow {
             tint: "#f8d7da"
             line: "#dc3545"
             ink: "#842029"
+        }
+        Banner {
+            // SBAT / DBX revocation hits from scanning the ISO's EFI binaries.
+            // Warning, not blocking: legacy BIOS boot still works, and many
+            // firmwares accept the revoked binary anyway.
+            message: app.revocationWarnings
+            tint: "#fff3cd"
+            line: "#e0a800"
+            ink: "#664d03"
         }
 
         // ---- Step 1: source image --------------------------------------
@@ -355,18 +383,96 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
             }
-            TextEdit {
-                // Selectable so the user can copy the hash to cross-check it
-                // against the value the distro / Microsoft publishes.
+            ColumnLayout {
+                // Hash computation is opt-in: streaming five hashers over a
+                // multi-GiB ISO is CPU-heavy and disk-bound. Show a button
+                // that triggers it on demand; once the hashes are filled in,
+                // hide the button and expose the (selectable) values.
                 visible: app.isoPath !== ""
-                text: "SHA-256:  " + app.isoSha256
-                readOnly: true
-                selectByMouse: true
-                wrapMode: TextEdit.WrapAnywhere
-                color: palette.placeholderText
-                font.family: "monospace"
-                font.pointSize: 8
+                spacing: 4
                 Layout.fillWidth: true
+
+                readonly property bool hasHashes: app.isoSha256 !== "" && app.isoSha256 !== "Computing…"
+                readonly property bool computing: app.isoSha256 === "Computing…"
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: !parent.hasHashes
+                    Button {
+                        text: parent.parent.computing ? "Computing…" : "Compute checksums"
+                        enabled: !app.busy && !parent.parent.computing
+                        onClicked: app.computeHashes()
+                        ToolTip.delay: 500
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Stream the ISO through MD5, SHA-1, SHA-256, SHA-512 and " +
+                            "BLAKE3 in one pass. Disk-bound and CPU-heavy on a multi-GiB ISO; " +
+                            "skip it unless you want to cross-check against a published hash."
+                    }
+                    Label {
+                        text: "Checksums skipped — click to compute every digest."
+                        color: palette.placeholderText
+                        font.pointSize: 9
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                }
+
+                ColumnLayout {
+                    visible: parent.hasHashes
+                    spacing: 1
+                    Layout.fillWidth: true
+
+                    TextEdit {
+                        text: "SHA-256:  " + app.isoSha256
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextEdit.WrapAnywhere
+                        color: palette.placeholderText
+                        font.family: "monospace"
+                        font.pointSize: 8
+                        Layout.fillWidth: true
+                    }
+                    TextEdit {
+                        text: "SHA-1:    " + app.isoSha1
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextEdit.WrapAnywhere
+                        color: palette.placeholderText
+                        font.family: "monospace"
+                        font.pointSize: 8
+                        Layout.fillWidth: true
+                    }
+                    TextEdit {
+                        text: "MD5:      " + app.isoMd5
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextEdit.WrapAnywhere
+                        color: palette.placeholderText
+                        font.family: "monospace"
+                        font.pointSize: 8
+                        Layout.fillWidth: true
+                    }
+                    TextEdit {
+                        text: "SHA-512:  " + app.isoSha512
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextEdit.WrapAnywhere
+                        color: palette.placeholderText
+                        font.family: "monospace"
+                        font.pointSize: 8
+                        Layout.fillWidth: true
+                    }
+                    TextEdit {
+                        text: "BLAKE3:   " + app.isoBlake3
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextEdit.WrapAnywhere
+                        color: palette.placeholderText
+                        font.family: "monospace"
+                        font.pointSize: 8
+                        Layout.fillWidth: true
+                    }
+                }
             }
         }
 
@@ -507,6 +613,25 @@ ApplicationWindow {
                 enabled: !app.busy && (app.method === 1 || app.method === 2)
                 checked: app.fullFormat
                 onToggled: app.fullFormat = checked
+            }
+
+            CheckBox {
+                // Windows ISO with oversized install.wim, partition method.
+                // The default is the UEFI:NTFS two-partition layout; ticking
+                // this asks usbooty to split install.wim into <4 GiB chunks
+                // via wimlib-imagex and keep a single FAT32 partition.
+                visible: app.windowsIso && app.method === 1
+                text: "Split install.wim onto FAT32 (needs wimlib-imagex) — broader firmware support than UEFI:NTFS"
+                enabled: !app.busy
+                checked: app.splitWim
+                onToggled: app.splitWim = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Windows ISOs with install.wim larger than 4 GiB cannot live on a single " +
+                    "FAT32 partition as-is. The default layout is UEFI:NTFS (a small FAT32 + a big NTFS " +
+                    "partition with a signed UEFI loader). This alternative uses wimlib-imagex to split " +
+                    "install.wim into install.swm chunks Windows Setup loads natively, leaving you with " +
+                    "a single FAT32 partition that boots on more firmware."
             }
 
             CheckBox {
@@ -807,6 +932,56 @@ ApplicationWindow {
         title: "Select an ISO image"
         nameFilters: ["ISO images (*.iso *.img)", "All files (*)"]
         onAccepted: app.setIso(selectedFile)
+    }
+
+    FileDialog {
+        // Snapshot output. The extension picks the compressor; the helper
+        // resolves it. `.img` / no extension → raw.
+        id: backupDialog
+        title: "Save device snapshot"
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "img"
+        nameFilters: [
+            "Raw images (*.img)",
+            "Compressed images (*.img.gz *.img.xz *.img.zst *.img.bz2)",
+            "All files (*)"
+        ]
+        onAccepted: app.startBackup(selectedFile)
+    }
+
+    // Lightweight confirmation for the destructive device checks (both
+    // patterns write every sector). `mode` is 0=Quick, 1=Full.
+    Dialog {
+        id: checkConfirm
+        anchors.centerIn: parent
+        width: 460
+        modal: true
+        property int mode: 0
+        function openFor(m) {
+            checkConfirm.mode = m
+            checkConfirm.title = m === 1
+                ? "Full bad-blocks scan?"
+                : "Quick fake-drive check?"
+            checkConfirm.open()
+        }
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: app.startCheck(checkConfirm.mode)
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label {
+                text: checkConfirm.mode === 1
+                    ? "The full scan will write two patterns across every sector of the selected device, " +
+                      "then read them back. It is slow and destroys all data on the device."
+                    : "The quick check writes a unique fingerprint at ~256 sample positions and reads " +
+                      "them back. It finishes in seconds, but destroys any data on the selected device."
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "This cannot be undone."
+                font.bold: true
+            }
+        }
     }
 
     // Shown when Start is pressed on a Windows ISO — optional install tweaks.
@@ -1230,10 +1405,13 @@ ApplicationWindow {
             }
 
             Label {
-                text: "DD raw write, partition-and-copy (FAT32 / NTFS / exFAT / "
-                    + "ext4, with the Windows UEFI:NTFS layout), Linux "
-                    + "persistence, Windows 11 setup customization, plain "
-                    + "formatting, and Ventoy multi-boot USBs."
+                text: "DD raw write (with transparent .gz/.xz/.zst/.bz2 and "
+                    + "VHD support), partition-and-copy (FAT32 / NTFS / exFAT "
+                    + "/ ext4, UEFI:NTFS or wimlib-split for large install.wim), "
+                    + "Linux persistence (Debian, Ubuntu, Fedora, openSUSE), "
+                    + "Windows 11 setup customization, Ventoy multi-boot USBs, "
+                    + "optional Syslinux MBR install, device snapshot, "
+                    + "fake-drive / bad-blocks checks, SBAT revocation scan."
                 wrapMode: Text.Wrap
                 color: palette.placeholderText
                 font.pointSize: 9
@@ -1252,10 +1430,44 @@ ApplicationWindow {
 
     Dialog {
         id: winDialog
-        title: "Download a Windows ISO"
         anchors.centerIn: parent
         width: 500
         modal: true
+        // Frame the contents away from the coloured header so the layout
+        // mirrors the Windows Setup dialog above.
+        topPadding: 14
+        bottomPadding: 14
+        leftPadding: 18
+        rightPadding: 18
+        header: Rectangle {
+            color: "#0078D4"
+            implicitHeight: 52
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+                WindowsLogo {
+                    size: 24
+                    tint: "white"
+                }
+                ColumnLayout {
+                    spacing: 0
+                    Layout.fillWidth: true
+                    Label {
+                        text: "Download a Windows ISO"
+                        color: "white"
+                        font.bold: true
+                        font.pointSize: 12
+                    }
+                    Label {
+                        text: "Pull an official image directly from Microsoft"
+                        color: Qt.rgba(1, 1, 1, 0.82)
+                        font.pointSize: 8
+                    }
+                }
+            }
+        }
         standardButtons: Dialog.Close
         contentItem: ColumnLayout {
             spacing: 10

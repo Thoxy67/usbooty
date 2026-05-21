@@ -22,6 +22,9 @@ cdfs = "0.2.3"
 ureq = { version = "3.3.0", features = ["cookies"] }
 directories = "6.0.0"
 sha2 = { workspace = true }
+blake3 = { workspace = true }
+md-5 = "0.11"
+sha1 = "0.11"
 
 [build-dependencies]
 cxx-qt-build = { version = "0.8", features = ["link_qt_object_files"] }

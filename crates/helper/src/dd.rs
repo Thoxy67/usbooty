@@ -1,4 +1,5 @@
-//! The DD write method: a raw, byte-for-byte copy of the ISO onto the device.
+//! The DD write method: a raw, byte-for-byte copy of the ISO onto the device,
+//! transparently decompressing the source if it is gzip/xz/zstd/bzip2.
 
 use anyhow::{bail, Context, Result};
 use std::fs::File;
@@ -9,27 +10,38 @@ use std::time::{Duration, Instant};
 
 use usbooty_core::JobOptions;
 
-use crate::{blockdev, emit};
+use crate::{blockdev, emit, image};
 
 /// Copy chunk size. 4 MiB balances syscall overhead against memory use.
 const BUF_SIZE: usize = 4 * 1024 * 1024;
 /// Minimum interval between `Progress` messages, to avoid flooding the GUI.
 const REPORT_EVERY: Duration = Duration::from_millis(100);
 
-/// Write `iso_path` raw onto `device_path`.
+/// Write `iso_path` raw onto `device_path`, transparently decompressing it
+/// when its extension says so.
 pub fn run(
     iso_path: &Path,
     device_path: &Path,
     opts: &JobOptions,
     abort: &AtomicBool,
 ) -> Result<()> {
-    let mut iso =
-        File::open(iso_path).with_context(|| format!("opening ISO {}", iso_path.display()))?;
-    let total = iso.metadata().context("stat ISO")?.len();
-    if total == 0 {
-        bail!("the source ISO is empty");
+    let mut img = image::open(iso_path)?;
+    if img.compressed_size == 0 {
+        bail!("the source image is empty");
     }
-    emit::log(format!("Source: {} ({} bytes)", iso_path.display(), total));
+    if img.compressed {
+        emit::log(format!(
+            "Source: {} ({} bytes compressed, will be decompressed on the fly)",
+            iso_path.display(),
+            img.compressed_size
+        ));
+    } else {
+        emit::log(format!(
+            "Source: {} ({} bytes)",
+            iso_path.display(),
+            img.compressed_size
+        ));
+    }
 
     let unmounted = blockdev::unmount_all(device_path)?;
     if unmounted > 0 {
@@ -39,23 +51,28 @@ pub fn run(
     }
 
     let mut dev = blockdev::open_exclusive(device_path)?;
-
     let dev_size = blockdev::device_size(&dev)?;
-    if total > dev_size {
-        bail!("the ISO ({total} bytes) is larger than the target device ({dev_size} bytes)");
+    // Compressed inputs have an unknown decompressed size, so the up-front
+    // fit-check is skipped; a too-small device will fail cleanly on write.
+    if !img.compressed && img.compressed_size > dev_size {
+        bail!(
+            "the image ({} bytes) is larger than the target device ({} bytes)",
+            img.compressed_size,
+            dev_size
+        );
     }
 
     emit::phase("Writing");
     let mut buf = vec![0u8; BUF_SIZE];
-    let mut done: u64 = 0;
+    let mut decompressed: u64 = 0;
     let mut last = Instant::now();
-    // Hash the source as it streams past, for the optional verify pass.
+    // Hash the decompressed stream as it passes by, for the optional verify.
     let mut src_hash = blake3::Hasher::new();
     loop {
         if abort.load(Ordering::SeqCst) {
             bail!("aborted by user");
         }
-        let n = iso.read(&mut buf).context("reading from ISO")?;
+        let n = img.reader.read(&mut buf).context("reading from image")?;
         if n == 0 {
             break;
         }
@@ -64,13 +81,16 @@ pub fn run(
         if opts.verify {
             src_hash.update(&buf[..n]);
         }
-        done += n as u64;
+        decompressed += n as u64;
         if last.elapsed() >= REPORT_EVERY {
-            emit::progress("Writing", done, total);
+            // Progress tracks input-file bytes for a smooth, accurate bar
+            // that does not depend on knowing the decompressed payload size.
+            let done = img.bytes_read.load(Ordering::Relaxed);
+            emit::progress("Writing", done, img.compressed_size);
             last = Instant::now();
         }
     }
-    emit::progress("Writing", done, total);
+    emit::progress("Writing", img.compressed_size, img.compressed_size);
 
     emit::phase("Flushing");
     emit::log("Flushing buffers to the device — this can take a while");
@@ -78,11 +98,18 @@ pub fn run(
     nix::unistd::fsync(&dev).context("fsync on the target device")?;
 
     if opts.verify {
-        verify(device_path, total, src_hash.finalize(), abort)?;
+        verify(device_path, decompressed, src_hash.finalize(), abort)?;
     }
 
     blockdev::reread_partition_table(&dev);
-    emit::log(format!("Done — wrote {done} bytes"));
+    if img.compressed {
+        emit::log(format!(
+            "Done — wrote {decompressed} decompressed bytes (from {} compressed)",
+            img.compressed_size
+        ));
+    } else {
+        emit::log(format!("Done — wrote {decompressed} bytes"));
+    }
     Ok(())
 }
 

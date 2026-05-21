@@ -186,17 +186,19 @@ impl Catalog {
     }
 }
 
-/// Download `url` into `dest_dir`, returning `(saved path, SHA-256 hex)`.
-/// The SHA-256 is computed from the bytes as they stream past — free, and
-/// ready the instant the download finishes (no re-read of the ISO needed).
+/// Download `url` into `dest_dir`, returning `(saved path, every digest)`.
+/// Each digest is computed from the bytes as they stream past, free and ready
+/// the instant the download finishes, so no re-read of the ISO is needed.
 /// `progress` is called with `(downloaded, total)` and is throttled internally.
 pub fn download(
     url: &str,
     dest_dir: &Path,
     abort: &AtomicBool,
     mut progress: impl FnMut(u64, u64),
-) -> Result<(PathBuf, String)> {
-    use sha2::{Digest, Sha256};
+) -> Result<(PathBuf, crate::iso::IsoHashes)> {
+    use md5::Md5;
+    use sha1::Sha1;
+    use sha2::{Digest, Sha256, Sha512};
 
     let mut response = ureq::get(url)
         .header("User-Agent", USER_AGENT)
@@ -217,7 +219,11 @@ pub fn download(
     let mut buf = vec![0u8; 256 * 1024];
     let mut done = 0u64;
     let mut last = Instant::now();
-    let mut hasher = Sha256::new();
+    let mut md5 = Md5::new();
+    let mut sha1 = Sha1::new();
+    let mut sha256 = Sha256::new();
+    let mut sha512 = Sha512::new();
+    let mut blake3 = blake3::Hasher::new();
     loop {
         if abort.load(Ordering::SeqCst) {
             let _ = std::fs::remove_file(&dest);
@@ -230,7 +236,12 @@ pub fn download(
             break;
         }
         out.write_all(&buf[..n]).context("writing the ISO")?;
-        hasher.update(&buf[..n]);
+        let chunk = &buf[..n];
+        md5.update(chunk);
+        sha1.update(chunk);
+        sha256.update(chunk);
+        sha512.update(chunk);
+        blake3.update(chunk);
         done += n as u64;
         if last.elapsed() >= Duration::from_millis(150) {
             progress(done, total);
@@ -239,12 +250,26 @@ pub fn download(
     }
     progress(done, total.max(done));
 
-    let sha256 = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    Ok((dest, sha256))
+    Ok((
+        dest,
+        crate::iso::IsoHashes {
+            md5: hex(&md5.finalize()),
+            sha1: hex(&sha1.finalize()),
+            sha256: hex(&sha256.finalize()),
+            sha512: hex(&sha512.finalize()),
+            blake3: blake3.finalize().to_hex().to_string(),
+        },
+    ))
+}
+
+/// Lowercase hex encoding of a fixed-size digest.
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
 }
 
 /// Turn a Microsoft `Errors` array into a helpful Rust error.
