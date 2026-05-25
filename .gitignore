@@ -10,3 +10,10 @@
 /packaging/src/
 /packaging/usbooty/
 /packaging/*.pkg.tar.*
+
+# AppImage build artefacts — output AppImage goes to the repo root, the
+# linuxdeploy helpers + staged AppDir into target/appimage/ (already
+# covered by /target).
+/*.AppImage
+/packaging/appimage/linuxdeploy*
+/packaging/appimage/AppDir/

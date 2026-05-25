@@ -20,5 +20,12 @@ sha2 = "0.11.0"
 usbooty-core = { path = "crates/core" }
 
 [profile.release]
-lto = "thin"
+# LTO is off: cxx-qt-lib's C++ glue compiles under GCC without LTO, so
+# turning Rust LTO on (even "thin") gives rust-lld undefined-symbol errors
+# for the cxxbridge / qguiapplication_new entry points at final link time.
+# The same reason `packaging/PKGBUILD` carries `options=('!lto')`.
+lto = false
 strip = true
+# Single codegen unit gets back most of the binary-size win LTO would have
+# given us, without breaking the C++ bridge.
+codegen-units = 1

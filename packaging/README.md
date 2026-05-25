@@ -1,11 +1,10 @@
 # Packaging usbooty
 
-usbooty ships in three packaging formats:
+usbooty ships in two packaging formats:
 
-| format         | scope                              | location                          |
-|----------------|------------------------------------|-----------------------------------|
-| **Arch AUR**   | tightest distro integration        | [`PKGBUILD`](./PKGBUILD)          |
-| **Flatpak**    | universal Linux, sandboxed         | [`flatpak/`](./flatpak/)          |
+| format         | scope                                 | location                       |
+|----------------|---------------------------------------|--------------------------------|
+| **Arch AUR**   | tightest distro integration           | [`PKGBUILD`](./PKGBUILD)       |
 | **AppImage**   | universal Linux, portable single-file | [`appimage/`](./appimage/)     |
 
 ## Which one should I use?
@@ -13,12 +12,10 @@ usbooty ships in three packaging formats:
 * **AUR** — best experience on Arch / CachyOS / Manjaro: the polkit policy
   is installed system-wide, optdepends pull in the formatters automatically
   on demand, and `pkexec` integration is native. `paru -S usbooty-git`.
-* **Flatpak** — best for distros that ship outdated Qt (Debian stable,
-  RHEL). The sandbox punches the necessary holes for raw block-device
-  access; the host still needs the filesystem tools installed.
 * **AppImage** — best for "I just want to try it" without installing
-  anything system-wide. Single file, double-click to run. The host still
-  needs the filesystem tools installed.
+  anything system-wide, or on distros that ship outdated Qt (Debian stable,
+  RHEL). Single file, double-click to run. The host still needs the
+  filesystem tools installed.
 
 ## Runtime dependency matrix
 

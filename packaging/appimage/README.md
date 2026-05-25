@@ -40,8 +40,8 @@ on the host.
 A USB writer's whole job is to talk to the kernel about block devices,
 which means it has to run the host's `mkfs.*`, `udevadm`, `lsblk`,
 `pkexec`, etc. Bundling those inside the AppImage would mean shipping a
-full chroot — at which point we'd want a Flatpak or a container instead.
-The split usbooty actually uses is:
+full chroot — at which point a container is the right shape. The split
+usbooty actually uses is:
 
 * **Bundled**: the Qt runtime, the QML modules, the usbooty binaries.
 * **Host**: filesystem tools, polkit, udev, optional features.

@@ -90,6 +90,74 @@ export NO_STRIP=1   # AppImage's strip can corrupt PyInstaller-style ELFs;
                     # safer to keep symbols.
 export LD_LIBRARY_PATH=""
 export QML_SOURCES_PATHS="$REPO_ROOT/crates/gui/qml"
+
+# linuxdeploy-plugin-qt picks qmake from $QMAKE first, falling back to
+# whatever `qmake` is on $PATH — which on Arch is `qmake-qt5`, so without
+# this override the plugin tries to deploy Qt-5 modules against our Qt-6
+# binary and bails with "Could not find Qt modules to deploy".
+if [[ -z "${QMAKE:-}" ]]; then
+    for cand in /usr/lib/qt6/bin/qmake /usr/bin/qmake6 /usr/sbin/qmake6 /usr/lib64/qt6/bin/qmake; do
+        if [[ -x "$cand" ]]; then
+            export QMAKE="$cand"
+            break
+        fi
+    done
+fi
+if [[ -z "${QMAKE:-}" ]]; then
+    echo "!! Could not find a Qt 6 qmake on this system."
+    echo "   Install qt6-base (Arch / Fedora) or qt6-base-dev (Debian)," \
+         "or set QMAKE=/path/to/qmake6 and re-run." >&2
+    exit 1
+fi
+echo "==> Using qmake at $QMAKE ($($QMAKE -query QT_VERSION))"
+
+# Mirror Qt's plugin tree so we can drop optional add-ons with missing
+# backing libraries (e.g. `kimg_jxr.so` from kimageformats needs libjxr,
+# which is an optdep most hosts don't have installed). The mirror uses
+# symlinks so it's near-free; we then hide the broken plugins by deleting
+# the *links* in the mirror, never touching the real Qt install.
+REAL_QMAKE="$QMAKE"
+REAL_PLUGINS_DIR="$("$REAL_QMAKE" -query QT_INSTALL_PLUGINS)"
+PLUGINS_MIRROR="$BUILD_DIR/qt-plugins"
+rm -rf "$PLUGINS_MIRROR"
+mkdir -p "$PLUGINS_MIRROR"
+cp -rs "$REAL_PLUGINS_DIR/." "$PLUGINS_MIRROR/"
+
+# The k-image-formats Qt 6 add-on contributes 9-ish plugins for niche
+# image formats (jxr, heic, ora, …). Qt's built-in handlers cover PNG /
+# JPEG / SVG / etc., which is everything usbooty actually renders.
+# Dropping the add-ons sidesteps every "Could not find dependency: libX"
+# from linuxdeploy when those add-ons' backing libs are missing.
+find "$PLUGINS_MIRROR/imageformats" -maxdepth 1 -name 'kimg_*.so' \
+    -delete 2>/dev/null || true
+
+# Wrapper qmake that returns the mirror path for QT_INSTALL_PLUGINS and
+# delegates everything else to the real qmake. linuxdeploy-plugin-qt does
+# `qmake -query QT_INSTALL_PLUGINS` to find what to scan, so this is the
+# one knob that matters.
+QMAKE_WRAPPER="$BUILD_DIR/qmake-wrapper"
+cat >"$QMAKE_WRAPPER" <<EOF
+#!/bin/sh
+# Two forms of qmake invocation matter to linuxdeploy-plugin-qt:
+#   * \`qmake -query QT_INSTALL_PLUGINS\` — specific lookup
+#   * \`qmake -query\`                    — bulk dump that callers grep
+# Both have to surface the mirror so the scanner walks our filtered tree.
+case "\$*" in
+    "-query QT_INSTALL_PLUGINS")
+        printf '%s\n' "$PLUGINS_MIRROR"
+        exit 0
+        ;;
+    "-query")
+        "$REAL_QMAKE" -query \
+            | sed "s|^QT_INSTALL_PLUGINS:.*|QT_INSTALL_PLUGINS:$PLUGINS_MIRROR|"
+        exit 0
+        ;;
+esac
+exec "$REAL_QMAKE" "\$@"
+EOF
+chmod +x "$QMAKE_WRAPPER"
+export QMAKE="$QMAKE_WRAPPER"
+
 "$TOOLS_DIR/linuxdeploy" \
     --appdir "$APPDIR" \
     --plugin qt \

@@ -15,8 +15,8 @@ struct Tool {
 }
 
 /// Every external tool the app or helper may invoke. Keep this list in sync
-/// with the `optdepends` array in `packaging/PKGBUILD` (and the Flatpak /
-/// AppImage manifests).
+/// with the `optdepends` array in `packaging/PKGBUILD` (and the AppImage
+/// host-requirements section in `packaging/appimage/README.md`).
 const TOOLS: &[Tool] = &[
     // Mandatory — there's no fallback if pkexec is missing.
     Tool {
