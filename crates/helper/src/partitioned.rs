@@ -93,8 +93,11 @@ fn plain_copy(
     // the normal file-by-file copy (the source is >4 GiB), so it is excluded
     // from the copy pass and `wimsplit` produces the chunked `install.swm`
     // files directly on the destination from the source ISO.
-    let skip_install_wim: &dyn Fn(&str) -> bool =
-        if split_wim { &|rel| rel == "sources/install.wim" } else { &|_| false };
+    let skip_install_wim: &dyn Fn(&str) -> bool = if split_wim {
+        &|rel| rel == "sources/install.wim"
+    } else {
+        &|_| false
+    };
 
     let part = setup_single_partition(device, table, filesystem, iso_size, opts, abort)?;
     emit::phase("Copying");
@@ -111,10 +114,15 @@ fn plain_copy(
             crate::unattend::write(mount.path(), setup)?;
         }
         if install_bootloader {
-            crate::syslinux::install(device, &part, mount.path(), filesystem)?;
+            crate::syslinux::install_files(&part, mount.path(), filesystem)?;
         }
         emit::phase("Flushing");
         // `mount` drops here: sync + unmount.
+    }
+    // MBR stub goes on after the unmount so the whole-disk open can be
+    // exclusive — otherwise EBUSY because the partition is still mounted.
+    if install_bootloader {
+        crate::syslinux::write_mbr(device).context("writing the Syslinux MBR")?;
     }
 
     emit::log(format!(
@@ -227,8 +235,13 @@ fn copy_with_persistence(
         // so the live system actually uses the overlay partition.
         crate::persistence::patch_boot_config(mount.path(), persistence.kind)?;
         if install_bootloader {
-            crate::syslinux::install(device, &main_part, mount.path(), filesystem)?;
+            crate::syslinux::install_files(&main_part, mount.path(), filesystem)?;
         }
+    }
+    // MBR stub goes on after the unmount so the whole-disk open can be
+    // exclusive — otherwise EBUSY because the partition is still mounted.
+    if install_bootloader {
+        crate::syslinux::write_mbr(device).context("writing the Syslinux MBR")?;
     }
 
     crate::persistence::setup(&pers_part, persistence.kind)?;

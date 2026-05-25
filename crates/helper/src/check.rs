@@ -162,8 +162,10 @@ fn quick(device: &Path, abort: &AtomicBool) -> Result<CheckReport> {
             bad_offsets.len(),
             offsets.len(),
             match effective_capacity {
-                Some(c) => format!("; likely fake-capacity drive (real ~{})",
-                    usbooty_core::device::format_size(c)),
+                Some(c) => format!(
+                    "; likely fake-capacity drive (real ~{})",
+                    usbooty_core::device::format_size(c)
+                ),
                 None => String::new(),
             }
         )

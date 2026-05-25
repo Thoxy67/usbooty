@@ -14,6 +14,11 @@ const FEDORA_OVERLAY_LABEL: &str = "OVERLAY";
 /// The fixed volume label kiwi-live (openSUSE) uses for its overlay partition.
 /// The live system reads it by label automatically; no kernel arg needed.
 const OPENSUSE_COW_LABEL: &str = "cow";
+/// Label used for the archiso overlay partition. The Arch initramfs hook
+/// (`archiso_loop_mnt`) mounts whichever partition matches `cow_label=…` on
+/// the kernel command line; Rufus picked `PERSISTENCE` upstream and we match it
+/// so a stick written by either tool is interchangeable.
+const ARCH_COW_LABEL: &str = "PERSISTENCE";
 
 /// Format and configure the persistence partition at `device` for `kind`.
 pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
@@ -24,6 +29,7 @@ pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
         PersistenceKind::DebianLive => "persistence",
         PersistenceKind::FedoraOverlay => FEDORA_OVERLAY_LABEL,
         PersistenceKind::OpenSuseCow => OPENSUSE_COW_LABEL,
+        PersistenceKind::ArchOverlay => ARCH_COW_LABEL,
     };
     fsutil::mkfs_ext4(device, label)?;
 
@@ -70,6 +76,20 @@ pub fn patch_boot_config(target: &Path, kind: PersistenceKind) -> Result<()> {
             // partition by label at boot. The mkfs label set in `setup` is
             // the entire integration.
         }
+        PersistenceKind::ArchOverlay => {
+            // The archiso initramfs hook activates an overlay when
+            // `cow_label=<LABEL>` is on the kernel command line. Every
+            // archiso bootloader config (BIOS syslinux, UEFI systemd-boot,
+            // GRUB loopback) already carries `archisobasedir=arch`, so use
+            // that as the insertion anchor.
+            let kernel_arg = format!("cow_label={ARCH_COW_LABEL}");
+            patch_dir(
+                target,
+                "archisobasedir=arch",
+                &format!("archisobasedir=arch {kernel_arg}"),
+                &mut patched,
+            );
+        }
     }
     emit::log(format!(
         "Enabled persistence in {patched} bootloader config file(s)"
@@ -111,6 +131,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn archiso_config_gains_the_cow_label() {
+        let dir = std::env::temp_dir().join(format!("usbooty-archcfg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("loader/entries")).unwrap();
+        let cfg = dir.join("loader/entries/01-archiso-linux.conf");
+        std::fs::write(
+            &cfg,
+            "options  archisobasedir=arch archisosearchuuid=2026-05-01-06-05-08-00\n",
+        )
+        .unwrap();
+
+        patch_boot_config(&dir, PersistenceKind::ArchOverlay).unwrap();
+        let out = std::fs::read_to_string(&cfg).unwrap();
+        assert!(out.contains("archisobasedir=arch cow_label=PERSISTENCE"));
+        // Idempotent — a second pass must not double the keyword.
+        patch_boot_config(&dir, PersistenceKind::ArchOverlay).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&cfg)
+                .unwrap()
+                .matches("cow_label")
+                .count(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn casper_config_gains_the_persistent_keyword() {
         let dir = std::env::temp_dir().join(format!("usbooty-bootcfg-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -124,7 +171,10 @@ mod tests {
         // Idempotent — a second pass must not double the keyword.
         patch_boot_config(&dir, PersistenceKind::CasperRw).unwrap();
         assert_eq!(
-            std::fs::read_to_string(&cfg).unwrap().matches("persistent").count(),
+            std::fs::read_to_string(&cfg)
+                .unwrap()
+                .matches("persistent")
+                .count(),
             1
         );
         let _ = std::fs::remove_dir_all(&dir);

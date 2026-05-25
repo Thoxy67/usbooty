@@ -98,8 +98,7 @@ impl<R: Read + Seek> UdfFs<R> {
                 Some(TAG_PARTITION) => {
                     // Partition Descriptor (ECMA-167 3/10.5):
                     //   +188: u32 partition_starting_location
-                    partition_start =
-                        Some(u32::from_le_bytes(buf[188..192].try_into().ok()?));
+                    partition_start = Some(u32::from_le_bytes(buf[188..192].try_into().ok()?));
                 }
                 Some(TAG_LVD) => {
                     // Logical Volume Descriptor (ECMA-167 3/10.6) — the File
@@ -115,8 +114,7 @@ impl<R: Read + Seek> UdfFs<R> {
 
         // The FSD lives inside the partition; its long_ad location is a
         // block index inside the partition, not an absolute sector.
-        let fsd =
-            read_sector(&mut reader, partition_start as u64 + fsd_ref.block as u64).ok()?;
+        let fsd = read_sector(&mut reader, partition_start as u64 + fsd_ref.block as u64).ok()?;
         if tag_id(&fsd)? != TAG_FSD {
             return None;
         }
@@ -160,6 +158,35 @@ impl<R: Read + Seek> UdfFs<R> {
             .into_iter()
             .find(|e| !e.is_dir && e.name.eq_ignore_ascii_case(*name))?;
         self.read_file_data(entry.icb).ok()
+    }
+
+    /// Information length of the file at the segmented path, by reading just
+    /// the File Entry header. Cheap compared to [`read_file`], so safe to use
+    /// for sizing a multi-gigabyte `install.wim`.
+    pub fn file_size(&mut self, segments: &[&str]) -> Option<u64> {
+        let (name, dir_segs) = segments.split_last()?;
+        let parent = self.list(dir_segs)?;
+        let entry = parent
+            .into_iter()
+            .find(|e| !e.is_dir && e.name.eq_ignore_ascii_case(*name))?;
+        self.read_info_length(entry.icb)
+    }
+
+    /// Read `information_length` from the File Entry / Extended File Entry at
+    /// `icb`, without reading the file's data. The field lives at byte 56 in
+    /// both layouts (ECMA-167 4/14.9 and 4/14.17).
+    fn read_info_length(&mut self, icb: ExtentRef) -> Option<u64> {
+        let buf = read_sector(
+            &mut self.reader,
+            self.partition_start as u64 + icb.block as u64,
+        )
+        .ok()?;
+        match tag_id(&buf)? {
+            TAG_FILE_ENTRY | TAG_EXTENDED_FILE_ENTRY => {
+                Some(u64::from_le_bytes(buf[56..64].try_into().ok()?))
+            }
+            _ => None,
+        }
     }
 
     // ---- internals -------------------------------------------------------
@@ -215,23 +242,25 @@ impl<R: Read + Seek> UdfFs<R> {
             &mut self.reader,
             self.partition_start as u64 + icb.block as u64,
         )?;
-        let tag = tag_id(&buf)
-            .ok_or_else(|| std::io::Error::other("missing tag header"))?;
+        let tag = tag_id(&buf).ok_or_else(|| std::io::Error::other("missing tag header"))?;
         // File Entry (261) and Extended File Entry (266) have different
         // layouts; the bits we need are at different offsets in each.
         let (l_ea, l_ad, ad_type, ads_start, information_length) = match tag {
             TAG_FILE_ENTRY => {
-                // +56: u64 information_length
-                // +160: u32 length_of_extended_attributes (L_EA)
-                // +164: u32 length_of_allocation_descriptors (L_AD)
-                // +176: extended_attributes[L_EA], then allocation_descriptors[L_AD]
-                // +0..16 tag; +16 ICB tag (20 bytes); +36 uid/gid/perms/etc.
+                // ECMA-167 4/14.9 File Entry layout (byte offsets):
+                //   +0..16   descriptor tag
+                //   +16..36  ICB tag (20 bytes)
+                //   +56      u64 information_length
+                //   +160     u64 unique_id
+                //   +168     u32 length_of_extended_attributes (L_EA)
+                //   +172     u32 length_of_allocation_descriptors (L_AD)
+                //   +176     extended_attributes[L_EA], then allocation_descriptors[L_AD]
                 // ICB tag's flags at offset +16+18 (= +34) carry the AD type
                 // (low 3 bits): 0=short_ad, 1=long_ad, 3=embedded.
                 let ad_type = u16::from_le_bytes(buf[34..36].try_into().unwrap()) & 0x7;
                 let info_len = u64::from_le_bytes(buf[56..64].try_into().unwrap());
-                let l_ea = u32::from_le_bytes(buf[160..164].try_into().unwrap()) as usize;
-                let l_ad = u32::from_le_bytes(buf[164..168].try_into().unwrap()) as usize;
+                let l_ea = u32::from_le_bytes(buf[168..172].try_into().unwrap()) as usize;
+                let l_ad = u32::from_le_bytes(buf[172..176].try_into().unwrap()) as usize;
                 (l_ea, l_ad, ad_type, 176, info_len)
             }
             TAG_EXTENDED_FILE_ENTRY => {
@@ -402,8 +431,14 @@ fn read_dstring(buf: &[u8]) -> String {
     match comp {
         8 => String::from_utf8_lossy(payload).trim().to_string(),
         16 => {
+            // chunks(2) (not chunks_exact) so a malformed odd-length payload
+            // doesn't silently lose its final byte — the lone trailing byte
+            // is just ignored here, same end-result for well-formed data.
             let mut s = String::with_capacity(payload.len() / 2);
-            for pair in payload.chunks_exact(2) {
+            for pair in payload.chunks(2) {
+                if pair.len() < 2 {
+                    break;
+                }
                 let c = u16::from_be_bytes([pair[0], pair[1]]);
                 if let Some(ch) = char::from_u32(c as u32) {
                     s.push(ch);
@@ -425,8 +460,12 @@ fn decode_udf_name(buf: &[u8]) -> String {
     match buf[0] {
         8 => String::from_utf8_lossy(&buf[1..]).to_string(),
         16 => {
+            // chunks(2) (not chunks_exact): same rationale as read_dstring.
             let mut s = String::with_capacity(buf.len() / 2);
-            for pair in buf[1..].chunks_exact(2) {
+            for pair in buf[1..].chunks(2) {
+                if pair.len() < 2 {
+                    break;
+                }
                 let c = u16::from_be_bytes([pair[0], pair[1]]);
                 if let Some(ch) = char::from_u32(c as u32) {
                     s.push(ch);

@@ -7,21 +7,60 @@ import com.usbooty
 ApplicationWindow {
     id: window
     visible: true
-    width: 660
-    height: 860
+    width: 670
+    // Height is content-driven (see binding below). Keep a generous floor
+    // so a freshly-launched window doesn't snap to a sliver while QML is
+    // still computing its first layout pass.
     minimumWidth: 600
-    minimumHeight: 620
-    title: "usbooty — Bootable USB Creator"
+    minimumHeight: 360
+    // Auto-fit the window vertically to the left column's actual content:
+    // hidden banners and the absent progress frame contribute zero height,
+    // so the window shrinks/grows as the UI gains or loses sections.
+    height: Math.max(minimumHeight,
+                     mainCol.implicitHeight
+                     + 24  // RowLayout top + bottom margins
+                     + (menuBar ? menuBar.height : 0))
+    Behavior on height {
+        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+    }
+    // Title reflects the job state so progress is visible even when the
+    // window is in the background / minimized to the taskbar.
+    title: {
+        if (app.busy && app.progress > 0)
+            return "usbooty — " + app.phase + " " + Math.round(app.progress * 100) + " %"
+        if (app.busy)
+            return "usbooty — " + (app.phase !== "" ? app.phase : "Working") + "…"
+        return "usbooty — Bootable USB Creator"
+    }
 
     AppController {
         id: app
         Component.onCompleted: app.refreshDevices()
+        // Reset the cancelling latch on every busy→idle transition so the
+        // next job's Cancel button starts in the active state again.
+        onBusyChanged: if (!app.busy) window.cancelling = false
         onJobFinished: function(success, message) {
             resultDialog.title = success ? "Success" : "Failed"
             resultDialog.success = success
             resultLabel.text = message
             resultDialog.open()
         }
+    }
+
+    // Latched true between the moment the user clicks Cancel and the moment
+    // the runner emits its terminal Done/Error. Drives the Cancel button's
+    // label + enabled state so the user gets visible feedback instead of
+    // wondering whether the click registered.
+    property bool cancelling: false
+
+    // Poll for new / removed block devices while idle. Cheap (one sysfs walk
+    // every 2.5 s); skipped while a job runs so we don't churn the combo's
+    // model mid-write.
+    Timer {
+        interval: 2500
+        repeat: true
+        running: !app.busy
+        onTriggered: app.refreshDevices()
     }
 
     // Whether the user can launch a job right now. Format-only (method 2)
@@ -147,8 +186,10 @@ ApplicationWindow {
     component Pill: Rectangle {
         id: pill
         property string label: ""
-        property color tint: "#3498db"
-        property color ink: "white"
+        // Default falls back to the system highlight colour so a pill with no
+        // explicit tint matches whatever Qt theme is in use.
+        property color tint: window.palette.highlight
+        property color ink: window.palette.highlightedText
         implicitWidth: pillLabel.implicitWidth + 16
         implicitHeight: pillLabel.implicitHeight + 6
         radius: implicitHeight / 2
@@ -163,25 +204,90 @@ ApplicationWindow {
         }
     }
 
+    // ---- Reusable themed dialog header ----------------------------------
+    // A 52-px coloured strip carrying an icon + title + subtitle. Every
+    // top-level Dialog uses one so the app's modal surface feels coherent:
+    // blue for Microsoft flows, red for destructive prompts, green/red for
+    // result feedback, palette.highlight for neutral/info screens.
+    component DialogHeader: Rectangle {
+        id: dh
+        property color tint: window.palette.highlight
+        property string title: ""
+        property string subtitle: ""
+        // Either a Unicode glyph (⚠ ✓ ✕ ⓘ) OR a Component to instantiate
+        // for fully-custom marks (used by the Microsoft dialogs to render
+        // their 2×2 WindowsLogo). If `iconComponent` is set it wins.
+        property string iconGlyph: ""
+        property Component iconComponent: null
+        color: tint
+        implicitHeight: 52
+        Layout.fillWidth: true
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
+            spacing: 12
+            Loader {
+                active: dh.iconComponent !== null
+                sourceComponent: dh.iconComponent
+                visible: active
+            }
+            Label {
+                visible: dh.iconComponent === null && dh.iconGlyph !== ""
+                text: dh.iconGlyph
+                color: "white"
+                font.pointSize: 22
+                font.bold: true
+            }
+            ColumnLayout {
+                spacing: 0
+                Layout.fillWidth: true
+                Label {
+                    text: dh.title
+                    color: "white"
+                    font.bold: true
+                    font.pointSize: 12
+                }
+                Label {
+                    text: dh.subtitle
+                    visible: text !== ""
+                    color: Qt.rgba(1, 1, 1, 0.82)
+                    font.pointSize: 8
+                }
+            }
+        }
+    }
+
     // ---- Reusable coloured advisory banner ------------------------------
+    // Severity picks the colour pair; the actual hex is alpha-blended over
+    // the system palette so the banner stays legible on both light and dark
+    // Qt themes without hard-coding a theme.
     component Banner: Rectangle {
         id: banner
         property string message: ""
-        property color tint: "#fff3cd"
-        property color line: "#e0a800"
-        property color ink: "#664d03"
+        property string severity: "warn" // "info" | "warn" | "error"
+        readonly property var _accents: ({
+            "info":  { line: Qt.rgba(0.13, 0.59, 0.95, 1.0), alpha: 0.12 },
+            "warn":  { line: Qt.rgba(0.88, 0.66, 0.00, 1.0), alpha: 0.16 },
+            "error": { line: Qt.rgba(0.86, 0.21, 0.27, 1.0), alpha: 0.16 },
+        })
+        readonly property var _accent: _accents[severity] || _accents["warn"]
         Layout.fillWidth: true
         visible: message !== ""
         implicitHeight: visible ? bannerLabel.implicitHeight + 18 : 0
-        color: tint
-        border.color: line
+        // Tint the system base colour with the severity hue. Works on both
+        // dark and light themes because the underlying base shifts with the
+        // theme and the tint is just a hint on top of it.
+        color: Qt.tint(palette.base, Qt.rgba(_accent.line.r, _accent.line.g,
+                                             _accent.line.b, _accent.alpha))
+        border.color: _accent.line
         radius: 6
         Label {
             id: bannerLabel
             anchors.fill: parent
             anchors.margins: 9
             text: banner.message
-            color: banner.ink
+            color: palette.windowText
             wrapMode: Text.Wrap
         }
     }
@@ -259,6 +365,28 @@ ApplicationWindow {
         }
     }
 
+    // ---- Expanding side-by-side layout ---------------------------------
+    // The activity log lives on the right and only appears when there is
+    // something to read. The first log line auto-widens the window so the
+    // controls keep their full width and the log gets its own column —
+    // less disruptive than pushing the action button off-screen.
+    readonly property int compactWidth: 660
+    readonly property int expandedWidth: 1080
+    property bool logExpanded: false
+    Behavior on width {
+        NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+    }
+    Connections {
+        target: app
+        function onLogTextChanged() {
+            if (app.logText !== "" && !window.logExpanded) {
+                window.logExpanded = true
+                if (window.width < window.expandedWidth)
+                    window.width = window.expandedWidth
+            }
+        }
+    }
+
     menuBar: MenuBar {
         Menu {
             title: "Device"
@@ -288,37 +416,62 @@ ApplicationWindow {
         }
     }
 
-    ColumnLayout {
+    // Two columns: controls on the left (always), activity log on the
+    // right (only after the first log line, with the window auto-widening
+    // to make space).
+    RowLayout {
         anchors.fill: parent
         anchors.margins: 12
-        spacing: 8
+        spacing: 12
+
+        ColumnLayout {
+            id: mainCol
+            // Sized to its content (the window's `height` binding tracks
+            // this implicitHeight). Hugged to the top so the log column
+            // can be taller without dragging the controls down.
+            Layout.alignment: Qt.AlignTop
+            // Fixed-ish width for the controls so they don't reflow when
+            // the window grows to make room for the log.
+            Layout.preferredWidth: window.compactWidth - 24
+            Layout.minimumWidth: window.minimumWidth - 24
+            spacing: 8
 
         // ---- Advisory banners ------------------------------------------
         Banner {
             // Missing external tools.
+            severity: "warn"
             message: app.depWarning
         }
         Banner {
             // The ISO cannot fit on the chosen drive.
+            severity: "error"
             message: app.method === 2 ? "" : app.fitWarning
-            tint: "#f8d7da"
-            line: "#dc3545"
-            ink: "#842029"
         }
         Banner {
             // SBAT / DBX revocation hits from scanning the ISO's EFI binaries.
             // Warning, not blocking: legacy BIOS boot still works, and many
             // firmwares accept the revoked binary anyway.
+            severity: "warn"
             message: app.revocationWarnings
-            tint: "#fff3cd"
-            line: "#e0a800"
-            ink: "#664d03"
+        }
+        Banner {
+            // SMART probe result for the selected device; populated
+            // asynchronously after select_device.
+            severity: "error"
+            message: app.smartWarning
+                ? "SMART: " + app.smartWarning + " — consider replacing this drive."
+                : ""
         }
 
         // ---- Step 1: source image --------------------------------------
         StepCard {
             step: 1
-            heading: "Source image"
+            // Header reflects optionality so the user isn't blocked looking
+            // for an ISO when they only want a plain format or a Ventoy
+            // stick (which seeds itself empty if no ISO is given).
+            heading: app.method === 2 ? "Source image (not used)"
+                    : app.method === 3 ? "Source image (optional)"
+                    : "Source image"
             accent: "#3498db"
             // The format-only method takes no source image.
             enabled: app.method !== 2
@@ -329,9 +482,10 @@ ApplicationWindow {
                     id: isoField
                     Layout.fillWidth: true
                     readOnly: true
-                    placeholderText: app.method === 2
-                        ? "Not used for a plain format"
-                        : "Choose an ISO image, or drag one onto the window…"
+                    placeholderText:
+                        app.method === 2 ? "Not used for a plain format"
+                      : app.method === 3 ? "Optional — Ventoy lets you drop ISOs onto the data partition later"
+                      : "Choose an ISO image, or drag one onto the window…"
                     text: app.isoPath
                 }
                 // Split button: "Browse…" plus a dropdown to download Windows.
@@ -346,6 +500,12 @@ ApplicationWindow {
                         MenuItem {
                             text: "Download a Windows ISO…"
                             onTriggered: winDialog.open()
+                        }
+                        MenuSeparator { }
+                        MenuItem {
+                            text: "Clear source image"
+                            enabled: app.isoPath !== ""
+                            onTriggered: app.clearIso()
                         }
                     }
                 }
@@ -399,7 +559,9 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     visible: !parent.hasHashes
                     Button {
-                        text: parent.parent.computing ? "Computing…" : "Compute checksums"
+                        text: parent.parent.computing
+                            ? "Computing… " + Math.round(app.hashProgress * 100) + " %"
+                            : "Compute checksums"
                         enabled: !app.busy && !parent.parent.computing
                         onClicked: app.computeHashes()
                         ToolTip.delay: 500
@@ -408,8 +570,18 @@ ApplicationWindow {
                             "BLAKE3 in one pass. Disk-bound and CPU-heavy on a multi-GiB ISO; " +
                             "skip it unless you want to cross-check against a published hash."
                     }
+                    // A thin progress bar inline with the button — exact %
+                    // sits on the button, the bar gives a peripheral cue.
+                    ProgressBar {
+                        Layout.fillWidth: true
+                        visible: parent.parent.computing
+                        from: 0
+                        to: 1
+                        value: app.hashProgress
+                    }
                     Label {
                         text: "Checksums skipped — click to compute every digest."
+                        visible: !parent.parent.computing
                         color: palette.placeholderText
                         font.pointSize: 9
                         elide: Text.ElideRight
@@ -516,8 +688,13 @@ ApplicationWindow {
                                 font.pointSize: 9
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
+                                // Red token regardless of theme — internal-disk
+                                // warnings should never blend into the row.
+                                // Brightened a bit for dark themes via Qt.tint.
                                 color: text.indexOf("Internal disk") >= 0
-                                       ? "#c0392b" : window.palette.placeholderText
+                                       ? Qt.tint(window.palette.windowText,
+                                                 Qt.rgba(0.86, 0.21, 0.27, 0.85))
+                                       : window.palette.placeholderText
                             }
                         }
                     }
@@ -526,6 +703,11 @@ ApplicationWindow {
                     text: "Refresh"
                     enabled: !app.busy
                     onClicked: app.refreshDevices()
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Re-scan /sys/block for connected drives. " +
+                        "Usbooty already polls every few seconds while idle; " +
+                        "use this if you just hotplugged a device and want it instantly."
                 }
             }
             CheckBox {
@@ -536,6 +718,11 @@ ApplicationWindow {
                     app.showFixedDisks = checked
                     app.refreshDevices()
                 }
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Off by default — internal SATA/NVMe disks are filtered out " +
+                    "so they cannot be picked by mistake. Enable only when you really want " +
+                    "to target a fixed disk (lab, dual-boot stick, image dump)."
             }
         }
 
@@ -559,6 +746,17 @@ ApplicationWindow {
                             "Format only (no ISO)", "Ventoy (multi-boot USB)"]
                     currentIndex: app.method
                     onActivated: function(index) { app.method = index }
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text:
+                        "DD — bit-for-bit copy of the ISO, no partitioning. Works for any " +
+                        "isohybrid (most Linux ISOs).\n\n" +
+                        "Partition & copy — usbooty creates a fresh partition table, formats it, " +
+                        "and copies the ISO files. Required for Windows install media and for " +
+                        "anything that needs persistence.\n\n" +
+                        "Format only — wipe + new partition table, no ISO involved.\n\n" +
+                        "Ventoy — install Ventoy so you can drop multiple ISOs on the data partition " +
+                        "and pick one at boot."
                 }
 
                 Label { text: "Filesystem" }
@@ -593,6 +791,7 @@ ApplicationWindow {
                     visible: app.method !== 3
                 }
                 TextField {
+                    id: labelField
                     Layout.fillWidth: true
                     visible: app.method !== 3
                     enabled: !app.busy && app.method !== 0
@@ -601,8 +800,19 @@ ApplicationWindow {
                     // onTextEdited (not onTextChanged) avoids a binding loop:
                     // it fires only for user edits, not the pre-fill above.
                     onTextEdited: app.label = text
-                    ToolTip.visible: hovered && !enabled
-                    ToolTip.text: "The label is sanitized to each filesystem's limits."
+                    ToolTip.delay: 400
+                    ToolTip.visible: hovered && app.label !== ""
+                    // Show the user *exactly* what will land on disk after
+                    // each filesystem's length / case / charset trimming.
+                    ToolTip.text: {
+                        if (!enabled)
+                            return "The label is sanitized to each filesystem's limits."
+                        var sanitized = app.sanitizedLabel()
+                        if (sanitized === app.label)
+                            return "Will be written as “" + sanitized + "” — fits the chosen filesystem."
+                        return "Will be written as “" + sanitized + "” " +
+                               "(trimmed for the chosen filesystem)"
+                    }
                 }
             }
 
@@ -613,6 +823,12 @@ ApplicationWindow {
                 enabled: !app.busy && (app.method === 1 || app.method === 2)
                 checked: app.fullFormat
                 onToggled: app.fullFormat = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Zeroes every sector before writing. Slow (tens of minutes " +
+                    "on a 64 GB stick), but it wipes any prior partition layout / hidden " +
+                    "partitions and gives a clean slate. The quick path skips this and " +
+                    "only writes the new layout."
             }
 
             CheckBox {
@@ -640,6 +856,11 @@ ApplicationWindow {
                 enabled: !app.busy && app.method < 2
                 checked: app.verify
                 onToggled: app.verify = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Re-reads the entire device after writing and compares it " +
+                    "to a BLAKE3 hash captured during the write. Roughly doubles the job " +
+                    "time but catches counterfeit / failing flash that silently corrupts data."
             }
 
             // Ventoy options — only for the Ventoy write method.
@@ -652,12 +873,22 @@ ApplicationWindow {
                     enabled: !app.busy
                     checked: app.ventoyUpdate
                     onToggled: app.ventoyUpdate = checked
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Upgrade the Ventoy bootloader in-place. The existing data " +
+                        "partition (with your ISOs) is preserved; only the small EFI partition " +
+                        "and the Ventoy boot files get rewritten."
                 }
                 CheckBox {
                     text: "Secure Boot support"
                     enabled: !app.busy
                     checked: app.ventoySecureBoot
                     onToggled: app.ventoySecureBoot = checked
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Install Ventoy with the Microsoft-signed shim so the stick " +
+                        "boots on UEFI machines that have Secure Boot enabled. Off → smaller " +
+                        "footprint and no MOK enrollment, but Secure Boot must be disabled."
                 }
                 Label {
                     text: "Ventoy makes a USB you drop ISOs onto and boot directly. "
@@ -675,20 +906,52 @@ ApplicationWindow {
                 visible: app.persistenceSupported && app.method === 1
                 spacing: 2
                 Label {
-                    text: app.persistenceSize > 0
-                        ? "Persistent storage:  "
-                          + (app.persistenceSize / 1024).toFixed(1) + " GB"
-                        : "Persistent storage:  off"
+                    // Below 1 GiB: show MiB. At or above 1 GiB: GiB with one
+                    // decimal place; snapping makes that decimal meaningful.
+                    text: {
+                        if (app.persistenceSize <= 0)
+                            return "Persistent storage:  off"
+                        if (app.persistenceSize < 1024)
+                            return "Persistent storage:  " + app.persistenceSize + " MiB"
+                        return "Persistent storage:  " +
+                               (app.persistenceSize / 1024).toFixed(1) + " GiB"
+                    }
                     font.bold: true
                 }
-                Slider {
+                RowLayout {
                     Layout.fillWidth: true
-                    enabled: !app.busy
-                    from: 0
-                    to: 32768
-                    stepSize: 256
-                    value: app.persistenceSize
-                    onMoved: app.persistenceSize = value
+                    spacing: 6
+                    Slider {
+                        id: persistenceSlider
+                        Layout.fillWidth: true
+                        enabled: !app.busy
+                        from: 0
+                        to: 32768
+                        // 256 MiB steps below 1 GiB (fine-grained for small
+                        // overlays), 512 MiB steps above (matches the displayed
+                        // 0.5 GiB precision so the label never lies).
+                        stepSize: value < 1024 ? 256 : 512
+                        value: app.persistenceSize
+                        onMoved: app.persistenceSize = value
+                        ToolTip.visible: pressed
+                        ToolTip.text: value <= 0 ? "Off"
+                                    : value < 1024 ? value + " MiB"
+                                    : (value / 1024).toFixed(1) + " GiB"
+                    }
+                    Button {
+                        text: "Max"
+                        enabled: !app.busy && app.selectedDevice >= 0
+                        onClicked: {
+                            var m = app.maxPersistenceMib()
+                            if (m > 32768) m = 32768
+                            if (m < 0) m = 0
+                            app.persistenceSize = m
+                        }
+                        ToolTip.delay: 500
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Set the overlay to fill the device — uses every byte " +
+                            "the chosen drive has left after the ISO and a small partition-table margin."
+                    }
                 }
                 Label {
                     text: "Keeps your files and settings across reboots of this live USB."
@@ -715,12 +978,17 @@ ApplicationWindow {
         Button {
             Layout.fillWidth: true
             Layout.preferredHeight: 44
-            text: app.busy ? "Cancel" : "Start"
+            // While the user has clicked Cancel but the runner has not yet
+            // acknowledged, show "Cancelling…" disabled, so a rage-click on
+            // a non-responsive cancel doesn't leave the user guessing.
+            text: window.cancelling ? "Cancelling…"
+                                    : (app.busy ? "Cancel" : "Start")
             highlighted: true
             font.bold: true
-            enabled: app.busy || window.ready
+            enabled: !window.cancelling && (app.busy || window.ready)
             onClicked: {
                 if (app.busy) {
+                    window.cancelling = true
                     app.cancel()
                 } else if (app.windowsIso && app.method === 1) {
                     // Windows installer, partition method: offer the setup
@@ -728,7 +996,6 @@ ApplicationWindow {
                     // autounattend.xml, so no setup dialog there.)
                     windowsSetupDialog.open()
                 } else {
-                    confirmLabel.text = app.confirmText()
                     confirmDialog.open()
                 }
             }
@@ -776,20 +1043,65 @@ ApplicationWindow {
                     from: 0
                     to: 1
                     value: app.progress
+                    // Some phases never emit progress events (wimlib split,
+                    // mkfs, syslinux install, ext4 persistence creation):
+                    // switch to the indeterminate animation while we're in
+                    // them so the bar doesn't sit frozen for minutes.
+                    indeterminate: app.busy && (function() {
+                        var p = app.phase.toLowerCase()
+                        return p.indexOf("splitting") >= 0
+                            || p.indexOf("syslinux") >= 0
+                            || p.indexOf("extlinux") >= 0
+                            || p.indexOf("persistence") >= 0
+                            || p.indexOf("formatting") >= 0
+                    })()
                     // Re-tint the fill bar to match the phase. The Qt default
                     // contentItem is a Rectangle, so we override it cleanly.
                     contentItem: Item {
                         implicitHeight: 6
                         Rectangle {
+                            visible: !phaseBar.indeterminate
                             width: phaseBar.visualPosition * parent.width
                             height: parent.height
                             radius: 3
                             color: progressFrame.phaseColor
                         }
+                        // Indeterminate sweep: a 35 %-wide block ping-pongs
+                        // across the track. Activated only while
+                        // `phaseBar.indeterminate` is true.
+                        Rectangle {
+                            id: sweep
+                            visible: phaseBar.indeterminate
+                            width: parent.width * 0.35
+                            height: parent.height
+                            radius: 3
+                            color: progressFrame.phaseColor
+                            x: 0
+                            SequentialAnimation on x {
+                                running: phaseBar.indeterminate
+                                loops: Animation.Infinite
+                                NumberAnimation {
+                                    from: 0
+                                    to: sweep.parent.width - sweep.width
+                                    duration: 1200
+                                    easing.type: Easing.InOutQuad
+                                }
+                                NumberAnimation {
+                                    from: sweep.parent.width - sweep.width
+                                    to: 0
+                                    duration: 1200
+                                    easing.type: Easing.InOutQuad
+                                }
+                            }
+                        }
                     }
                     background: Rectangle {
                         implicitHeight: 6
-                        color: Qt.rgba(0, 0, 0, 0.08)
+                        // palette.mid is a midtone that contrasts against
+                        // both light (slightly dark) and dark (slightly
+                        // light) Qt themes.
+                        color: palette.mid
+                        opacity: 0.4
                         radius: 3
                     }
                 }
@@ -842,11 +1154,15 @@ ApplicationWindow {
             }
         }
 
-        // ---- Activity log (always visible) ------------------------------
+        }
+
+        // ---- Activity log (right column, lazy) -------------------------
         Frame {
+            id: logFrame
+            visible: window.logExpanded
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumHeight: 130
+            Layout.minimumWidth: 340
             padding: 10
             background: Rectangle {
                 radius: 8
@@ -866,7 +1182,14 @@ ApplicationWindow {
                         text: "Clear"
                         flat: true
                         enabled: app.logText !== "" && !app.busy
-                        onClicked: app.logText = ""
+                        onClicked: {
+                            app.logText = ""
+                            // Collapsing back also shrinks the window —
+                            // the user explicitly asked for the screen
+                            // estate back, so honour that.
+                            window.logExpanded = false
+                            window.width = window.compactWidth
+                        }
                     }
                 }
                 ScrollView {
@@ -878,6 +1201,7 @@ ApplicationWindow {
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                     TextArea {
+                        id: logArea
                         // Binding the width to the viewport makes lines wrap;
                         // without it the text runs off the side and the view
                         // never gains the height it needs to scroll.
@@ -887,9 +1211,30 @@ ApplicationWindow {
                         font.family: "monospace"
                         font.pointSize: 9
                         placeholderText: "Job output will appear here."
+                        // RichText lets the runner colour warnings (amber),
+                        // errors (red), and phase headers (blue/bold) via
+                        // inline HTML; plain info lines stay the default colour.
+                        textFormat: TextEdit.RichText
                         text: app.logText
-                        // Keep the newest line in view as the log grows.
-                        onTextChanged: cursorPosition = length
+                        // Smart autoscroll: only snap to the bottom when the
+                        // user was already at (or near) the bottom before the
+                        // append, so scrolling up to inspect an earlier line
+                        // is not yanked back by every new log entry.
+                        property bool followTail: true
+                        onContentHeightChanged: {
+                            if (followTail)
+                                cursorPosition = length
+                        }
+                        Connections {
+                            target: logScroll.ScrollBar.vertical
+                            function onPositionChanged() {
+                                var sb = logScroll.ScrollBar.vertical
+                                // "At the bottom" means within 2 % of the end;
+                                // small margin so a near-bottom scroll counts.
+                                logArea.followTail =
+                                    sb.position + sb.size >= 0.98
+                            }
+                        }
                     }
                 }
             }
@@ -900,7 +1245,21 @@ ApplicationWindow {
     DropArea {
         id: isoDrop
         anchors.fill: parent
+        // Name of the first file the user is dragging, used to make the
+        // overlay feel responsive. Cleared when the drag leaves.
+        property string hoverName: ""
+        property bool hoverIsoLike: false
+        onEntered: function(drag) {
+            if (drag.hasUrls && drag.urls.length > 0) {
+                var u = drag.urls[0].toString()
+                hoverName = u.substring(u.lastIndexOf("/") + 1)
+                var l = hoverName.toLowerCase()
+                hoverIsoLike = l.endsWith(".iso") || l.endsWith(".img")
+            }
+        }
+        onExited: { hoverName = ""; hoverIsoLike = false }
         onDropped: function(drop) {
+            hoverName = ""; hoverIsoLike = false
             if (app.busy || !drop.hasUrls)
                 return
             var u = drop.urls[0].toString().toLowerCase()
@@ -911,17 +1270,44 @@ ApplicationWindow {
             anchors.fill: parent
             anchors.margins: 6
             visible: isoDrop.containsDrag && !app.busy
-            // Low-alpha tint (ARGB); no `opacity` so the label stays crisp.
-            color: "#241e88e5"
-            border.color: "#1e88e5"
+            // Tint the system base colour with the highlight hue so the
+            // overlay reads well on both light and dark themes. A red tint
+            // signals "I won't accept this file" for non-ISO drops.
+            color: {
+                var c = isoDrop.hoverIsoLike
+                    ? palette.highlight
+                    : Qt.rgba(0.86, 0.21, 0.27, 1.0)
+                return Qt.tint(palette.base, Qt.rgba(c.r, c.g, c.b, 0.18))
+            }
+            border.color: isoDrop.hoverIsoLike ? palette.highlight
+                                               : Qt.rgba(0.86, 0.21, 0.27, 1.0)
             border.width: 2
             radius: 10
-            Label {
+            ColumnLayout {
                 anchors.centerIn: parent
-                text: "Drop ISO image here"
-                font.pointSize: 18
-                font.bold: true
-                color: "#1565c0"
+                spacing: 4
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: isoDrop.hoverIsoLike ? "Drop to load" : "Unsupported file"
+                    font.pointSize: 18
+                    font.bold: true
+                    color: isoDrop.hoverIsoLike ? palette.highlight
+                                                : Qt.rgba(0.86, 0.21, 0.27, 1.0)
+                }
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: isoDrop.hoverName !== ""
+                    text: isoDrop.hoverName
+                    font.pointSize: 11
+                    color: palette.windowText
+                }
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: !isoDrop.hoverIsoLike && isoDrop.hoverName !== ""
+                    text: "Only .iso and .img files are accepted"
+                    font.pointSize: 9
+                    color: palette.placeholderText
+                }
             }
         }
     }
@@ -954,15 +1340,29 @@ ApplicationWindow {
     Dialog {
         id: checkConfirm
         anchors.centerIn: parent
-        width: 460
+        width: 480
         modal: true
+        topPadding: 14
+        bottomPadding: 14
+        leftPadding: 18
+        rightPadding: 18
         property int mode: 0
         function openFor(m) {
             checkConfirm.mode = m
-            checkConfirm.title = m === 1
+            checkConfirm.open()
+        }
+        header: DialogHeader {
+            // Quick = amber lightning ("fast spot-check"); Full = red warning
+            // triangle ("slow exhaustive scan"). Same destructive verb, very
+            // different effort + duration, hence the distinct visual weight.
+            tint: checkConfirm.mode === 1 ? "#C0392B" : "#E67E22"
+            iconGlyph: checkConfirm.mode === 1 ? "⚠" : "⚡"
+            title: checkConfirm.mode === 1
                 ? "Full bad-blocks scan?"
                 : "Quick fake-drive check?"
-            checkConfirm.open()
+            subtitle: checkConfirm.mode === 1
+                ? "Writes two patterns across every sector — slow and exhaustive"
+                : "Writes a fingerprint at ~256 sample positions — finishes in seconds"
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: app.startCheck(checkConfirm.mode)
@@ -1000,43 +1400,16 @@ ApplicationWindow {
         bottomPadding: 14
         leftPadding: 18
         rightPadding: 18
-        // Custom header replacing the default text-only title bar: the
-        // Microsoft blue accent and the Windows flag immediately identify
+        // Microsoft-blue header with the Windows flag immediately identifies
         // this as the Windows installer tweak panel.
-        header: Rectangle {
-            color: "#0078D4"
-            implicitHeight: 52
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 12
-                WindowsLogo {
-                    size: 24
-                    tint: "white"
-                }
-                ColumnLayout {
-                    spacing: 0
-                    Layout.fillWidth: true
-                    Label {
-                        text: "Windows setup"
-                        color: "white"
-                        font.bold: true
-                        font.pointSize: 12
-                    }
-                    Label {
-                        text: "Optional install tweaks — written to autounattend.xml"
-                        color: Qt.rgba(1, 1, 1, 0.82)
-                        font.pointSize: 8
-                    }
-                }
-            }
+        header: DialogHeader {
+            tint: "#0078D4"
+            iconComponent: WindowsLogo { size: 24; tint: "white" }
+            title: "Windows setup"
+            subtitle: "Optional install tweaks — written to autounattend.xml"
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
-        onAccepted: {
-            confirmLabel.text = app.confirmText()
-            confirmDialog.open()
-        }
+        onAccepted: confirmDialog.open()
         contentItem: ScrollView {
             id: setupScroll
             clip: true
@@ -1287,18 +1660,139 @@ ApplicationWindow {
         }
     }
 
+    // Final go/no-go before the helper touches the device. Styled in the
+    // same banner-headed visual language as the Windows Setup / Download
+    // dialogs, but in a danger-red palette since this is destructive.
+    // Field values are pushed in via onOpened so the bindings can't go
+    // stale (invokables don't emit change signals).
     Dialog {
         id: confirmDialog
-        title: "Erase device?"
         anchors.centerIn: parent
-        width: 440
+        width: 480
         modal: true
+        topPadding: 14
+        bottomPadding: 14
+        leftPadding: 18
+        rightPadding: 18
+        property bool internalDisk: false
+        property string busLabel: ""
+        property string serialLabel: ""
+        header: DialogHeader {
+            tint: "#C0392B"
+            iconGlyph: "⚠"
+            title: "Erase device?"
+            subtitle: "All data on the target will be permanently lost"
+        }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: app.start()
+        // Push device fields in fresh every time. The Rust invokables don't
+        // emit change signals, so QML bindings on them only run once at
+        // component creation — by which point selectedDevice was still -1.
+        onOpened: {
+            confirmModel.text = app.selectedModel()
+            confirmSize.text = app.selectedSizeText()
+            confirmPath.text = app.selectedPath()
+            confirmDialog.internalDisk = app.selectedIsInternal()
+            confirmDialog.busLabel = app.selectedBus()
+            confirmDialog.serialLabel = app.selectedSerial()
+        }
         contentItem: ColumnLayout {
-            spacing: 8
+            spacing: 12
+            // Target device card.
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 8
+                color: confirmDialog.internalDisk
+                    ? Qt.tint(palette.base, Qt.rgba(0.75, 0.23, 0.17, 0.14))
+                    : Qt.tint(palette.base, Qt.rgba(palette.highlight.r,
+                                                   palette.highlight.g,
+                                                   palette.highlight.b, 0.10))
+                border.color: confirmDialog.internalDisk
+                    ? "#C0392B" : palette.mid
+                implicitHeight: cardCol.implicitHeight + 24
+                ColumnLayout {
+                    id: cardCol
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 2
+                    Label {
+                        id: confirmModel
+                        font.bold: true
+                        font.pointSize: 13
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Label {
+                            id: confirmSize
+                            color: palette.windowText
+                            font.pointSize: 11
+                        }
+                        Pill {
+                            visible: confirmDialog.busLabel !== ""
+                            label: confirmDialog.busLabel
+                            tint: palette.mid
+                            ink: palette.windowText
+                        }
+                        Item { Layout.fillWidth: true }
+                        Label {
+                            id: confirmPath
+                            color: palette.placeholderText
+                            font.family: "monospace"
+                            font.pointSize: 10
+                            elide: Text.ElideMiddle
+                            horizontalAlignment: Text.AlignRight
+                        }
+                    }
+                    Label {
+                        visible: confirmDialog.serialLabel !== ""
+                        text: "Serial: " + confirmDialog.serialLabel
+                        color: palette.placeholderText
+                        font.family: "monospace"
+                        font.pointSize: 9
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        visible: confirmDialog.internalDisk
+                        Layout.fillWidth: true
+                        Layout.topMargin: 6
+                        text: "⚠ This is an INTERNAL (non-removable) disk. " +
+                              "Make absolutely sure it is the device you mean to erase."
+                        // Red-shifted from the theme's main text colour so
+                        // the warning pops on both light and dark themes.
+                        color: Qt.tint(window.palette.windowText,
+                                       Qt.rgba(0.86, 0.21, 0.27, 0.85))
+                        wrapMode: Text.Wrap
+                        font.bold: true
+                        font.pointSize: 9
+                    }
+                }
+            }
+            // Secondary action — opens the read-only Inspect modal (lsblk /
+            // udevadm / smartctl dump). Kept inside the contentItem rather
+            // than the dialog footer because mixing custom footer buttons
+            // with Dialog.Ok / Dialog.Cancel breaks the accept signal in
+            // Qt 6 Quick Controls.
+            Button {
+                flat: true
+                Layout.alignment: Qt.AlignLeft
+                text: "🔍  Inspect device details…"
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: "Open lsblk + udevadm + smartctl output for this device " +
+                    "in a read-only panel. Useful if anything above looks off."
+                onClicked: {
+                    inspectText.text = app.inspectSelected()
+                    inspectDialog.open()
+                }
+            }
             Label {
-                id: confirmLabel
+                text: app.method === 3 && app.ventoyUpdate
+                    ? "Ventoy will be updated — your existing ISOs on the data partition are kept."
+                    : "All data on this device will be permanently erased."
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
@@ -1309,84 +1803,111 @@ ApplicationWindow {
         }
     }
 
+    // Read-only dump of `lsblk -O` + `udevadm info` for the device that's
+    // about to be erased — opened from the confirm dialog so the user can
+    // sanity-check what the system actually thinks the device is.
     Dialog {
-        id: resultDialog
+        id: inspectDialog
         anchors.centerIn: parent
-        width: 440
+        width: Math.min(window.width - 60, 720)
+        height: Math.min(window.height - 80, 560)
         modal: true
-        // Set by the AppController.onJobFinished handler; drives the colour
-        // of the header strip and the success / failure glyph below.
-        property bool success: true
-        standardButtons: Dialog.Ok
-        // A thin coloured strip across the top of the dialog — instant
-        // green/red signal before the user even reads the message.
-        header: Rectangle {
-            implicitHeight: 4
-            color: resultDialog.success ? "#27AE60" : "#E74C3C"
+        topPadding: 14
+        bottomPadding: 14
+        leftPadding: 18
+        rightPadding: 18
+        header: DialogHeader {
+            tint: palette.highlight
+            iconGlyph: "ⓘ"
+            title: "Device details"
+            subtitle: "Read-only — lsblk + udevadm output for the chosen device"
         }
-        contentItem: RowLayout {
-            spacing: 14
-            Rectangle {
-                width: 40
-                height: 40
-                radius: 20
-                color: resultDialog.success ? "#27AE60" : "#E74C3C"
-                Layout.alignment: Qt.AlignTop
-                Label {
-                    anchors.centerIn: parent
-                    text: resultDialog.success ? "✓" : "✕"
-                    color: "white"
-                    font.bold: true
-                    font.pointSize: 18
-                }
-            }
-            Label {
-                id: resultLabel
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignVCenter
+        standardButtons: Dialog.Close
+        contentItem: ScrollView {
+            id: inspectScroll
+            clip: true
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            TextArea {
+                id: inspectText
+                width: inspectScroll.availableWidth
+                readOnly: true
+                wrapMode: TextArea.NoWrap
+                font.family: "monospace"
+                font.pointSize: 9
+                selectByMouse: true
             }
         }
     }
 
     Dialog {
-        id: aboutDialog
-        title: "About usbooty"
+        id: resultDialog
         anchors.centerIn: parent
-        width: 440
+        width: 480
         modal: true
+        topPadding: 14
+        bottomPadding: 14
+        leftPadding: 18
+        rightPadding: 18
+        // Set by the AppController.onJobFinished handler; drives the header
+        // colour and the title text.
+        property bool success: true
+        header: DialogHeader {
+            tint: resultDialog.success ? "#27AE60" : "#E74C3C"
+            iconGlyph: resultDialog.success ? "✓" : "✕"
+            title: resultDialog.success ? "Finished" : "Failed"
+            subtitle: resultDialog.success
+                ? "The device is ready to use."
+                : "The job did not complete — see details below."
+        }
+        // Custom footer so the success case can offer an "Eject" action
+        // alongside Close, without the standard-button reordering trickery.
+        footer: DialogButtonBox {
+            standardButtons: DialogButtonBox.Close
+            Button {
+                text: "Eject device"
+                visible: resultDialog.success && app.selectedDevice >= 0
+                DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
+                onClicked: {
+                    app.ejectDevice()
+                    resultDialog.close()
+                }
+            }
+        }
+        contentItem: Label {
+            id: resultLabel
+            wrapMode: Text.Wrap
+        }
+    }
+
+    Dialog {
+        id: aboutDialog
+        anchors.centerIn: parent
+        width: 460
+        modal: true
+        topPadding: 14
+        bottomPadding: 14
+        leftPadding: 18
+        rightPadding: 18
+        header: DialogHeader {
+            // Deep blurple — close to Discord's brand mark (#5865F2) but a
+            // few shades darker, so the white usbooty logo + title pop
+            // without competing with the Microsoft-blue / red Erase headers.
+            tint: "#4752C4"
+            iconComponent: Image {
+                source: "qrc:/icons/usbooty.svg"
+                sourceSize.width: 28
+                sourceSize.height: 28
+                width: 28
+                height: 28
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+            }
+            title: "usbooty"
+            subtitle: "Bootable USB Creator · Version " + app.appVersion
+        }
         standardButtons: Dialog.Ok
         contentItem: ColumnLayout {
             spacing: 12
-
-            // Logo + name / version side by side at the top of the dialog.
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 14
-                Image {
-                    source: "qrc:/icons/usbooty.svg"
-                    sourceSize.width: 64
-                    sourceSize.height: 64
-                    Layout.preferredWidth: 64
-                    Layout.preferredHeight: 64
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                }
-                ColumnLayout {
-                    spacing: 0
-                    Layout.fillWidth: true
-                    Label {
-                        text: "usbooty"
-                        font.bold: true
-                        font.pointSize: 16
-                    }
-                    Label {
-                        text: "Version " + app.appVersion
-                        color: palette.placeholderText
-                        font.pointSize: 9
-                    }
-                }
-            }
 
             Label {
                 text: "Create bootable USB drives from ISO images."
@@ -1439,34 +1960,11 @@ ApplicationWindow {
         bottomPadding: 14
         leftPadding: 18
         rightPadding: 18
-        header: Rectangle {
-            color: "#0078D4"
-            implicitHeight: 52
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 12
-                WindowsLogo {
-                    size: 24
-                    tint: "white"
-                }
-                ColumnLayout {
-                    spacing: 0
-                    Layout.fillWidth: true
-                    Label {
-                        text: "Download a Windows ISO"
-                        color: "white"
-                        font.bold: true
-                        font.pointSize: 12
-                    }
-                    Label {
-                        text: "Pull an official image directly from Microsoft"
-                        color: Qt.rgba(1, 1, 1, 0.82)
-                        font.pointSize: 8
-                    }
-                }
-            }
+        header: DialogHeader {
+            tint: "#0078D4"
+            iconComponent: WindowsLogo { size: 24; tint: "white" }
+            title: "Download a Windows ISO"
+            subtitle: "Pull an official image directly from Microsoft"
         }
         standardButtons: Dialog.Close
         contentItem: ColumnLayout {

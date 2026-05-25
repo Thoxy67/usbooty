@@ -20,6 +20,11 @@ pub enum PersistenceKind {
     /// openSUSE live (kiwi-live) — an ext4 partition labelled `cow`, picked up
     /// automatically by the live system; no kernel parameter required.
     OpenSuseCow,
+    /// archiso-based live systems (Arch Linux, CachyOS, …) — an ext4 partition
+    /// labelled `PERSISTENCE`, activated by adding `cow_label=PERSISTENCE` to
+    /// the kernel command line. See the Arch wiki article on the USB flash
+    /// installation medium and Rufus issue #691 for the original write-up.
+    ArchOverlay,
 }
 
 /// The kind of operating system an ISO contains.

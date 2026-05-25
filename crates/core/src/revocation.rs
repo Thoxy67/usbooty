@@ -160,10 +160,7 @@ pub fn extract_sbat(pe: &[u8]) -> Option<String> {
         let off = section_table + i * 40;
         let entry = pe.get(off..off + 40)?;
         // Section name is 8 bytes, NUL-padded.
-        let name_end = entry[..8]
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(8);
+        let name_end = entry[..8].iter().position(|&b| b == 0).unwrap_or(8);
         let name = std::str::from_utf8(&entry[..name_end]).ok()?;
         if name != ".sbat" {
             continue;
@@ -179,7 +176,9 @@ pub fn extract_sbat(pe: &[u8]) -> Option<String> {
             .rposition(|&b| b != 0)
             .map(|p| p + 1)
             .unwrap_or(0);
-        return std::str::from_utf8(&bytes[..trimmed_end]).ok().map(str::to_string);
+        return std::str::from_utf8(&bytes[..trimmed_end])
+            .ok()
+            .map(str::to_string);
     }
     None
 }

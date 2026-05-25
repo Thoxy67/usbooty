@@ -19,8 +19,7 @@ pub mod uefi_ntfs;
 pub use device::DeviceInfo;
 pub use iso_report::{IsoReport, OsKind, PersistenceKind};
 pub use job::{
-    CheckMode, FileSystem, Job, JobOptions, PartitionTable, Persistence, WimStrategy,
-    WindowsSetup,
+    CheckMode, FileSystem, Job, JobOptions, PartitionTable, Persistence, WimStrategy, WindowsSetup,
 };
 pub use plan::{auto_filesystem, FAT32_MAX_FILE};
 pub use progress::{LogLevel, ProgressMsg};

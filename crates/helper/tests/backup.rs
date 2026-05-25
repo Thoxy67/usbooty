@@ -44,7 +44,10 @@ fn dd_then_backup_reproduces_the_source_image() {
     });
     let (out, status) = run_helper(&backup.to_string());
     assert!(status.success(), "backup failed. helper stdout:\n{out}");
-    assert!(finished_ok(&out), "backup did not emit Done. stdout:\n{out}");
+    assert!(
+        finished_ok(&out),
+        "backup did not emit Done. stdout:\n{out}"
+    );
 
     // 3. The first `SIZE` bytes of the snapshot must match the original
     //    pattern. (The loop device is larger; only the front section was

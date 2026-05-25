@@ -7,20 +7,32 @@ use serde::{Deserialize, Serialize};
 pub struct DeviceInfo {
     /// Kernel device node, e.g. `/dev/sdb`.
     pub path: String,
-    /// Human-readable vendor/model string, e.g. `SanDisk Ultra`.
+    /// Human-readable vendor/model string, e.g. `SanDisk Ultra`. May be a
+    /// placeholder when the underlying USB enclosure under-reports.
     pub model: String,
     /// Total capacity in bytes.
     pub size: u64,
     /// Whether the kernel reports the device as removable.
     pub removable: bool,
+    /// Bus + speed summary, e.g. `USB 3.0`, `USB 2.0`, `NVMe`, `SATA`. None
+    /// when the enumerator couldn't classify it.
+    #[serde(default)]
+    pub bus: Option<String>,
+    /// USB / SCSI serial number — useful for telling two identical sticks apart.
+    #[serde(default)]
+    pub serial: Option<String>,
+    /// USB vendor name as reported by the device descriptor (separate from
+    /// `model` so the UI can show both, or skip duplicates).
+    #[serde(default)]
+    pub vendor: Option<String>,
 }
 
 impl DeviceInfo {
     /// A label for the device picker, e.g.
-    /// `SanDisk Ultra — 30.8 GB · Removable · /dev/sdb`.
+    /// `SanDisk Ultra — 30.8 GB · USB 3.0 · /dev/sdb`.
     ///
     /// The em-dash separates a primary part (the model) from a detail part
-    /// (capacity, bus kind, node); the QML delegate splits on it to render the
+    /// (capacity, bus, node); the QML delegate splits on it to render the
     /// two on separate rows.
     pub fn display(&self) -> String {
         format!("{} — {}", self.model_name(), self.detail())
@@ -36,14 +48,25 @@ impl DeviceInfo {
         }
     }
 
-    /// The secondary detail line: capacity, bus kind, and device node.
+    /// The secondary detail line: capacity, bus, serial (when present), and
+    /// device node. Falls back to "Removable" / "Internal disk" when no
+    /// specific bus is known. Serial is included because it's the easiest
+    /// way to tell two identical USB sticks apart in the dropdown.
     pub fn detail(&self) -> String {
-        let kind = if self.removable {
-            "Removable"
-        } else {
-            "Internal disk"
+        let bus = match (&self.bus, self.removable) {
+            (Some(b), _) => b.as_str(),
+            (None, true) => "Removable",
+            (None, false) => "Internal disk",
         };
-        format!("{} · {kind} · {}", format_size(self.size), self.path)
+        let mut parts = vec![format_size(self.size), bus.to_string()];
+        if let Some(s) = self.serial.as_ref().filter(|s| !s.is_empty()) {
+            // Short serials show in full; long enclosure serials get truncated
+            // so the dropdown row doesn't bloat past the combo's width.
+            let shown = if s.len() > 14 { &s[..14] } else { s.as_str() };
+            parts.push(format!("S/N {shown}"));
+        }
+        parts.push(self.path.clone());
+        parts.join(" · ")
     }
 }
 

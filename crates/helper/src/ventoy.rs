@@ -49,12 +49,7 @@ pub fn run(
 ///
 /// The exFAT data partition keeps Ventoy's default `Ventoy` label — `-L` is
 /// not passed, since an image's own label is often too long for exFAT.
-fn run_cli(
-    device: &Path,
-    table: PartitionTable,
-    secure_boot: bool,
-    update: bool,
-) -> Result<()> {
+fn run_cli(device: &Path, table: PartitionTable, secure_boot: bool, update: bool) -> Result<()> {
     let dev = device.to_string_lossy().into_owned();
 
     let mut args: Vec<String> = Vec::new();
@@ -140,7 +135,8 @@ fn seed_iso(device: &Path, iso: &Path, abort: &AtomicBool) -> Result<()> {
         if n == 0 {
             break;
         }
-        out.write_all(&buf[..n]).context("writing to the Ventoy partition")?;
+        out.write_all(&buf[..n])
+            .context("writing to the Ventoy partition")?;
         done += n as u64;
         if last.elapsed() >= Duration::from_millis(100) {
             emit::progress("Copying ISO", done, total.max(done));

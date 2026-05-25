@@ -11,6 +11,10 @@ depends=(
     'qt6-base'
     'qt6-declarative'
     'polkit'
+    # util-linux ships lsblk/losetup/mount/umount/blkid/findmnt — universally
+    # present on Arch, but make it explicit since the helper *will* fail
+    # without them. (No-op on most installs; keeps `pacman -Rs` honest.)
+    'util-linux'
 )
 makedepends=(
     'rust'
@@ -20,11 +24,22 @@ makedepends=(
     'pkgconf'
 )
 optdepends=(
-    'dosfstools: FAT32 formatting'
-    'ntfs-3g: NTFS formatting'
-    'exfatprogs: exFAT formatting'
-    'e2fsprogs: ext4 formatting'
+    # Filesystem formatters — one per FS the user can pick in the GUI.
+    'dosfstools: FAT32 formatting (DD-fallback, Ventoy data partition)'
+    'ntfs-3g: NTFS formatting (Windows install media, UEFI:NTFS layout)'
+    'exfatprogs: exFAT formatting (cross-platform large-file FS)'
+    'e2fsprogs: ext4 formatting (Linux persistence overlay)'
+    # Optional feature backends — usbooty surfaces a banner if these are
+    # missing only when the matching feature is selected.
     'ventoy: Ventoy multi-boot USB creation'
+    'wimlib: split install.wim chunks for Windows installers on FAT32'
+    'syslinux: BIOS / legacy MBR bootloader install for Linux ISOs on FAT/ext4'
+    'libisoburn: xorriso for advanced ISO inspection / repair'
+    # Quality-of-life integrations — features degrade silently when absent.
+    'smartmontools: SMART health probe + Inspect-dialog SMART panel'
+    'udisks2: auto-mount + open of the Ventoy data partition after install'
+    'xdg-utils: open the data partition in the user file manager'
+    'libnotify: desktop notification when a long job finishes'
 )
 provides=("$_pkgname=$pkgver")
 conflicts=("$_pkgname")

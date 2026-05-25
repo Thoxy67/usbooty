@@ -14,13 +14,17 @@ struct Tool {
     critical: bool,
 }
 
-/// Every external tool the app or helper may invoke.
+/// Every external tool the app or helper may invoke. Keep this list in sync
+/// with the `optdepends` array in `packaging/PKGBUILD` (and the Flatpak /
+/// AppImage manifests).
 const TOOLS: &[Tool] = &[
+    // Mandatory — there's no fallback if pkexec is missing.
     Tool {
         bin: "pkexec",
         package: "polkit",
         critical: true,
     },
+    // Filesystem formatters — one per FS the user can pick.
     Tool {
         bin: "mkfs.vfat",
         package: "dosfstools",
@@ -41,11 +45,34 @@ const TOOLS: &[Tool] = &[
         package: "e2fsprogs",
         critical: false,
     },
+    // Optional feature backends.
     Tool {
         bin: "ventoy",
         package: "ventoy",
         critical: false,
     },
+    Tool {
+        bin: "wimlib-imagex",
+        package: "wimlib",
+        critical: false,
+    },
+    Tool {
+        bin: "syslinux",
+        package: "syslinux",
+        critical: false,
+    },
+    Tool {
+        bin: "xorriso",
+        package: "libisoburn",
+        critical: false,
+    },
+    // Quality-of-life integrations — silently degrade if absent, so they are
+    // not flagged in the dep banner; included here for documentation only.
+    // (Uncomment the entries if a future change makes them load-bearing.)
+    // Tool { bin: "smartctl",  package: "smartmontools", critical: false },
+    // Tool { bin: "udisksctl", package: "udisks2",       critical: false },
+    // Tool { bin: "xdg-open",  package: "xdg-utils",     critical: false },
+    // Tool { bin: "notify-send", package: "libnotify",   critical: false },
 ];
 
 /// Build a one-line warning about missing tools, or an empty string when

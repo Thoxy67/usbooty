@@ -11,11 +11,17 @@
 
 use anyhow::{bail, Context, Result};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::atomic::AtomicBool;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
 
 use crate::emit;
+
+/// How often to poll `abort` while wimlib-imagex runs.
+const POLL_EVERY: Duration = Duration::from_millis(250);
 
 /// Chunk size in MiB. Rufus uses 4094 — sized just below the 4 GiB FAT32
 /// single-file ceiling so split outputs always fit, with margin for the
@@ -27,7 +33,7 @@ const CHUNK_MIB: u32 = 4094;
 /// FAT32-formatted and writable; `install.wim` must NOT already exist there
 /// (it would not have fit during the file-by-file copy, which is why this
 /// path runs at all).
-pub fn split_install_wim(src_iso: &Path, dest_mount: &Path, _abort: &AtomicBool) -> Result<()> {
+pub fn split_install_wim(src_iso: &Path, dest_mount: &Path, abort: &AtomicBool) -> Result<()> {
     if !wimlib_available() {
         bail!(
             "wimlib-imagex is required for the Split strategy — install the \
@@ -50,18 +56,36 @@ pub fn split_install_wim(src_iso: &Path, dest_mount: &Path, _abort: &AtomicBool)
         swm_template.display()
     ));
 
-    let out = Command::new("wimlib-imagex")
+    // Spawn rather than .output() so the cancel button can interrupt a split
+    // that on a 5 GiB install.wim runs for ten-plus minutes.
+    let mut child = Command::new("wimlib-imagex")
         .arg("split")
         .arg(&src_wim)
         .arg(&swm_template)
         .arg(CHUNK_MIB.to_string())
-        .output()
-        .context("running wimlib-imagex")?;
-    if !out.status.success() {
-        bail!(
-            "wimlib-imagex split failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("spawning wimlib-imagex")?;
+
+    let status = loop {
+        if abort.load(Ordering::SeqCst) {
+            let _ = child.kill();
+            let _ = child.wait();
+            bail!("aborted by user");
+        }
+        match child.try_wait().context("waiting for wimlib-imagex")? {
+            Some(status) => break status,
+            None => thread::sleep(POLL_EVERY),
+        }
+    };
+
+    if !status.success() {
+        let mut stderr = String::new();
+        if let Some(mut s) = child.stderr.take() {
+            let _ = s.read_to_string(&mut stderr);
+        }
+        bail!("wimlib-imagex split failed: {}", stderr.trim());
     }
     emit::log("install.wim split into install.swm chunks");
     Ok(())
@@ -96,8 +120,7 @@ impl Drop for SourceMount {
 }
 
 fn mount_source_iso(iso: &Path) -> Result<SourceMount> {
-    let mountpoint =
-        PathBuf::from(format!("/run/usbooty-wim-{}", std::process::id()));
+    let mountpoint = PathBuf::from(format!("/run/usbooty-wim-{}", std::process::id()));
     fs::create_dir_all(&mountpoint)
         .with_context(|| format!("creating mountpoint {}", mountpoint.display()))?;
     let mut last_err = String::new();
@@ -120,10 +143,8 @@ fn mount_source_iso(iso: &Path) -> Result<SourceMount> {
 /// Locate `sources/install.wim` under `root` case-insensitively (UDF
 /// preserves case, ISO9660 may upper-case).
 fn resolve_install_wim(root: &Path) -> Result<PathBuf> {
-    let sources = ci_child(root, "sources")
-        .context("the ISO has no `sources` directory")?;
-    ci_child(&sources, "install.wim")
-        .context("the ISO has no `sources/install.wim` to split")
+    let sources = ci_child(root, "sources").context("the ISO has no `sources` directory")?;
+    ci_child(&sources, "install.wim").context("the ISO has no `sources/install.wim` to split")
 }
 
 fn ci_child(dir: &Path, name: &str) -> Result<PathBuf> {

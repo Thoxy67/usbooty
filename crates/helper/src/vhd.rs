@@ -185,7 +185,8 @@ impl Read for VhdReader {
                 let take = ((block_size - offset_in_block) as usize).min(dst.len());
                 match block_offsets.get(block_idx).copied().flatten() {
                     Some(file_off) => {
-                        self.file.seek(SeekFrom::Start(file_off + offset_in_block))?;
+                        self.file
+                            .seek(SeekFrom::Start(file_off + offset_in_block))?;
                         self.file.read(&mut dst[..take])?
                     }
                     None => {

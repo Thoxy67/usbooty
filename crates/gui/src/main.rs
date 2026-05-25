@@ -13,6 +13,7 @@ mod devices;
 mod iso;
 mod resources;
 mod runner;
+mod smart;
 mod timezones;
 mod windisco;
 

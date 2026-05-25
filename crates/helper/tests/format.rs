@@ -22,8 +22,14 @@ fn formats_a_loop_device_as_fat32() {
     });
     let (out, status) = run_helper(&job.to_string());
 
-    assert!(status.success(), "helper exited non-zero. stdout was:\n{out}");
-    assert!(finished_ok(&out), "no Done message in helper stdout:\n{out}");
+    assert!(
+        status.success(),
+        "helper exited non-zero. stdout was:\n{out}"
+    );
+    assert!(
+        finished_ok(&out),
+        "no Done message in helper stdout:\n{out}"
+    );
 
     // Probe with `blkid` to confirm a FAT32 filesystem now lives on the first
     // partition. blkid is part of util-linux and always available where

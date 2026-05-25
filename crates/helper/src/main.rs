@@ -217,7 +217,9 @@ fn describe_job(job: &Job) -> String {
             filesystem.label()
         ),
         Job::Ventoy {
-            device_path, update, ..
+            device_path,
+            update,
+            ..
         } => format!(
             "Job: {} Ventoy → {}",
             if *update { "update" } else { "install" },

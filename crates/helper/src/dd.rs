@@ -117,8 +117,8 @@ pub fn run(
 /// `expected` — catching a silent bad write or failing flash.
 fn verify(device: &Path, total: u64, expected: blake3::Hash, abort: &AtomicBool) -> Result<()> {
     emit::phase("Verifying");
-    let mut dev = File::open(device)
-        .with_context(|| format!("reopening {} to verify", device.display()))?;
+    let mut dev =
+        File::open(device).with_context(|| format!("reopening {} to verify", device.display()))?;
     dev.seek(SeekFrom::Start(0)).context("seeking the device")?;
 
     let mut hash = blake3::Hasher::new();

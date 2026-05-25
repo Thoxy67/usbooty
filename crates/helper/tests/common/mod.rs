@@ -55,9 +55,7 @@ impl LoopDevice {
                 String::from_utf8_lossy(&out.stderr).trim()
             );
         }
-        let device = PathBuf::from(
-            String::from_utf8_lossy(&out.stdout).trim().to_string(),
-        );
+        let device = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim().to_string());
         LoopDevice { backing, device }
     }
 
@@ -73,10 +71,7 @@ impl LoopDevice {
 impl Drop for LoopDevice {
     fn drop(&mut self) {
         // Best effort: detach the loop, then unlink the sparse file.
-        let _ = Command::new("losetup")
-            .arg("-d")
-            .arg(&self.device)
-            .status();
+        let _ = Command::new("losetup").arg("-d").arg(&self.device).status();
         let _ = std::fs::remove_file(&self.backing);
     }
 }

@@ -84,6 +84,8 @@ pub fn analyze(path: &Path) -> IsoReport {
     //   * Debian live     → label `persistence`, append `persistence`
     //   * Fedora live     → label `OVERLAY`, append `rd.live.overlay=LABEL=…`
     //   * openSUSE live   → label `cow`, no kernel-arg change
+    //   * archiso (Arch / CachyOS / Manjaro) → label `PERSISTENCE`, append
+    //     `cow_label=PERSISTENCE` (alongside the existing `archisobasedir=arch`)
     if report.os_kind == OsKind::Linux {
         let root = list_dir(&iso, &[]).unwrap_or_default();
         let has_casper = root
@@ -95,6 +97,13 @@ pub fn analyze(path: &Path) -> IsoReport {
         let has_liveos = root
             .iter()
             .any(|(name, is_dir, _)| *is_dir && name == "liveos");
+        // archiso layout: `/arch/boot/x86_64/vmlinuz-*`. Catches upstream Arch
+        // plus every derivative that ships archiso unchanged (CachyOS,
+        // EndeavourOS, Manjaro, …).
+        let has_arch = root
+            .iter()
+            .any(|(name, is_dir, _)| *is_dir && name == "arch")
+            && list_dir(&iso, &["arch", "boot"]).is_some();
         // openSUSE / kiwi-live: marker file in /boot.
         let opensuse = report.label.to_ascii_lowercase().contains("opensuse")
             || list_dir(&iso, &["boot", "x86_64", "loader"]).is_some();
@@ -111,6 +120,8 @@ pub fn analyze(path: &Path) -> IsoReport {
             Some(PersistenceKind::FedoraOverlay)
         } else if opensuse {
             Some(PersistenceKind::OpenSuseCow)
+        } else if has_arch {
+            Some(PersistenceKind::ArchOverlay)
         } else {
             None
         };
@@ -191,16 +202,20 @@ fn augment_from_udf(udf: &mut usbooty_core::udf::UdfFs<File>, report: &mut IsoRe
         }
     }
 
-    // Windows install image under /sources/.
+    // Windows install image under /sources/. The FID's `icb.length` is the
+    // length of the File Entry descriptor itself (one sector), not the file
+    // size, so look up `information_length` from each matching FE.
     if let Some(sources) = udf.list(&["sources"]) {
+        let names: Vec<String> = sources
+            .iter()
+            .map(|e| e.name.to_ascii_lowercase())
+            .filter(|n| n == "install.wim" || n == "install.esd" || n == "install.swm")
+            .collect();
         let mut wim_size = 0u64;
-        for entry in &sources {
-            let name = entry.name.to_ascii_lowercase();
-            if name == "install.wim" || name == "install.esd" || name == "install.swm" {
-                report.has_install_wim = true;
-                report.install_wim_is_esd |= name == "install.esd";
-                wim_size += entry.icb.length as u64;
-            }
+        for name in &names {
+            report.has_install_wim = true;
+            report.install_wim_is_esd |= name == "install.esd";
+            wim_size += udf.file_size(&["sources", name]).unwrap_or(0);
         }
         if report.has_install_wim {
             report.install_wim_size = Some(wim_size);
@@ -344,12 +359,14 @@ pub struct IsoHashes {
     pub blake3: String,
 }
 
-/// Compute all five digests of `path` in a single read pass.
+/// Compute all five digests of `path` in a single read pass, invoking
+/// `progress(done, total)` at least once per ~64 MiB read so the UI can
+/// surface a percentage instead of an opaque "Computing…".
 ///
 /// Slow on a multi-gigabyte image (disk-read bound, not CPU bound — running
 /// five hashers concurrently costs nothing on top of the read), so call this
 /// off the UI thread.
-pub fn compute_hashes(path: &Path) -> IsoHashes {
+pub fn compute_hashes(path: &Path, mut progress: impl FnMut(u64, u64)) -> IsoHashes {
     use md5::Md5;
     use sha1::Sha1;
     use sha2::{Digest, Sha256, Sha512};
@@ -357,6 +374,7 @@ pub fn compute_hashes(path: &Path) -> IsoHashes {
     let Ok(mut file) = File::open(path) else {
         return IsoHashes::default();
     };
+    let total = file.metadata().map(|m| m.len()).unwrap_or(0);
     let mut md5 = Md5::new();
     let mut sha1 = Sha1::new();
     let mut sha256 = Sha256::new();
@@ -364,6 +382,11 @@ pub fn compute_hashes(path: &Path) -> IsoHashes {
     let mut blake3 = blake3::Hasher::new();
 
     let mut buf = vec![0u8; 1024 * 1024];
+    let mut done = 0u64;
+    // Reporting every 1-MiB read would flood the Qt thread, so coarse-grain
+    // to one update per ~64 MiB of progress.
+    const REPORT_EVERY: u64 = 64 * 1024 * 1024;
+    let mut next_report = 0u64;
     loop {
         match file.read(&mut buf) {
             Ok(0) => break,
@@ -374,10 +397,16 @@ pub fn compute_hashes(path: &Path) -> IsoHashes {
                 sha256.update(chunk);
                 sha512.update(chunk);
                 blake3.update(chunk);
+                done += n as u64;
+                if done >= next_report {
+                    progress(done, total);
+                    next_report = done + REPORT_EVERY;
+                }
             }
             Err(_) => return IsoHashes::default(),
         }
     }
+    progress(total.max(done), total.max(done));
 
     IsoHashes {
         md5: hex(&md5.finalize()),

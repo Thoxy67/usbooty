@@ -5,6 +5,7 @@
 //! sibling modules; this file is the Qt-facing surface.
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use cxx_qt::{CxxQtType, Threading};
@@ -38,6 +39,9 @@ pub mod qobject {
         #[qproperty(QString, iso_sha1)]
         #[qproperty(QString, iso_sha512)]
         #[qproperty(QString, iso_blake3)]
+        // 0.0..=1.0 while `compute_hashes` runs; the UI binds to it to show
+        // a percentage instead of a frozen "Computing…" placeholder.
+        #[qproperty(f64, hash_progress)]
         // The application version, for the About dialog.
         #[qproperty(QString, app_version)]
         // Target devices: newline-separated display strings for the combo box.
@@ -107,6 +111,10 @@ pub mod qobject {
         // Newline-joined warnings raised by the SBAT/DBX revocation scan of
         // the ISO's signed EFI binaries; empty when no issue was found.
         #[qproperty(QString, revocation_warnings)]
+        // Short warning from a background SMART probe of the selected device
+        // (reallocated sectors, temperature warnings, failing prediction);
+        // empty when the device looks healthy or smartmontools isn't installed.
+        #[qproperty(QString, smart_warning)]
         // Advisory warning about missing external tools (empty if all present).
         #[qproperty(QString, dep_warning)]
         // Windows-download dialog: newline-separated language / option lists.
@@ -126,6 +134,11 @@ pub mod qobject {
         /// Set the source ISO from a path or `file://` URL.
         #[qinvokable]
         fn set_iso(self: Pin<&mut AppController>, path: &QString);
+        /// Forget the currently-loaded source ISO and reset every field
+        /// derived from it (path, summary, label, OS chip, digests,
+        /// persistence support, revocation warnings, fit warning).
+        #[qinvokable]
+        fn clear_iso(self: Pin<&mut AppController>);
         /// Validate inputs and launch the privileged helper.
         #[qinvokable]
         fn start(self: Pin<&mut AppController>);
@@ -135,9 +148,6 @@ pub mod qobject {
         /// Whether a confirmation dialog should be shown before starting.
         #[qinvokable]
         fn can_start(self: &AppController) -> bool;
-        /// A human-readable description of the device about to be erased.
-        #[qinvokable]
-        fn confirm_text(self: &AppController) -> QString;
         /// Fetch the language list for a Windows release (by `RELEASES` index).
         #[qinvokable]
         fn win_fetch_languages(self: Pin<&mut AppController>, version_index: i32);
@@ -164,6 +174,41 @@ pub mod qobject {
         /// is the fast F3 fake-capacity check, `1` is the full bad-blocks scan.
         #[qinvokable]
         fn start_check(self: Pin<&mut AppController>, mode_index: i32);
+        /// Eject (power-off) the currently-selected device using `udisksctl`
+        /// when available, falling back to `eject -F`. Best-effort; logs the
+        /// outcome via `set_status` and clears the device selection on success.
+        #[qinvokable]
+        fn eject_device(self: Pin<&mut AppController>);
+
+        // ---- Structured accessors for the selected device, kept separate
+        //      so the confirm dialog can lay them out visually instead of
+        //      crammed into a single line of `confirm_text`.
+        #[qinvokable]
+        fn selected_model(self: &AppController) -> QString;
+        #[qinvokable]
+        fn selected_size_text(self: &AppController) -> QString;
+        #[qinvokable]
+        fn selected_path(self: &AppController) -> QString;
+        #[qinvokable]
+        fn selected_is_internal(self: &AppController) -> bool;
+        #[qinvokable]
+        fn selected_bus(self: &AppController) -> QString;
+        #[qinvokable]
+        fn selected_serial(self: &AppController) -> QString;
+        /// Largest persistence size (in MiB) that still leaves room for the
+        /// ISO + a small partition-table margin on the selected device.
+        /// Returns 0 when the slider should stay at zero.
+        #[qinvokable]
+        fn max_persistence_mib(self: &AppController) -> i32;
+        /// The current label trimmed/sanitized to the limits of the chosen
+        /// filesystem (FAT32 → 11 chars upper, NTFS → 32 chars, exFAT → 11
+        /// chars, ext4 → 16 chars). Used as a tooltip preview on the field.
+        #[qinvokable]
+        fn sanitized_label(self: &AppController) -> QString;
+        /// Combined `lsblk -O` and `udevadm info` dump for the selected
+        /// device, for the confirm dialog's "Inspect" panel.
+        #[qinvokable]
+        fn inspect_selected(self: &AppController) -> QString;
     }
 
     #[auto_cxx_name]
@@ -177,9 +222,16 @@ pub mod qobject {
 }
 
 /// Handle to a running job, kept so [`AppController::cancel`] can reach it.
+///
+/// Helper-driven jobs (DD, partitioned, format, backup, check) cancel by
+/// writing `cancel` to the helper's stdin. The Windows-ISO download runs in
+/// a plain worker thread instead, with no helper, so it uses an atomic flag
+/// that the download loop polls.
 pub struct JobHandle {
     /// The helper's stdin — writing `cancel` here aborts it.
     pub stdin: Arc<Mutex<Option<std::process::ChildStdin>>>,
+    /// Cancellation flag for the Windows-ISO download.
+    pub download_abort: Option<Arc<AtomicBool>>,
 }
 
 /// Backing storage for [`qobject::AppController`].
@@ -192,6 +244,7 @@ pub struct AppControllerRust {
     iso_sha1: QString,
     iso_sha512: QString,
     iso_blake3: QString,
+    hash_progress: f64,
     app_version: QString,
     devices: QString,
     selected_device: i32,
@@ -240,6 +293,7 @@ pub struct AppControllerRust {
     eta: QString,
     fit_warning: QString,
     revocation_warnings: QString,
+    smart_warning: QString,
     dep_warning: QString,
     win_languages: QString,
     win_options: QString,
@@ -266,6 +320,7 @@ impl Default for AppControllerRust {
             iso_sha1: QString::default(),
             iso_sha512: QString::default(),
             iso_blake3: QString::default(),
+            hash_progress: 0.0,
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
             devices: QString::default(),
             selected_device: -1,
@@ -314,6 +369,7 @@ impl Default for AppControllerRust {
             eta: QString::default(),
             fit_warning: QString::default(),
             revocation_warnings: QString::default(),
+            smart_warning: QString::default(),
             dep_warning: QString::from(&crate::deps::warning()),
             win_languages: QString::default(),
             win_options: QString::default(),
@@ -345,20 +401,40 @@ impl qobject::AppController {
         self.refresh_fit_warning();
     }
 
-    /// Select a target device by index, then refresh the capacity warning.
+    /// Select a target device by index, then refresh the capacity warning
+    /// and kick off a background SMART probe of the chosen device.
     pub fn select_device(mut self: core::pin::Pin<&mut Self>, index: i32) {
         self.as_mut().set_selected_device(index);
-        self.refresh_fit_warning();
+        self.as_mut().set_smart_warning(QString::default());
+        self.as_mut().refresh_fit_warning();
+        self.as_mut().probe_smart();
+    }
+
+    /// Spawn a background thread that runs `smartctl --json` against the
+    /// currently-selected device and publishes any warning to
+    /// `smart_warning`. Silent when smartmontools isn't installed.
+    fn probe_smart(self: core::pin::Pin<&mut Self>) {
+        let Some(device) = self.selected_info().cloned() else {
+            return;
+        };
+        let qt = self.qt_thread();
+        std::thread::spawn(move || {
+            let warning = crate::smart::probe(&device.path).unwrap_or_default();
+            if warning.is_empty() {
+                return;
+            }
+            let _ = qt.queue(
+                move |mut ctrl: core::pin::Pin<&mut qobject::AppController>| {
+                    ctrl.as_mut().set_smart_warning(QString::from(&warning));
+                },
+            );
+        });
     }
 
     /// Recompute [`fit_warning`](Self::fit_warning) from the current ISO and
     /// selected device — set to a message when the image cannot possibly fit.
     fn refresh_fit_warning(mut self: core::pin::Pin<&mut Self>) {
-        let iso_bytes = self
-            .rust()
-            .iso_report
-            .as_ref()
-            .map_or(0, |r| r.total_size);
+        let iso_bytes = self.rust().iso_report.as_ref().map_or(0, |r| r.total_size);
         let device = self
             .selected_info()
             .map(|d| (d.model_name().to_string(), d.size));
@@ -389,6 +465,29 @@ impl qobject::AppController {
         }
         let report = crate::iso::analyze(&path_buf);
         self.apply_iso(&path, report, None);
+    }
+
+    /// Reset every field derived from the source ISO so the slot looks
+    /// "fresh" again. Used by the *Clear source image* menu entry; the
+    /// inverse of `apply_iso`.
+    pub fn clear_iso(mut self: core::pin::Pin<&mut Self>) {
+        self.as_mut().set_iso_path(QString::default());
+        self.as_mut()
+            .set_iso_summary(QString::from("No image selected"));
+        self.as_mut().set_label(QString::default());
+        self.as_mut().set_windows_iso(false);
+        self.as_mut().set_linux_iso(false);
+        self.as_mut().set_persistence_supported(false);
+        self.as_mut().set_persistence_size(0);
+        self.as_mut().set_iso_md5(QString::default());
+        self.as_mut().set_iso_sha1(QString::default());
+        self.as_mut().set_iso_sha256(QString::default());
+        self.as_mut().set_iso_sha512(QString::default());
+        self.as_mut().set_iso_blake3(QString::default());
+        self.as_mut().set_hash_progress(0.0);
+        self.as_mut().set_revocation_warnings(QString::default());
+        self.as_mut().rust_mut().iso_report = None;
+        self.refresh_fit_warning();
     }
 
     /// Set the source ISO from a just-downloaded file whose digests were
@@ -456,12 +555,11 @@ impl qobject::AppController {
             // hashers updated per chunk), so leave the digests blank until
             // the user explicitly asks for them via `compute_hashes()`.
             None => {
-                let placeholder = QString::default();
-                self.as_mut().set_iso_md5(placeholder.clone());
-                self.as_mut().set_iso_sha1(placeholder.clone());
-                self.as_mut().set_iso_sha256(placeholder.clone());
-                self.as_mut().set_iso_sha512(placeholder.clone());
-                self.as_mut().set_iso_blake3(placeholder);
+                self.as_mut().set_iso_md5(QString::default());
+                self.as_mut().set_iso_sha1(QString::default());
+                self.as_mut().set_iso_sha256(QString::default());
+                self.as_mut().set_iso_sha512(QString::default());
+                self.as_mut().set_iso_blake3(QString::default());
             }
         }
 
@@ -479,35 +577,9 @@ impl qobject::AppController {
             // Ventoy: an ISO is optional, but if given it must fit.
             3 => self.fit_warning().to_string().is_empty(),
             _ => {
-                !self.iso_path().to_string().is_empty()
-                    && self.fit_warning().to_string().is_empty()
+                !self.iso_path().to_string().is_empty() && self.fit_warning().to_string().is_empty()
             }
         }
-    }
-
-    /// Describe what is about to happen, for the confirmation dialog.
-    pub fn confirm_text(&self) -> QString {
-        let Some(dev) = self.selected_info() else {
-            return QString::from("No device selected.");
-        };
-        if *self.method() == 3 && *self.ventoy_update() {
-            return QString::from(&format!(
-                "Ventoy on {} will be updated — existing files are kept.",
-                dev.display()
-            ));
-        }
-        let mut text = format!(
-            "All data on {} will be permanently erased.",
-            dev.display()
-        );
-        // Make an internal disk impossible to mistake for a USB drive.
-        if !dev.removable {
-            text.push_str(
-                "\n\n⚠ This is an INTERNAL (non-removable) disk — \
-                 make absolutely sure this is the device you mean to erase.",
-            );
-        }
-        QString::from(&text)
     }
 
     /// Validate inputs, build a [`Job`], and spawn the privileged helper.
@@ -534,6 +606,27 @@ impl qobject::AppController {
                  the device list has been refreshed; check the target and start again.",
             ));
             self.as_mut().refresh_devices();
+            return;
+        }
+
+        // Pre-flight: the GUI runs as the user, so we can't open the device
+        // for writing here — that's the helper's job, and it's run with sudo.
+        // We *can* read /proc/mounts to catch the most common avoidable
+        // failure (a partition still mounted from a file manager), which the
+        // helper would otherwise have to fight through with `unmount_all`.
+        if let Some(mountpoint) = is_device_mounted(&selected.path) {
+            self.as_mut().set_status(QString::from(&format!(
+                "A partition of {} is still mounted at {mountpoint}. \
+                 Unmount it (and close any file manager that has it open) and try again.",
+                selected.path,
+            )));
+            return;
+        }
+        if !std::path::Path::new(&selected.path).exists() {
+            self.as_mut().set_status(QString::from(&format!(
+                "{} no longer exists — was the drive removed?",
+                selected.path,
+            )));
             return;
         }
 
@@ -672,6 +765,7 @@ impl qobject::AppController {
         let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
         let handle = JobHandle {
             stdin: stdin_slot.clone(),
+            download_abort: None,
         };
         let qt_thread = self.qt_thread();
 
@@ -740,7 +834,16 @@ impl qobject::AppController {
             .set_status(QString::from("Downloading Windows ISO…"));
 
         let qt = self.qt_thread();
-        std::thread::spawn(move || crate::runner::download_windows_url(qt, url));
+        let abort = Arc::new(AtomicBool::new(false));
+        let abort_clone = abort.clone();
+        std::thread::spawn(move || crate::runner::download_windows_url(qt, url, abort_clone));
+
+        // Park a JobHandle so cancel() can reach the download — the
+        // stdin slot stays empty because there is no helper to talk to.
+        self.as_mut().rust_mut().job = Some(JobHandle {
+            stdin: Arc::new(Mutex::new(None)),
+            download_abort: Some(abort),
+        });
     }
 
     /// Open Microsoft's official download page in the system browser — the
@@ -757,7 +860,8 @@ impl qobject::AppController {
 
     /// Kick off off-thread digest computation for the currently-loaded ISO.
     /// Sets every digest field to a "Computing…" placeholder while the work
-    /// runs and fills them in as soon as it finishes.
+    /// runs and fills them in as soon as it finishes. `hash_progress` is
+    /// updated as fractions of completion so the UI can show a percent.
     pub fn compute_hashes(mut self: core::pin::Pin<&mut Self>) {
         let path = self.iso_path().to_string();
         if path.is_empty() {
@@ -769,6 +873,7 @@ impl qobject::AppController {
         self.as_mut().set_iso_sha256(placeholder.clone());
         self.as_mut().set_iso_sha512(placeholder.clone());
         self.as_mut().set_iso_blake3(placeholder);
+        self.as_mut().set_hash_progress(0.0);
 
         let qt = self.qt_thread();
         std::thread::spawn(move || crate::runner::compute_iso_hashes(qt, path));
@@ -806,6 +911,7 @@ impl qobject::AppController {
         let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
         let handle = JobHandle {
             stdin: stdin_slot.clone(),
+            download_abort: None,
         };
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
@@ -853,6 +959,7 @@ impl qobject::AppController {
         let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
         let handle = JobHandle {
             stdin: stdin_slot.clone(),
+            download_abort: None,
         };
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
@@ -861,7 +968,9 @@ impl qobject::AppController {
         self.as_mut().rust_mut().job = Some(handle);
     }
 
-    /// Ask the running helper to abort by writing `cancel` to its stdin.
+    /// Ask the running job to abort. Helper-driven jobs hear about it through
+    /// a `cancel` line on the helper's stdin; the Windows-ISO downloader
+    /// polls an atomic flag instead, so flip both.
     pub fn cancel(mut self: core::pin::Pin<&mut Self>) {
         if let Some(job) = &self.rust().job {
             if let Ok(mut guard) = job.stdin.lock() {
@@ -870,6 +979,9 @@ impl qobject::AppController {
                     let _ = writeln!(stdin, "cancel");
                     let _ = stdin.flush();
                 }
+            }
+            if let Some(abort) = &job.download_abort {
+                abort.store(true, std::sync::atomic::Ordering::SeqCst);
             }
         }
         self.as_mut().set_status(QString::from("Cancelling…"));
@@ -882,6 +994,205 @@ impl qobject::AppController {
             None
         } else {
             self.rust().device_list.get(idx as usize)
+        }
+    }
+
+    // ---- Selected-device accessors used by the confirm dialog ---------------
+
+    pub fn selected_model(&self) -> QString {
+        QString::from(self.selected_info().map(|d| d.model_name()).unwrap_or(""))
+    }
+
+    pub fn selected_size_text(&self) -> QString {
+        QString::from(
+            self.selected_info()
+                .map(|d| usbooty_core::device::format_size(d.size))
+                .unwrap_or_default(),
+        )
+    }
+
+    pub fn selected_path(&self) -> QString {
+        QString::from(self.selected_info().map(|d| d.path.as_str()).unwrap_or(""))
+    }
+
+    pub fn selected_is_internal(&self) -> bool {
+        self.selected_info().is_some_and(|d| !d.removable)
+    }
+
+    pub fn selected_bus(&self) -> QString {
+        QString::from(
+            self.selected_info()
+                .and_then(|d| d.bus.as_deref())
+                .unwrap_or(""),
+        )
+    }
+
+    pub fn selected_serial(&self) -> QString {
+        QString::from(
+            self.selected_info()
+                .and_then(|d| d.serial.as_deref())
+                .unwrap_or(""),
+        )
+    }
+
+    /// Compute the largest persistence size that still leaves room for the
+    /// ISO + a 64 MiB partition-table / filesystem-overhead margin. Returns
+    /// 0 when the slider should stay disabled (no device, no ISO, no room).
+    pub fn max_persistence_mib(&self) -> i32 {
+        let Some(device) = self.selected_info() else {
+            return 0;
+        };
+        let iso_size = self
+            .rust()
+            .iso_report
+            .as_ref()
+            .map_or(0u64, |r| r.total_size);
+        const MARGIN: u64 = 64 * 1024 * 1024;
+        let usable = device.size.saturating_sub(iso_size).saturating_sub(MARGIN);
+        let mib = usable / (1024 * 1024);
+        i32::try_from(mib).unwrap_or(i32::MAX)
+    }
+
+    /// Trim the current label down to whatever fits on the chosen filesystem,
+    /// matching what the helper will end up writing. Pure preview, no state
+    /// change — surfaced as a tooltip on the volume-label field.
+    pub fn sanitized_label(&self) -> QString {
+        let label = self.label().to_string();
+        let cleaned = match *self.filesystem() {
+            // FAT32: 11 chars, upper-cased, no extended chars.
+            0 => label
+                .chars()
+                .filter(|c| c.is_ascii() && !c.is_control())
+                .take(11)
+                .collect::<String>()
+                .to_ascii_uppercase(),
+            // NTFS: up to 32 chars (UTF-16 code units, kept simple here).
+            1 => label.chars().take(32).collect::<String>(),
+            // exFAT: 11 chars.
+            2 => label.chars().take(11).collect::<String>(),
+            // ext4: 16 bytes.
+            3 => {
+                let mut out = String::new();
+                for c in label.chars() {
+                    if out.len() + c.len_utf8() > 16 {
+                        break;
+                    }
+                    out.push(c);
+                }
+                out
+            }
+            _ => label,
+        };
+        QString::from(&cleaned)
+    }
+
+    /// `lsblk` + `udevadm info` for the selected device, joined into one
+    /// human-readable dump. Returns an empty string when no device is
+    /// selected. Blocking — the dialog opens once it returns.
+    pub fn inspect_selected(&self) -> QString {
+        let Some(device) = self.selected_info() else {
+            return QString::default();
+        };
+        let path = device.path.clone();
+        // lsblk: passing both `-O` (all columns) and `--output` blanks the
+        // output on most versions, so pick a useful column set explicitly.
+        // Dropping `-d` keeps the disk + its partitions, which is exactly
+        // what the user wants to see before erasing.
+        let lsblk = std::process::Command::new("lsblk")
+            .args([
+                "-p",
+                "--output",
+                "NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,PARTLABEL,MOUNTPOINTS,MODEL,VENDOR,TRAN,REV,ROTA,RM,RO,HOTPLUG",
+            ])
+            .arg(&path)
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_else(|e| format!("(lsblk failed: {e})"));
+        let udev_raw = std::process::Command::new("udevadm")
+            .args(["info", "--query=property", "--name"])
+            .arg(&path)
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_else(|e| format!("(udevadm failed: {e})"));
+        let udev = clean_udev(&udev_raw);
+        // smartctl: info + overall health + attribute table is the
+        // "is this drive ok?" subset. Self-test and error logs would bloat
+        // the panel for no everyday benefit. Exit code is non-zero whenever
+        // SMART is unsupported or permission is denied (both common), so
+        // the panel inspects stderr to give a useful message either way.
+        let smart = match std::process::Command::new("smartctl")
+            .args(["-i", "-H", "-A"])
+            .arg(&path)
+            .output()
+        {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let combined = stdout.trim().to_string();
+                if combined.contains("Permission denied") || stderr.contains("Permission denied") {
+                    "(smartctl needs root for raw device access — either run\n \
+                       sudo chmod u+s $(which smartctl)\n \
+                     once to setuid the binary, or launch usbooty with sudo.)"
+                        .to_string()
+                } else if combined.is_empty() {
+                    let tail = stderr.trim();
+                    if tail.is_empty() {
+                        "(smartctl returned no output — device may not expose SMART)".to_string()
+                    } else {
+                        format!("(smartctl: {tail})")
+                    }
+                } else {
+                    combined
+                }
+            }
+            Err(_) => "(smartctl not installed — install the `smartmontools` package \
+                       to see SMART health here)"
+                .to_string(),
+        };
+        let combined = format!(
+            "── lsblk ───────────────────────────────────────────\n{lsblk}\n\
+             ── udevadm ─────────────────────────────────────────\n{udev}\n\
+             ── smartctl ────────────────────────────────────────\n{smart}"
+        );
+        QString::from(&combined)
+    }
+
+    /// Try to power off the currently-selected USB device. Best-effort: prefers
+    /// `udisksctl power-off` (the desktop standard, handles unmount + safe
+    /// removal in one call), falling back to `eject -F`. Either tool runs as
+    /// the user — no helper hop needed. The selection is cleared and the
+    /// device list refreshed on success so the now-detached device disappears
+    /// from the combo.
+    pub fn eject_device(mut self: core::pin::Pin<&mut Self>) {
+        let Some(device) = self.selected_info().cloned() else {
+            self.as_mut()
+                .set_status(QString::from("No device selected"));
+            return;
+        };
+        let path = device.path.clone();
+        let result = std::process::Command::new("udisksctl")
+            .args(["power-off", "-b", &path])
+            .output()
+            .or_else(|_| {
+                std::process::Command::new("eject")
+                    .args(["-F", &path])
+                    .output()
+            });
+        match result {
+            Ok(out) if out.status.success() => {
+                self.as_mut()
+                    .set_status(QString::from(&format!("Ejected {path}")));
+                self.refresh_devices();
+            }
+            Ok(out) => {
+                let err = String::from_utf8_lossy(&out.stderr);
+                self.as_mut()
+                    .set_status(QString::from(&format!("Eject failed: {}", err.trim())));
+            }
+            Err(e) => {
+                self.as_mut()
+                    .set_status(QString::from(&format!("Eject failed: {e}")));
+            }
         }
     }
 }
@@ -909,4 +1220,51 @@ fn trimmed_opt(s: &str) -> Option<String> {
 /// leading and trailing whitespace because Windows compares them exactly.
 fn non_empty_opt(s: &str) -> Option<String> {
     (!s.is_empty()).then(|| s.to_string())
+}
+
+/// Strip noisy duplicates from a `udevadm info --query=property` dump:
+/// every `ID_FOO_ENC=…` is the same value as `ID_FOO=…` with spaces and
+/// other bytes hex-encoded, so removing them roughly halves the output
+/// without losing any information.
+fn clean_udev(raw: &str) -> String {
+    raw.lines()
+        .filter(|line| {
+            let key = line.split('=').next().unwrap_or("");
+            !key.ends_with("_ENC")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Return the mount-point of the first mounted partition of `device_path`,
+/// or `None` when nothing on the device is mounted. Reads `/proc/mounts`
+/// directly — no root required and no race that matters at this resolution
+/// (the helper will re-check with `umount` before writing).
+///
+/// Matches `/dev/sdc` against `/dev/sdc`, `/dev/sdc1`, `/dev/sdc2`, … by
+/// checking the prefix and then that the next char is either nothing or a
+/// digit. NVMe partitions (`nvme0n1p1`) work the same way.
+fn is_device_mounted(device_path: &str) -> Option<String> {
+    let mounts = std::fs::read_to_string("/proc/mounts").ok()?;
+    for line in mounts.lines() {
+        let mut parts = line.split_whitespace();
+        let source = parts.next()?;
+        let target = parts.next()?;
+        if source == device_path {
+            return Some(target.to_string());
+        }
+        if let Some(tail) = source.strip_prefix(device_path) {
+            // /dev/sdc1, /dev/sdc12 — partition number suffix.
+            // /dev/nvme0n1p1 — `p` then digits.
+            let first = tail.chars().next();
+            if first.is_some_and(|c| c.is_ascii_digit())
+                || tail
+                    .strip_prefix('p')
+                    .is_some_and(|t| t.chars().next().is_some_and(|c| c.is_ascii_digit()))
+            {
+                return Some(target.to_string());
+            }
+        }
+    }
+    None
 }

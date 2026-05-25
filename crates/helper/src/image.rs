@@ -42,8 +42,7 @@ pub struct Image {
 /// *outermost* part of the filename only — `linux.iso.xz` is xz-decompressed
 /// once, yielding the raw ISO bytes.
 pub fn open(path: &Path) -> Result<Image> {
-    let file =
-        File::open(path).with_context(|| format!("opening image {}", path.display()))?;
+    let file = File::open(path).with_context(|| format!("opening image {}", path.display()))?;
     let compressed_size = file.metadata().context("stat image")?.len();
     let bytes_read = Arc::new(AtomicU64::new(0));
     let counter = ByteCounter::new(file, bytes_read.clone());

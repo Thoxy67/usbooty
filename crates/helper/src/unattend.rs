@@ -64,8 +64,7 @@ const ENABLE_ADAPTERS_COMMAND: &str = concat!(
 pub fn write(mount: &Path, setup: &WindowsSetup) -> Result<()> {
     let xml = generate(setup);
     let xml_path = mount.join("autounattend.xml");
-    std::fs::write(&xml_path, &xml)
-        .with_context(|| format!("writing {}", xml_path.display()))?;
+    std::fs::write(&xml_path, &xml).with_context(|| format!("writing {}", xml_path.display()))?;
 
     if setup.apply_debloat {
         let reg_path = mount.join(DEBLOAT_REG_NAME);
@@ -412,8 +411,7 @@ fn sanitize_computer_name(name: &str) -> String {
     name.trim()
         .chars()
         .filter(|c| {
-            !c.is_whitespace()
-                && !matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            !c.is_whitespace() && !matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
         })
         .take(15)
         .collect()
@@ -637,7 +635,10 @@ mod tests {
         let load = xml.find("reg load HKU\\DFT").expect("load present");
         let import = xml.find("usbooty-debloat.reg").expect("import present");
         let unload = xml.find("reg unload HKU\\DFT").expect("unload present");
-        assert!(load < import && import < unload, "commands must run in order");
+        assert!(
+            load < import && import < unload,
+            "commands must run in order"
+        );
     }
 
     #[test]

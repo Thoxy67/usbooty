@@ -29,7 +29,9 @@ pub fn run(
 ) -> Result<()> {
     let unmounted = blockdev::unmount_all(device_path)?;
     if unmounted > 0 {
-        emit::log(format!("Unmounted {unmounted} filesystem(s) from the source"));
+        emit::log(format!(
+            "Unmounted {unmounted} filesystem(s) from the source"
+        ));
     }
 
     // Open read-only — no need for O_EXCL, since we are not changing anything.
@@ -45,8 +47,8 @@ pub fn run(
         total
     ));
 
-    let out = File::create(image_path)
-        .with_context(|| format!("creating {}", image_path.display()))?;
+    let out =
+        File::create(image_path).with_context(|| format!("creating {}", image_path.display()))?;
     let mut writer = wrap_compressor(image_path, out)?;
     let compressing = writer_label(image_path);
     emit::log(format!("Output: {} {compressing}", image_path.display()));
@@ -86,12 +88,22 @@ pub fn run(
     emit::phase("Flushing");
     writer.flush().context("flushing the backup image")?;
     drop(writer);
+    // The compressor's Drop finalises the stream and closes the file, but
+    // close(2) does not durably persist anything. Re-open and fsync so the
+    // user yanking the disk right after "Done" doesn't lose the tail.
+    let sync_fd = File::open(image_path)
+        .with_context(|| format!("re-opening {} for fsync", image_path.display()))?;
+    nix::unistd::fsync(&sync_fd).context("fsync of the backup image")?;
+    drop(sync_fd);
 
     if opts.verify {
         verify(device_path, image_path, total, hasher.finalize(), abort)?;
     }
 
-    emit::log(format!("Done — saved {done} bytes to {}", image_path.display()));
+    emit::log(format!(
+        "Done — saved {done} bytes to {}",
+        image_path.display()
+    ));
     Ok(())
 }
 
@@ -120,7 +132,10 @@ fn verify(
             bail!("aborted by user");
         }
         let want = ((total - done) as usize).min(buf.len());
-        let n = img.reader.read(&mut buf[..want]).context("reading backup image")?;
+        let n = img
+            .reader
+            .read(&mut buf[..want])
+            .context("reading backup image")?;
         if n == 0 {
             bail!("backup image is shorter than the device");
         }

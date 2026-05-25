@@ -10,14 +10,13 @@
 //! cleanly without disturbing the partition table that already lives there.
 
 use anyhow::{bail, Context, Result};
-use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
 use std::process::Command;
 
 use usbooty_core::FileSystem;
 
-use crate::emit;
+use crate::{blockdev, emit};
 
 /// Distro-shipped locations of Syslinux's BIOS `mbr.bin` (the 440-byte master
 /// boot record stub). The first one that exists wins.
@@ -28,28 +27,22 @@ const MBR_CANDIDATES: &[&str] = &[
     "/usr/lib/SYSLINUX/mbr.bin",
 ];
 
-/// Install Syslinux on `partition` (the partition device node such as
-/// `/dev/sdb1`), then stamp `mbr.bin` onto `device` (the parent disk).
-/// `mount` is where `partition` is currently mounted (used for the ext4 path).
-pub fn install(
-    device: &Path,
-    partition: &str,
-    mount: &Path,
-    filesystem: FileSystem,
-) -> Result<()> {
+/// Lay down the Syslinux config and `ldlinux.sys` on the partition's
+/// filesystem. Run from **inside** the mount RAII scope — the partition is
+/// still mounted at `mount` and the bootloader needs that to install.
+///
+/// The MBR boot sector is intentionally **not** written here; call
+/// [`write_mbr`] after the mount drops so it can take an exclusive
+/// whole-disk lock.
+pub fn install_files(partition: &str, mount: &Path, filesystem: FileSystem) -> Result<()> {
     emit::phase("Installing Syslinux");
-
-    // Step 1: lay down the syslinux config and `ldlinux.sys` in the new FS.
     match filesystem {
-        FileSystem::Fat32 => install_fat(partition, mount)?,
-        FileSystem::Ext4 => install_extlinux(mount)?,
+        FileSystem::Fat32 => install_fat(partition, mount),
+        FileSystem::Ext4 => install_extlinux(mount),
         FileSystem::Ntfs | FileSystem::ExFat => {
             bail!("Syslinux installation is only supported on FAT32 or ext4");
         }
     }
-
-    // Step 2: write the MBR boot sector onto the parent disk.
-    write_mbr(device).context("writing the Syslinux MBR")
 }
 
 /// Run `syslinux --install` against a FAT partition node. The `--directory
@@ -99,8 +92,7 @@ fn ensure_syslinux_cfg(mount: &Path) -> Result<()> {
 /// living in `<mount>/syslinux/`.
 fn install_extlinux(mount: &Path) -> Result<()> {
     let target = mount.join("syslinux");
-    std::fs::create_dir_all(&target)
-        .with_context(|| format!("creating {}", target.display()))?;
+    std::fs::create_dir_all(&target).with_context(|| format!("creating {}", target.display()))?;
 
     // Mirror the isolinux config the same way as for FAT.
     let source_cfg = mount.join("isolinux").join("isolinux.cfg");
@@ -128,7 +120,11 @@ fn install_extlinux(mount: &Path) -> Result<()> {
 /// Write the Syslinux `mbr.bin` (a 440-byte boot-record stub) into the first
 /// 440 bytes of `device`, preserving the rest of the existing MBR (partition
 /// table + boot signature live at offset 440+ and must survive).
-fn write_mbr(device: &Path) -> Result<()> {
+///
+/// Must be called **after** every partition on `device` is unmounted, so the
+/// exclusive whole-disk open succeeds and the write isn't racing with the
+/// kernel's partition rescan.
+pub fn write_mbr(device: &Path) -> Result<()> {
     let mbr_path = MBR_CANDIDATES
         .iter()
         .find(|p| Path::new(p).is_file())
@@ -144,16 +140,14 @@ fn write_mbr(device: &Path) -> Result<()> {
         );
     }
 
-    let mut dev = OpenOptions::new()
-        .write(true)
-        .open(device)
-        .with_context(|| format!("opening {} to write the MBR", device.display()))?;
+    let mut dev = blockdev::open_exclusive(device)
+        .with_context(|| format!("opening {} exclusively to write the MBR", device.display()))?;
     dev.seek(SeekFrom::Start(0))
         .context("seeking to the start of the device")?;
     dev.write_all(&mbr[..440])
         .context("writing the Syslinux MBR stub")?;
-    dev.flush().ok();
-    nix::unistd::fsync(&dev).ok();
+    dev.flush().context("flushing the Syslinux MBR")?;
+    nix::unistd::fsync(&dev).context("fsync of the Syslinux MBR")?;
     emit::log(format!("Wrote Syslinux MBR stub from {mbr_path}"));
     Ok(())
 }
