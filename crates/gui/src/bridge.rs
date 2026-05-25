@@ -619,15 +619,16 @@ impl qobject::AppController {
             return;
         }
 
-        // Pre-flight: the GUI runs as the user, so we can't open the device
-        // for writing here — that's the helper's job, and it's run with sudo.
-        // We *can* read /proc/mounts to catch the most common avoidable
-        // failure (a partition still mounted from a file manager), which the
-        // helper would otherwise have to fight through with `unmount_all`.
-        if let Some(mountpoint) = is_device_mounted(&selected.path) {
+        // Pre-flight: ask the desktop session (via udisksctl) to release any
+        // partition of the target it still has mounted. udisksctl runs as the
+        // user, notifies file managers, and triggers the polkit prompt when
+        // needed, which is friendlier than letting the helper's kernel-level
+        // unmount fight through a still-open mount. Anything left mounted
+        // afterwards is reported and the job aborts.
+        if let Err(err) = unmount_device_partitions(&selected.path) {
             self.as_mut().set_status(QString::from(&format!(
-                "A partition of {} is still mounted at {mountpoint}. \
-                 Unmount it (and close any file manager that has it open) and try again.",
+                "Could not unmount {}: {err} \
+                 Close any file manager that has it open and try again.",
                 selected.path,
             )));
             return;
@@ -1256,35 +1257,55 @@ fn clean_udev(raw: &str) -> String {
         .join("\n")
 }
 
-/// Return the mount-point of the first mounted partition of `device_path`,
-/// or `None` when nothing on the device is mounted. Reads `/proc/mounts`
-/// directly — no root required and no race that matters at this resolution
-/// (the helper will re-check with `umount` before writing).
-///
-/// Matches `/dev/sdc` against `/dev/sdc`, `/dev/sdc1`, `/dev/sdc2`, … by
-/// checking the prefix and then that the next char is either nothing or a
-/// digit. NVMe partitions (`nvme0n1p1`) work the same way.
-fn is_device_mounted(device_path: &str) -> Option<String> {
-    let mounts = std::fs::read_to_string("/proc/mounts").ok()?;
+/// Collect every mounted source under `device_path` from `/proc/mounts` —
+/// the whole-disk node itself and any `sdc1`, `sdc12`, `nvme0n1p1`, …
+/// partition. Same prefix-then-digit / `p`-then-digit match the previous
+/// `is_device_mounted` used, just returning every hit instead of the first.
+fn mounted_sources(device_path: &str) -> Vec<String> {
+    let Ok(mounts) = std::fs::read_to_string("/proc/mounts") else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
     for line in mounts.lines() {
-        let mut parts = line.split_whitespace();
-        let source = parts.next()?;
-        let target = parts.next()?;
+        let Some(source) = line.split_whitespace().next() else {
+            continue;
+        };
         if source == device_path {
-            return Some(target.to_string());
+            out.push(source.to_string());
+            continue;
         }
         if let Some(tail) = source.strip_prefix(device_path) {
-            // /dev/sdc1, /dev/sdc12 — partition number suffix.
-            // /dev/nvme0n1p1 — `p` then digits.
             let first = tail.chars().next();
             if first.is_some_and(|c| c.is_ascii_digit())
                 || tail
                     .strip_prefix('p')
                     .is_some_and(|t| t.chars().next().is_some_and(|c| c.is_ascii_digit()))
             {
-                return Some(target.to_string());
+                out.push(source.to_string());
             }
         }
     }
-    None
+    out
+}
+
+/// Unmount every mounted partition of `device_path` via `udisksctl unmount`,
+/// which runs as the user and tells the desktop session to release the mount
+/// cleanly. Returns `Ok(_)` when no partitions remain mounted afterwards
+/// (whether we had to unmount any or not); returns `Err(_)` with the
+/// `udisksctl` stderr from the first failing partition otherwise.
+fn unmount_device_partitions(device_path: &str) -> Result<usize, String> {
+    let sources = mounted_sources(device_path);
+    let mut unmounted = 0_usize;
+    for source in sources {
+        let out = std::process::Command::new("udisksctl")
+            .args(["unmount", "-b", &source])
+            .output()
+            .map_err(|e| format!("running udisksctl: {e}."))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(format!("{source}: {stderr}"));
+        }
+        unmounted += 1;
+    }
+    Ok(unmounted)
 }
