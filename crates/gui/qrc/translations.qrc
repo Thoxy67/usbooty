@@ -1,0 +1,13 @@
+<!--
+  Qt resource bundle for compiled translations. The `.qm` files referenced
+  here are produced by `lrelease` from the `.ts` files in
+  `data/translations/`. Add a new <file> entry per locale you ship.
+
+  English (the source language) doesn't get a `.qm` — the source strings
+  baked into qsTr() calls are the English UI.
+-->
+<RCC>
+    <qresource prefix="/i18n">
+        <file alias="usbooty_fr.qm">../../../data/translations/usbooty_fr.qm</file>
+    </qresource>
+</RCC>

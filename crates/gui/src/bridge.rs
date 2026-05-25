@@ -115,6 +115,10 @@ pub mod qobject {
         // (reallocated sectors, temperature warnings, failing prediction);
         // empty when the device looks healthy or smartmontools isn't installed.
         #[qproperty(QString, smart_warning)]
+        // When true, the user has opted out of locale-based translation and
+        // wants the GUI in its English source language. Toggled from the
+        // ? menu's "Force English" item; live-switches via QTranslator.
+        #[qproperty(bool, force_english)]
         // Advisory warning about missing external tools (empty if all present).
         #[qproperty(QString, dep_warning)]
         // Windows-download dialog: newline-separated language / option lists.
@@ -209,6 +213,10 @@ pub mod qobject {
         /// device, for the confirm dialog's "Inspect" panel.
         #[qinvokable]
         fn inspect_selected(self: &AppController) -> QString;
+        /// Force the UI into English (true) or back to the system locale
+        /// (false). Live-switches via QTranslator — no restart needed.
+        #[qinvokable]
+        fn apply_force_english(self: Pin<&mut AppController>, force: bool);
     }
 
     #[auto_cxx_name]
@@ -294,6 +302,7 @@ pub struct AppControllerRust {
     fit_warning: QString,
     revocation_warnings: QString,
     smart_warning: QString,
+    force_english: bool,
     dep_warning: QString,
     win_languages: QString,
     win_options: QString,
@@ -370,6 +379,7 @@ impl Default for AppControllerRust {
             fit_warning: QString::default(),
             revocation_warnings: QString::default(),
             smart_warning: QString::default(),
+            force_english: false,
             dep_warning: QString::from(&crate::deps::warning()),
             win_languages: QString::default(),
             win_options: QString::default(),
@@ -1084,6 +1094,16 @@ impl qobject::AppController {
             _ => label,
         };
         QString::from(&cleaned)
+    }
+
+    /// Persist the *force English* state on the controller and route the
+    /// underlying QTranslator swap to the translation module. Qt emits a
+    /// LanguageChange event from removeTranslator/installTranslator, so the
+    /// UI re-evaluates every `qsTr` binding and the swap is visible
+    /// immediately.
+    pub fn apply_force_english(mut self: core::pin::Pin<&mut Self>, force: bool) {
+        self.as_mut().set_force_english(force);
+        crate::translations::set_force_english(force);
     }
 
     /// `lsblk` + `udevadm info` for the selected device, joined into one

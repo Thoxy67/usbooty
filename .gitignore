@@ -17,3 +17,12 @@
 /*.AppImage
 /packaging/appimage/linuxdeploy*
 /packaging/appimage/AppDir/
+
+# Compiled translation binaries — produced by `lrelease6` from the .ts
+# sources sitting next to them; reproducible from `update-translations.sh`,
+# baked into the binary at build time via crates/gui/qrc/translations.qrc.
+# The .ts files themselves stay tracked (translators edit those).
+/data/translations/*.qm
+# lupdate sometimes leaves backup files around.
+/data/translations/*.ts.bak
+/data/translations/*.ts~

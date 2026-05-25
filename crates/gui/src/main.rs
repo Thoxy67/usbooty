@@ -15,6 +15,7 @@ mod resources;
 mod runner;
 mod smart;
 mod timezones;
+mod translations;
 mod windisco;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
@@ -39,10 +40,22 @@ fn main() {
         app.set_application_name(&QString::from("usbooty"));
     }
 
+    // Pick the .qm matching the user's locale (LANG / LC_MESSAGES) from the
+    // baked-in qrc and install it on the application. Must run after the
+    // QGuiApplication exists; safe to skip if no translation is shipped.
+    translations::install_for_system_locale();
+
     let mut engine = QQmlApplicationEngine::new();
 
-    if let Some(engine) = engine.as_mut() {
-        engine.load(&QUrl::from("qrc:/qt/qml/com/usbooty/qml/main.qml"));
+    // Hand the translation module a pointer to the engine so the runtime
+    // language toggle can force a `retranslate()` after swapping
+    // translators. Done before `load()` so the engine is fully constructed.
+    if let Some(mut engine_pin) = engine.as_mut() {
+        // SAFETY: the pinned reference is borrowed only to grab a raw
+        // pointer the C++ side stores; the engine outlives the call.
+        let raw: *mut _ = unsafe { engine_pin.as_mut().get_unchecked_mut() };
+        translations::register_engine(raw);
+        engine_pin.load(&QUrl::from("qrc:/qt/qml/com/usbooty/qml/main.qml"));
     }
 
     if let Some(app) = app.as_mut() {

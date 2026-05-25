@@ -7,7 +7,7 @@ import com.usbooty
 ApplicationWindow {
     id: window
     visible: true
-    width: 670
+    width: 700
     // Height is content-driven (see binding below). Keep a generous floor
     // so a freshly-launched window doesn't snap to a sliver while QML is
     // still computing its first layout pass.
@@ -27,10 +27,11 @@ ApplicationWindow {
     // window is in the background / minimized to the taskbar.
     title: {
         if (app.busy && app.progress > 0)
-            return "usbooty — " + app.phase + " " + Math.round(app.progress * 100) + " %"
+            return "usbooty — " + qsTr(app.phase) + " "
+                 + Math.round(app.progress * 100) + " %"
         if (app.busy)
-            return "usbooty — " + (app.phase !== "" ? app.phase : "Working") + "…"
-        return "usbooty — Bootable USB Creator"
+            return "usbooty — " + (app.phase !== "" ? qsTr(app.phase) : qsTr("Working")) + "…"
+        return qsTr("usbooty — Bootable USB Creator")
     }
 
     AppController {
@@ -220,17 +221,24 @@ ApplicationWindow {
         property string iconGlyph: ""
         property Component iconComponent: null
         color: tint
-        implicitHeight: 52
+        // The header grows with its content so long translated subtitles
+        // wrap instead of clipping. 52 px stays the floor for the
+        // single-line English case.
+        implicitHeight: Math.max(52, headerRow.implicitHeight + 16)
         Layout.fillWidth: true
         RowLayout {
+            id: headerRow
             anchors.fill: parent
             anchors.leftMargin: 16
             anchors.rightMargin: 16
+            anchors.topMargin: 8
+            anchors.bottomMargin: 8
             spacing: 12
             Loader {
                 active: dh.iconComponent !== null
                 sourceComponent: dh.iconComponent
                 visible: active
+                Layout.alignment: Qt.AlignVCenter
             }
             Label {
                 visible: dh.iconComponent === null && dh.iconGlyph !== ""
@@ -238,6 +246,7 @@ ApplicationWindow {
                 color: "white"
                 font.pointSize: 22
                 font.bold: true
+                Layout.alignment: Qt.AlignVCenter
             }
             ColumnLayout {
                 spacing: 0
@@ -247,14 +256,83 @@ ApplicationWindow {
                     color: "white"
                     font.bold: true
                     font.pointSize: 12
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
                 }
                 Label {
                     text: dh.subtitle
                     visible: text !== ""
                     color: Qt.rgba(1, 1, 1, 0.82)
                     font.pointSize: 8
+                    // Subtitle is the most likely string to balloon in
+                    // translation; wrap rather than elide so the whole
+                    // sentence remains visible (the header just grows).
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
                 }
             }
+        }
+    }
+
+    // ---- Reusable ComboBox that elides + lets itself shrink -------------
+    // Qt's default ComboBox sets implicitWidth from its widest item, which
+    // makes a long-translated entry overflow tight layouts (e.g. our
+    // 2-column GridLayout for Options). Overriding contentItem + delegate
+    // forces both the selected-value display and the dropdown items to
+    // elide on the right. Layout.minimumWidth: 0 lets the parent shrink
+    // the combo without hitting Qt's implicit minimum.
+    component FormCombo: ComboBox {
+        id: fc
+        Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        contentItem: Label {
+            text: fc.displayText
+            leftPadding: 10
+            rightPadding: fc.indicator
+                ? fc.indicator.width + fc.spacing : 30
+            elide: Text.ElideRight
+            color: fc.palette.text
+            verticalAlignment: Text.AlignVCenter
+        }
+        // Cap the popup to the combo's width so dropdown items can't
+        // overflow horizontally either.
+        popup.width: fc.width
+        delegate: ItemDelegate {
+            width: fc.popup.width
+            highlighted: fc.highlightedIndex === index
+            contentItem: Label {
+                text: modelData
+                color: window.palette.text
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+    }
+
+    // ---- Reusable CheckBox whose label wraps on long translations -------
+    // The default CheckBox keeps its label on a single line and lets the
+    // text overflow when it doesn't fit. Override contentItem with a
+    // Label that:
+    //   * sets wrapMode: WordWrap;
+    //   * binds its width to the control width so WordWrap actually
+    //     triggers — without an explicit width the Label measures its
+    //     own desired width and Qt never gives WordWrap a box to break
+    //     against.
+    // Layout.fillWidth + minimumWidth: 0 lets the control take the cell
+    // width without refusing to shrink; the parent layout sizes it, the
+    // contentItem then wraps inside.
+    component WrapCheckBox: CheckBox {
+        id: wcb
+        Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        contentItem: Label {
+            text: wcb.text
+            font: wcb.font
+            color: wcb.palette.windowText
+            wrapMode: Text.WordWrap
+            verticalAlignment: Text.AlignVCenter
+            leftPadding: wcb.indicator.width + wcb.spacing
+            width: wcb.width
         }
     }
 
@@ -389,29 +467,38 @@ ApplicationWindow {
 
     menuBar: MenuBar {
         Menu {
-            title: "Device"
+            title: qsTr("Device")
             MenuItem {
-                text: "Quick check (fake-drive)…"
+                text: qsTr("Quick check (fake-drive)…")
                 enabled: !app.busy && app.selectedDevice >= 0
                 onTriggered: checkConfirm.openFor(0)
             }
             MenuItem {
-                text: "Full bad-blocks scan…"
+                text: qsTr("Full bad-blocks scan…")
                 enabled: !app.busy && app.selectedDevice >= 0
                 onTriggered: checkConfirm.openFor(1)
             }
             MenuSeparator { }
             MenuItem {
-                text: "Save snapshot to file…"
+                text: qsTr("Save snapshot to file…")
                 enabled: !app.busy && app.selectedDevice >= 0
                 onTriggered: backupDialog.open()
             }
         }
         Menu {
-            title: "?"
+            title: qsTr("?")
             MenuItem {
-                text: "About usbooty"
+                text: qsTr("About usbooty")
                 onTriggered: aboutDialog.open()
+            }
+            MenuSeparator { }
+            MenuItem {
+                // Checkable so the active state is visible at-a-glance.
+                // Hidden on English-locale machines (nothing to force).
+                text: qsTr("Force English")
+                checkable: true
+                checked: app.forceEnglish
+                onTriggered: app.applyForceEnglish(checked)
             }
         }
     }
@@ -469,9 +556,9 @@ ApplicationWindow {
             // Header reflects optionality so the user isn't blocked looking
             // for an ISO when they only want a plain format or a Ventoy
             // stick (which seeds itself empty if no ISO is given).
-            heading: app.method === 2 ? "Source image (not used)"
-                    : app.method === 3 ? "Source image (optional)"
-                    : "Source image"
+            heading: app.method === 2 ? qsTr("Source image (not used)")
+                    : app.method === 3 ? qsTr("Source image (optional)")
+                    : qsTr("Source image")
             accent: "#3498db"
             // The format-only method takes no source image.
             enabled: app.method !== 2
@@ -483,27 +570,27 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     readOnly: true
                     placeholderText:
-                        app.method === 2 ? "Not used for a plain format"
-                      : app.method === 3 ? "Optional — Ventoy lets you drop ISOs onto the data partition later"
-                      : "Choose an ISO image, or drag one onto the window…"
+                        app.method === 2 ? qsTr("Not used for a plain format")
+                      : app.method === 3 ? qsTr("Optional — Ventoy lets you drop ISOs onto the data partition later")
+                      : qsTr("Choose an ISO image, or drag one onto the window…")
                     text: app.isoPath
                 }
                 // Split button: "Browse…" plus a dropdown to download Windows.
                 SplitButton {
                     id: sourceBtn
-                    text: "Browse…"
+                    text: qsTr("Browse…")
                     enabled: !app.busy
                     onClicked: isoDialog.open()
                     onMenuRequested: sourceMenu.popup(sourceBtn, 0, sourceBtn.height)
                     Menu {
                         id: sourceMenu
                         MenuItem {
-                            text: "Download a Windows ISO…"
+                            text: qsTr("Download a Windows ISO…")
                             onTriggered: winDialog.open()
                         }
                         MenuSeparator { }
                         MenuItem {
-                            text: "Clear source image"
+                            text: qsTr("Clear source image")
                             enabled: app.isoPath !== ""
                             onTriggered: app.clearIso()
                         }
@@ -527,17 +614,17 @@ ApplicationWindow {
                     }
                     Pill {
                         visible: app.windowsIso
-                        label: "Windows"
+                        label: qsTr("Windows")
                         tint: "#0078D4"
                     }
                     Pill {
                         visible: app.linuxIso
-                        label: "Linux"
+                        label: qsTr("Linux")
                         tint: "#E67E22"
                     }
                 }
                 Label {
-                    text: app.isoSummary
+                    text: qsTr(app.isoSummary)
                     color: palette.placeholderText
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
@@ -560,15 +647,15 @@ ApplicationWindow {
                     visible: !parent.hasHashes
                     Button {
                         text: parent.parent.computing
-                            ? "Computing… " + Math.round(app.hashProgress * 100) + " %"
-                            : "Compute checksums"
+                            ? qsTr("Computing… %1 %").arg(Math.round(app.hashProgress * 100))
+                            : qsTr("Compute checksums")
                         enabled: !app.busy && !parent.parent.computing
                         onClicked: app.computeHashes()
                         ToolTip.delay: 500
                         ToolTip.visible: hovered
-                        ToolTip.text: "Stream the ISO through MD5, SHA-1, SHA-256, SHA-512 and " +
-                            "BLAKE3 in one pass. Disk-bound and CPU-heavy on a multi-GiB ISO; " +
-                            "skip it unless you want to cross-check against a published hash."
+                        ToolTip.text: qsTr("Stream the ISO through MD5, SHA-1, SHA-256, SHA-512 and "
+                            + "BLAKE3 in one pass. Disk-bound and CPU-heavy on a multi-GiB ISO; "
+                            + "skip it unless you want to cross-check against a published hash.")
                     }
                     // A thin progress bar inline with the button — exact %
                     // sits on the button, the bar gives a peripheral cue.
@@ -580,7 +667,7 @@ ApplicationWindow {
                         value: app.hashProgress
                     }
                     Label {
-                        text: "Checksums skipped — click to compute every digest."
+                        text: qsTr("Checksums skipped — click to compute every digest.")
                         visible: !parent.parent.computing
                         color: palette.placeholderText
                         font.pointSize: 9
@@ -651,12 +738,12 @@ ApplicationWindow {
         // ---- Step 2: target device -------------------------------------
         StepCard {
             step: 2
-            heading: "Target device"
+            heading: qsTr("Target device")
             accent: "#E67E22"
 
             RowLayout {
                 Layout.fillWidth: true
-                ComboBox {
+                FormCombo {
                     id: deviceBox
                     Layout.fillWidth: true
                     enabled: !app.busy && count > 0
@@ -664,7 +751,7 @@ ApplicationWindow {
                     currentIndex: app.selectedDevice
                     onActivated: function(index) { app.selectDevice(index) }
                     displayText: count > 0 ? currentText
-                                           : "No removable devices found"
+                                           : qsTr("No removable devices found")
 
                     // Two-line rows: hardware name above, capacity / bus /
                     // node below, with internal disks flagged in red.
@@ -700,18 +787,18 @@ ApplicationWindow {
                     }
                 }
                 Button {
-                    text: "Refresh"
+                    text: qsTr("Refresh")
                     enabled: !app.busy
                     onClicked: app.refreshDevices()
                     ToolTip.delay: 500
                     ToolTip.visible: hovered
-                    ToolTip.text: "Re-scan /sys/block for connected drives. " +
-                        "Usbooty already polls every few seconds while idle; " +
-                        "use this if you just hotplugged a device and want it instantly."
+                    ToolTip.text: qsTr("Re-scan /sys/block for connected drives. "
+                        + "Usbooty already polls every few seconds while idle; "
+                        + "use this if you just hotplugged a device and want it instantly.")
                 }
             }
-            CheckBox {
-                text: "Show non-removable (internal) disks"
+            WrapCheckBox {
+                text: qsTr("Show non-removable (internal) disks")
                 enabled: !app.busy
                 checked: app.showFixedDisks
                 onToggled: {
@@ -720,16 +807,16 @@ ApplicationWindow {
                 }
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Off by default — internal SATA/NVMe disks are filtered out " +
-                    "so they cannot be picked by mistake. Enable only when you really want " +
-                    "to target a fixed disk (lab, dual-boot stick, image dump)."
+                ToolTip.text: qsTr("Off by default — internal SATA/NVMe disks are filtered out "
+                    + "so they cannot be picked by mistake. Enable only when you really want "
+                    + "to target a fixed disk (lab, dual-boot stick, image dump).")
             }
         }
 
         // ---- Step 3: options -------------------------------------------
         StepCard {
             step: 3
-            heading: "Options"
+            heading: qsTr("Options")
             accent: "#16A085"
 
             GridLayout {
@@ -738,56 +825,60 @@ ApplicationWindow {
                 columnSpacing: 12
                 rowSpacing: 8
 
-                Label { text: "Write method" }
-                ComboBox {
+                Label { text: qsTr("Write method") }
+                FormCombo {
                     Layout.fillWidth: true
                     enabled: !app.busy
-                    model: ["DD image (raw copy)", "Partition & copy files",
-                            "Format only (no ISO)", "Ventoy (multi-boot USB)"]
+                    model: [qsTr("DD image (raw copy)"),
+                            qsTr("Partition & copy files"),
+                            qsTr("Format only (no ISO)"),
+                            qsTr("Ventoy (multi-boot USB)")]
                     currentIndex: app.method
                     onActivated: function(index) { app.method = index }
                     ToolTip.delay: 500
                     ToolTip.visible: hovered
-                    ToolTip.text:
-                        "DD — bit-for-bit copy of the ISO, no partitioning. Works for any " +
-                        "isohybrid (most Linux ISOs).\n\n" +
-                        "Partition & copy — usbooty creates a fresh partition table, formats it, " +
-                        "and copies the ISO files. Required for Windows install media and for " +
-                        "anything that needs persistence.\n\n" +
-                        "Format only — wipe + new partition table, no ISO involved.\n\n" +
-                        "Ventoy — install Ventoy so you can drop multiple ISOs on the data partition " +
-                        "and pick one at boot."
+                    ToolTip.text: qsTr(
+                        "DD — bit-for-bit copy of the ISO, no partitioning. Works for any "
+                        + "isohybrid (most Linux ISOs).\n\n"
+                        + "Partition & copy — usbooty creates a fresh partition table, formats it, "
+                        + "and copies the ISO files. Required for Windows install media and for "
+                        + "anything that needs persistence.\n\n"
+                        + "Format only — wipe + new partition table, no ISO involved.\n\n"
+                        + "Ventoy — install Ventoy so you can drop multiple ISOs on the data partition "
+                        + "and pick one at boot.")
                 }
 
-                Label { text: "Filesystem" }
-                ComboBox {
+                Label { text: qsTr("Filesystem") }
+                FormCombo {
                     Layout.fillWidth: true
                     // The filesystem is chosen automatically when writing an
                     // image; it is only user-selectable for a plain format.
                     enabled: !app.busy && app.method === 2
+                    // Filesystem names stay in their canonical form across
+                    // every language — wrapping in qsTr would be noise.
                     model: ["FAT32", "NTFS", "exFAT", "ext4"]
                     currentIndex: app.filesystem
                     onActivated: function(index) { app.filesystem = index }
                     ToolTip.visible: hovered && !enabled
-                    ToolTip.text: "When writing an image, the filesystem is chosen automatically."
+                    ToolTip.text: qsTr("When writing an image, the filesystem is chosen automatically.")
                 }
 
-                Label { text: "Partition scheme" }
-                ComboBox {
+                Label { text: qsTr("Partition scheme") }
+                FormCombo {
                     Layout.fillWidth: true
                     // Meaningful for the partition and format methods; a raw
                     // DD copy keeps the ISO's own embedded table.
                     enabled: !app.busy && app.method !== 0
-                    model: ["GPT (UEFI)", "MBR (BIOS/Legacy)"]
+                    model: [qsTr("GPT (UEFI)"), qsTr("MBR (BIOS/Legacy)")]
                     currentIndex: app.table
                     onActivated: function(index) { app.table = index }
                     ToolTip.visible: hovered && !enabled
-                    ToolTip.text: "The DD method preserves the ISO's own partition table."
+                    ToolTip.text: qsTr("The DD method preserves the ISO's own partition table.")
                 }
 
                 // Ventoy names its own data partition — no label field for it.
                 Label {
-                    text: "Volume label"
+                    text: qsTr("Volume label")
                     visible: app.method !== 3
                 }
                 TextField {
@@ -795,7 +886,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     visible: app.method !== 3
                     enabled: !app.busy && app.method !== 0
-                    placeholderText: "Drive label"
+                    placeholderText: qsTr("Drive label")
                     text: app.label
                     // onTextEdited (not onTextChanged) avoids a binding loop:
                     // it fires only for user edits, not the pre-fill above.
@@ -806,18 +897,19 @@ ApplicationWindow {
                     // each filesystem's length / case / charset trimming.
                     ToolTip.text: {
                         if (!enabled)
-                            return "The label is sanitized to each filesystem's limits."
+                            return qsTr("The label is sanitized to each filesystem's limits.")
                         var sanitized = app.sanitizedLabel()
                         if (sanitized === app.label)
-                            return "Will be written as “" + sanitized + "” — fits the chosen filesystem."
-                        return "Will be written as “" + sanitized + "” " +
-                               "(trimmed for the chosen filesystem)"
+                            return qsTr("Will be written as “%1” — fits the chosen filesystem.")
+                                       .arg(sanitized)
+                        return qsTr("Will be written as “%1” (trimmed for the chosen filesystem)")
+                                       .arg(sanitized)
                     }
                 }
             }
 
-            CheckBox {
-                text: "Full format — erase the whole device first (slow)"
+            WrapCheckBox {
+                text: qsTr("Full format — erase the whole device first (slow)")
                 // DD overwrites every sector anyway, and Ventoy does its own
                 // partitioning and formatting.
                 enabled: !app.busy && (app.method === 1 || app.method === 2)
@@ -825,42 +917,42 @@ ApplicationWindow {
                 onToggled: app.fullFormat = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Zeroes every sector before writing. Slow (tens of minutes " +
-                    "on a 64 GB stick), but it wipes any prior partition layout / hidden " +
-                    "partitions and gives a clean slate. The quick path skips this and " +
-                    "only writes the new layout."
+                ToolTip.text: qsTr("Zeroes every sector before writing. Slow (tens of minutes "
+                    + "on a 64 GB stick), but it wipes any prior partition layout / hidden "
+                    + "partitions and gives a clean slate. The quick path skips this and "
+                    + "only writes the new layout.")
             }
 
-            CheckBox {
+            WrapCheckBox {
                 // Windows ISO with oversized install.wim, partition method.
                 // The default is the UEFI:NTFS two-partition layout; ticking
                 // this asks usbooty to split install.wim into <4 GiB chunks
                 // via wimlib-imagex and keep a single FAT32 partition.
                 visible: app.windowsIso && app.method === 1
-                text: "Split install.wim onto FAT32 (needs wimlib-imagex) — broader firmware support than UEFI:NTFS"
+                text: qsTr("Split install.wim onto FAT32 (needs wimlib-imagex) — broader firmware support than UEFI:NTFS")
                 enabled: !app.busy
                 checked: app.splitWim
                 onToggled: app.splitWim = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Windows ISOs with install.wim larger than 4 GiB cannot live on a single " +
-                    "FAT32 partition as-is. The default layout is UEFI:NTFS (a small FAT32 + a big NTFS " +
-                    "partition with a signed UEFI loader). This alternative uses wimlib-imagex to split " +
-                    "install.wim into install.swm chunks Windows Setup loads natively, leaving you with " +
-                    "a single FAT32 partition that boots on more firmware."
+                ToolTip.text: qsTr("Windows ISOs with install.wim larger than 4 GiB cannot live on a single "
+                    + "FAT32 partition as-is. The default layout is UEFI:NTFS (a small FAT32 + a big NTFS "
+                    + "partition with a signed UEFI loader). This alternative uses wimlib-imagex to split "
+                    + "install.wim into install.swm chunks Windows Setup loads natively, leaving you with "
+                    + "a single FAT32 partition that boots on more firmware.")
             }
 
-            CheckBox {
-                text: "Verify after writing — read the data back and check it"
+            WrapCheckBox {
+                text: qsTr("Verify after writing — read the data back and check it")
                 // A plain format / Ventoy install writes no verifiable payload.
                 enabled: !app.busy && app.method < 2
                 checked: app.verify
                 onToggled: app.verify = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Re-reads the entire device after writing and compares it " +
-                    "to a BLAKE3 hash captured during the write. Roughly doubles the job " +
-                    "time but catches counterfeit / failing flash that silently corrupts data."
+                ToolTip.text: qsTr("Re-reads the entire device after writing and compares it "
+                    + "to a BLAKE3 hash captured during the write. Roughly doubles the job "
+                    + "time but catches counterfeit / failing flash that silently corrupts data.")
             }
 
             // Ventoy options — only for the Ventoy write method.
@@ -868,31 +960,31 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 visible: app.method === 3
                 spacing: 4
-                CheckBox {
-                    text: "Update an existing Ventoy install (keeps your ISOs)"
+                WrapCheckBox {
+                    text: qsTr("Update an existing Ventoy install (keeps your ISOs)")
                     enabled: !app.busy
                     checked: app.ventoyUpdate
                     onToggled: app.ventoyUpdate = checked
                     ToolTip.delay: 500
                     ToolTip.visible: hovered
-                    ToolTip.text: "Upgrade the Ventoy bootloader in-place. The existing data " +
-                        "partition (with your ISOs) is preserved; only the small EFI partition " +
-                        "and the Ventoy boot files get rewritten."
+                    ToolTip.text: qsTr("Upgrade the Ventoy bootloader in-place. The existing data "
+                        + "partition (with your ISOs) is preserved; only the small EFI partition "
+                        + "and the Ventoy boot files get rewritten.")
                 }
-                CheckBox {
-                    text: "Secure Boot support"
+                WrapCheckBox {
+                    text: qsTr("Secure Boot support")
                     enabled: !app.busy
                     checked: app.ventoySecureBoot
                     onToggled: app.ventoySecureBoot = checked
                     ToolTip.delay: 500
                     ToolTip.visible: hovered
-                    ToolTip.text: "Install Ventoy with the Microsoft-signed shim so the stick " +
-                        "boots on UEFI machines that have Secure Boot enabled. Off → smaller " +
-                        "footprint and no MOK enrollment, but Secure Boot must be disabled."
+                    ToolTip.text: qsTr("Install Ventoy with the Microsoft-signed shim so the stick "
+                        + "boots on UEFI machines that have Secure Boot enabled. Off → smaller "
+                        + "footprint and no MOK enrollment, but Secure Boot must be disabled.")
                 }
                 Label {
-                    text: "Ventoy makes a USB you drop ISOs onto and boot directly. "
-                        + "A loaded ISO above (optional) is copied onto it."
+                    text: qsTr("Ventoy makes a USB you drop ISOs onto and boot directly. "
+                             + "A loaded ISO above (optional) is copied onto it.")
                     color: palette.placeholderText
                     font.pointSize: 8
                     wrapMode: Text.Wrap
@@ -910,11 +1002,11 @@ ApplicationWindow {
                     // decimal place; snapping makes that decimal meaningful.
                     text: {
                         if (app.persistenceSize <= 0)
-                            return "Persistent storage:  off"
+                            return qsTr("Persistent storage:  off")
                         if (app.persistenceSize < 1024)
-                            return "Persistent storage:  " + app.persistenceSize + " MiB"
-                        return "Persistent storage:  " +
-                               (app.persistenceSize / 1024).toFixed(1) + " GiB"
+                            return qsTr("Persistent storage:  %1 MiB").arg(app.persistenceSize)
+                        return qsTr("Persistent storage:  %1 GiB")
+                                   .arg((app.persistenceSize / 1024).toFixed(1))
                     }
                     font.bold: true
                 }
@@ -934,12 +1026,12 @@ ApplicationWindow {
                         value: app.persistenceSize
                         onMoved: app.persistenceSize = value
                         ToolTip.visible: pressed
-                        ToolTip.text: value <= 0 ? "Off"
-                                    : value < 1024 ? value + " MiB"
-                                    : (value / 1024).toFixed(1) + " GiB"
+                        ToolTip.text: value <= 0 ? qsTr("Off")
+                                    : value < 1024 ? qsTr("%1 MiB").arg(value)
+                                    : qsTr("%1 GiB").arg((value / 1024).toFixed(1))
                     }
                     Button {
-                        text: "Max"
+                        text: qsTr("Max")
                         enabled: !app.busy && app.selectedDevice >= 0
                         onClicked: {
                             var m = app.maxPersistenceMib()
@@ -949,12 +1041,12 @@ ApplicationWindow {
                         }
                         ToolTip.delay: 500
                         ToolTip.visible: hovered
-                        ToolTip.text: "Set the overlay to fill the device — uses every byte " +
-                            "the chosen drive has left after the ISO and a small partition-table margin."
+                        ToolTip.text: qsTr("Set the overlay to fill the device — uses every byte "
+                            + "the chosen drive has left after the ISO and a small partition-table margin.")
                     }
                 }
                 Label {
-                    text: "Keeps your files and settings across reboots of this live USB."
+                    text: qsTr("Keeps your files and settings across reboots of this live USB.")
                     color: palette.placeholderText
                     font.pointSize: 8
                     wrapMode: Text.Wrap
@@ -966,8 +1058,8 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 visible: app.linuxIso && !app.persistenceSupported && app.method === 1
-                text: "Persistent storage isn't supported for this distribution "
-                    + "(only Debian/Ubuntu-family live systems can use it)."
+                text: qsTr("Persistent storage isn't supported for this distribution "
+                         + "(only Debian/Ubuntu-family live systems can use it).")
                 color: palette.placeholderText
                 font.pointSize: 8
                 wrapMode: Text.Wrap
@@ -981,8 +1073,8 @@ ApplicationWindow {
             // While the user has clicked Cancel but the runner has not yet
             // acknowledged, show "Cancelling…" disabled, so a rage-click on
             // a non-responsive cancel doesn't leave the user guessing.
-            text: window.cancelling ? "Cancelling…"
-                                    : (app.busy ? "Cancel" : "Start")
+            text: window.cancelling ? qsTr("Cancelling…")
+                                    : (app.busy ? qsTr("Cancel") : qsTr("Start"))
             highlighted: true
             font.bold: true
             enabled: !window.cancelling && (app.busy || window.ready)
@@ -1110,11 +1202,11 @@ ApplicationWindow {
                     spacing: 8
                     Pill {
                         visible: app.phase !== ""
-                        label: app.phase
+                        label: qsTr(app.phase)
                         tint: progressFrame.phaseColor
                     }
                     Label {
-                        text: app.phase === "" ? "Working" : ""
+                        text: app.phase === "" ? qsTr("Working") : ""
                         font.bold: true
                         visible: text !== ""
                     }
@@ -1136,17 +1228,17 @@ ApplicationWindow {
                         if (app.speed !== "")
                             parts.push("⬆ " + app.speed)
                         if (app.eta !== "")
-                            parts.push("ETA " + app.eta)
+                            parts.push(qsTr("ETA %1").arg(app.eta))
                         if (app.busy) {
                             var e = window.fmtTime(window.elapsedSecs)
                             if (e !== "")
-                                parts.push(e + " elapsed")
+                                parts.push(qsTr("%1 elapsed").arg(e))
                         }
                         return parts.join("     ·     ")
                     }
                 }
                 Label {
-                    text: app.status
+                    text: qsTr(app.status)
                     color: palette.placeholderText
                     elide: Text.ElideRight
                     Layout.fillWidth: true
@@ -1174,12 +1266,12 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     Label {
-                        text: "Activity log"
+                        text: qsTr("Activity log")
                         font.bold: true
                         Layout.fillWidth: true
                     }
                     Button {
-                        text: "Clear"
+                        text: qsTr("Clear")
                         flat: true
                         enabled: app.logText !== "" && !app.busy
                         onClicked: {
@@ -1210,7 +1302,7 @@ ApplicationWindow {
                         wrapMode: TextArea.Wrap
                         font.family: "monospace"
                         font.pointSize: 9
-                        placeholderText: "Job output will appear here."
+                        placeholderText: qsTr("Job output will appear here.")
                         // RichText lets the runner colour warnings (amber),
                         // errors (red), and phase headers (blue/bold) via
                         // inline HTML; plain info lines stay the default colour.
@@ -1288,7 +1380,8 @@ ApplicationWindow {
                 spacing: 4
                 Label {
                     Layout.alignment: Qt.AlignHCenter
-                    text: isoDrop.hoverIsoLike ? "Drop to load" : "Unsupported file"
+                    text: isoDrop.hoverIsoLike ? qsTr("Drop to load")
+                                               : qsTr("Unsupported file")
                     font.pointSize: 18
                     font.bold: true
                     color: isoDrop.hoverIsoLike ? palette.highlight
@@ -1304,7 +1397,7 @@ ApplicationWindow {
                 Label {
                     Layout.alignment: Qt.AlignHCenter
                     visible: !isoDrop.hoverIsoLike && isoDrop.hoverName !== ""
-                    text: "Only .iso and .img files are accepted"
+                    text: qsTr("Only .iso and .img files are accepted")
                     font.pointSize: 9
                     color: palette.placeholderText
                 }
@@ -1315,8 +1408,8 @@ ApplicationWindow {
     // ---- Dialogs --------------------------------------------------------
     FileDialog {
         id: isoDialog
-        title: "Select an ISO image"
-        nameFilters: ["ISO images (*.iso *.img)", "All files (*)"]
+        title: qsTr("Select an ISO image")
+        nameFilters: [qsTr("ISO images (*.iso *.img)"), qsTr("All files (*)")]
         onAccepted: app.setIso(selectedFile)
     }
 
@@ -1324,13 +1417,13 @@ ApplicationWindow {
         // Snapshot output. The extension picks the compressor; the helper
         // resolves it. `.img` / no extension → raw.
         id: backupDialog
-        title: "Save device snapshot"
+        title: qsTr("Save device snapshot")
         fileMode: FileDialog.SaveFile
         defaultSuffix: "img"
         nameFilters: [
-            "Raw images (*.img)",
-            "Compressed images (*.img.gz *.img.xz *.img.zst *.img.bz2)",
-            "All files (*)"
+            qsTr("Raw images (*.img)"),
+            qsTr("Compressed images (*.img.gz *.img.xz *.img.zst *.img.bz2)"),
+            qsTr("All files (*)")
         ]
         onAccepted: app.startBackup(selectedFile)
     }
@@ -1361,11 +1454,11 @@ ApplicationWindow {
             tint: checkConfirm.mode === 1 ? "#C0392B" : "#E67E22"
             iconGlyph: checkConfirm.mode === 1 ? "⚠" : "⚡"
             title: checkConfirm.mode === 1
-                ? "Full bad-blocks scan?"
-                : "Quick fake-drive check?"
+                ? qsTr("Full bad-blocks scan?")
+                : qsTr("Quick fake-drive check?")
             subtitle: checkConfirm.mode === 1
-                ? "Writes two patterns across every sector — slow and exhaustive"
-                : "Writes a fingerprint at ~256 sample positions — finishes in seconds"
+                ? qsTr("Writes two patterns across every sector — slow and exhaustive")
+                : qsTr("Writes a fingerprint at ~256 sample positions — finishes in seconds")
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: app.startCheck(checkConfirm.mode)
@@ -1373,15 +1466,15 @@ ApplicationWindow {
             spacing: 8
             Label {
                 text: checkConfirm.mode === 1
-                    ? "The full scan will write two patterns across every sector of the selected device, " +
-                      "then read them back. It is slow and destroys all data on the device."
-                    : "The quick check writes a unique fingerprint at ~256 sample positions and reads " +
-                      "them back. It finishes in seconds, but destroys any data on the selected device."
+                    ? qsTr("The full scan will write two patterns across every sector of the selected device, "
+                         + "then read them back. It is slow and destroys all data on the device.")
+                    : qsTr("The quick check writes a unique fingerprint at ~256 sample positions and reads "
+                         + "them back. It finishes in seconds, but destroys any data on the selected device.")
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
             Label {
-                text: "This cannot be undone."
+                text: qsTr("This cannot be undone.")
                 font.bold: true
             }
         }
@@ -1408,8 +1501,8 @@ ApplicationWindow {
         header: DialogHeader {
             tint: "#0078D4"
             iconComponent: WindowsLogo { size: 24; tint: "white" }
-            title: "Windows setup"
-            subtitle: "Optional install tweaks — written to autounattend.xml"
+            title: qsTr("Windows setup")
+            subtitle: qsTr("Optional install tweaks — written to autounattend.xml")
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: confirmDialog.open()
@@ -1424,18 +1517,18 @@ ApplicationWindow {
                 width: setupScroll.availableWidth - 14
                 spacing: 10
             Label {
-                text: "Customize the installation below, or just press OK to skip — "
-                    + "every option is optional."
+                text: qsTr("Customize the installation below, or just press OK to skip — "
+                         + "every option is optional.")
                 color: palette.placeholderText
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
 
             // --- Setup-time tweaks --------------------------------------
-            Label { text: "Setup"; font.bold: true; Layout.topMargin: 6 }
+            Label { text: qsTr("Setup"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
-            CheckBox {
-                text: "Bypass Windows 11 hardware checks — TPM, Secure Boot, RAM, Storage, CPU, Disk"
+            WrapCheckBox {
+                text: qsTr("Bypass Windows 11 hardware checks — TPM, Secure Boot, RAM, Storage, CPU, Disk")
                 checked: app.bypassTpm
                 onToggled: {
                     app.bypassTpm = checked
@@ -1447,120 +1540,135 @@ ApplicationWindow {
                 }
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Writes six LabConfig registry keys during Setup so Win 11 skips its " +
-                    "hardware requirements: TPM 2.0, Secure Boot, 8 GB RAM, 64 GB system disk, " +
-                    "supported-CPU allowlist, and disk-geometry check. Harmless on Windows 10."
+                ToolTip.text: qsTr("Writes six LabConfig registry keys during Setup so Win 11 skips its "
+                    + "hardware requirements: TPM 2.0, Secure Boot, 8 GB RAM, 64 GB system disk, "
+                    + "supported-CPU allowlist, and disk-geometry check. Harmless on Windows 10.")
             }
-            CheckBox {
-                text: "Auto-accept the Setup EULA"
+            WrapCheckBox {
+                text: qsTr("Auto-accept the Setup EULA")
                 checked: app.acceptEula
                 onToggled: app.acceptEula = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Sets <AcceptEula>true</AcceptEula> in the windowsPE UserData block " +
-                    "so the Setup-time license prompt is skipped."
+                ToolTip.text: qsTr("Sets <AcceptEula>true</AcceptEula> in the windowsPE UserData block "
+                    + "so the Setup-time license prompt is skipped.")
             }
-            CheckBox {
-                text: "Enable .NET Framework 3.5 from the install media"
+            WrapCheckBox {
+                text: qsTr("Enable .NET Framework 3.5 from the install media")
                 checked: app.enableDotnet35
                 onToggled: app.enableDotnet35 = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Runs DISM in the specialize pass to enable NetFx3 from the install " +
-                    "media's sources\\sxs folder. Needed by many legacy apps; no network required."
+                ToolTip.text: qsTr("Runs DISM in the specialize pass to enable NetFx3 from the install "
+                    + "media's sources\\sxs folder. Needed by many legacy apps; no network required.")
             }
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Product key"; Layout.minimumWidth: 110 }
+                Label { text: qsTr("Product key"); Layout.minimumWidth: 110 }
                 TextField {
                     Layout.fillWidth: true
-                    placeholderText: "Optional — e.g. VK7JG-NPHTM-C97JM-9MPGT-3V66T (Win 11 Pro)"
+                    // Qt sets implicitWidth from the placeholder; without
+                    // a 0 minimum the field refuses to shrink below it
+                    // and a long translated placeholder pushes the parent
+                    // RowLayout past the dialog width.
+                    Layout.minimumWidth: 0
+                    placeholderText: qsTr("Optional — e.g. VK7JG-NPHTM-C97JM-9MPGT-3V66T (Win 11 Pro)")
                     text: app.productKey
                     onTextEdited: app.productKey = text
                 }
             }
 
             // --- OOBE (first-boot) skips --------------------------------
-            Label { text: "Out-of-box experience"; font.bold: true; Layout.topMargin: 6 }
+            Label { text: qsTr("Out-of-box experience"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
-            CheckBox {
-                text: "Skip Microsoft-account requirement (works on Win 10 and all Win 11)"
+            WrapCheckBox {
+                text: qsTr("Skip Microsoft-account requirement (works on Win 10 and all Win 11)")
                 checked: app.skipMsaccount
                 onToggled: app.skipMsaccount = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Emits both BypassNRO (Win 10 / Win 11 pre-24H2) and " +
-                    "<HideOnlineAccountScreens>true</HideOnlineAccountScreens> (Win 11 24H2+), " +
-                    "so a single toggle covers the whole supported matrix."
+                ToolTip.text: qsTr("Emits both BypassNRO (Win 10 / Win 11 pre-24H2) and "
+                    + "<HideOnlineAccountScreens>true</HideOnlineAccountScreens> (Win 11 24H2+), "
+                    + "so a single toggle covers the whole supported matrix.")
             }
-            CheckBox {
-                text: "Disable network during OOBE — force local account on Win 11 24H2+"
+            WrapCheckBox {
+                text: qsTr("Disable network during OOBE — force local account on Win 11 24H2+")
                 checked: app.disableNetworkDuringOobe
                 onToggled: app.disableNetworkDuringOobe = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Runs `Get-NetAdapter | Disable-NetAdapter` in specialize, then a " +
-                    "matching Enable-NetAdapter in FirstLogonCommands. With no network during OOBE, " +
-                    "Windows falls back to local-account creation — the most robust workaround when " +
-                    "BypassNRO and HideOnlineAccountScreens are ignored."
+                ToolTip.text: qsTr("Runs `Get-NetAdapter | Disable-NetAdapter` in specialize, then a "
+                    + "matching Enable-NetAdapter in FirstLogonCommands. With no network during OOBE, "
+                    + "Windows falls back to local-account creation — the most robust workaround when "
+                    + "BypassNRO and HideOnlineAccountScreens are ignored.")
             }
-            CheckBox {
-                text: "Skip the \"connect to a network\" Wi-Fi screen"
+            WrapCheckBox {
+                text: qsTr("Skip the \"connect to a network\" Wi-Fi screen")
                 checked: app.hideWirelessSetup
                 onToggled: app.hideWirelessSetup = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Sets <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE> so the " +
-                    "OOBE \"Let's connect you to a network\" page is skipped entirely."
+                ToolTip.text: qsTr("Sets <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE> so the "
+                    + "OOBE \"Let's connect you to a network\" page is skipped entirely.")
             }
-            CheckBox {
-                text: "Hide the OEM-registration screen"
+            WrapCheckBox {
+                text: qsTr("Hide the OEM-registration screen")
                 checked: app.hideOemRegistration
                 onToggled: app.hideOemRegistration = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Sets <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen> " +
-                    "so OEM-branded OOBE pages do not appear (irrelevant on clean Microsoft ISOs)."
+                ToolTip.text: qsTr("Sets <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen> "
+                    + "so OEM-branded OOBE pages do not appear (irrelevant on clean Microsoft ISOs).")
             }
-            CheckBox {
-                text: "Pre-answer the network-type prompt as \"Work\" (private/trusted)"
+            WrapCheckBox {
+                text: qsTr("Pre-answer the network-type prompt as \"Work\" (private/trusted)")
                 checked: app.networkLocationWork
                 onToggled: app.networkLocationWork = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Sets <NetworkLocation>Work</NetworkLocation> so OOBE classifies the " +
-                    "network as private/trusted without prompting (file sharing and discovery enabled)."
+                ToolTip.text: qsTr("Sets <NetworkLocation>Work</NetworkLocation> so OOBE classifies the "
+                    + "network as private/trusted without prompting (file sharing and discovery enabled).")
             }
-            CheckBox {
-                text: "Disable data-collection / telemetry prompts"
+            WrapCheckBox {
+                text: qsTr("Disable data-collection / telemetry prompts")
                 checked: app.disableTelemetry
                 onToggled: app.disableTelemetry = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Sets <HideEULAPage>true</HideEULAPage> and <ProtectYourPC>3</ProtectYourPC> " +
-                    "— the OOBE \"skip Express settings\" answer that opts out of every diagnostic / " +
-                    "advertising / tailored-experience prompt."
+                ToolTip.text: qsTr("Sets <HideEULAPage>true</HideEULAPage> and <ProtectYourPC>3</ProtectYourPC> "
+                    + "— the OOBE \"skip Express settings\" answer that opts out of every diagnostic / "
+                    + "advertising / tailored-experience prompt.")
             }
 
             // --- Local account ------------------------------------------
-            Label { text: "Local account"; font.bold: true; Layout.topMargin: 6 }
+            Label { text: qsTr("Local account"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Name"; Layout.minimumWidth: 110 }
+                Label { text: qsTr("Name"); Layout.minimumWidth: 110 }
                 TextField {
                     Layout.fillWidth: true
-                    placeholderText: "Optional — leave empty to keep the OOBE prompt"
+                    // Qt sets implicitWidth from the placeholder; without
+                    // a 0 minimum the field refuses to shrink below it
+                    // and a long translated placeholder pushes the parent
+                    // RowLayout past the dialog width.
+                    Layout.minimumWidth: 0
+                    placeholderText: qsTr("Optional — leave empty to keep the OOBE prompt")
                     text: app.localAccount
                     onTextEdited: app.localAccount = text
                 }
             }
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Password"; Layout.minimumWidth: 110 }
+                Label { text: qsTr("Password"); Layout.minimumWidth: 110 }
                 TextField {
                     Layout.fillWidth: true
-                    placeholderText: "Optional — sets a password and enables one-shot auto-logon"
+                    // Qt sets implicitWidth from the placeholder; without
+                    // a 0 minimum the field refuses to shrink below it
+                    // and a long translated placeholder pushes the parent
+                    // RowLayout past the dialog width.
+                    Layout.minimumWidth: 0
+                    placeholderText: qsTr("Optional — sets a password and enables one-shot auto-logon")
                     echoMode: TextInput.Password
                     text: app.localAccountPassword
                     onTextEdited: app.localAccountPassword = text
@@ -1568,32 +1676,42 @@ ApplicationWindow {
             }
 
             // --- System identity ----------------------------------------
-            Label { text: "System"; font.bold: true; Layout.topMargin: 6 }
+            Label { text: qsTr("System"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Computer name"; Layout.minimumWidth: 110 }
+                Label { text: qsTr("Computer name"); Layout.minimumWidth: 110 }
                 TextField {
                     Layout.fillWidth: true
-                    placeholderText: "Optional — up to 15 characters, no whitespace"
+                    // Qt sets implicitWidth from the placeholder; without
+                    // a 0 minimum the field refuses to shrink below it
+                    // and a long translated placeholder pushes the parent
+                    // RowLayout past the dialog width.
+                    Layout.minimumWidth: 0
+                    placeholderText: qsTr("Optional — up to 15 characters, no whitespace")
                     text: app.computerName
                     onTextEdited: app.computerName = text
                 }
             }
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Locale"; Layout.minimumWidth: 110 }
+                Label { text: qsTr("Locale"); Layout.minimumWidth: 110 }
                 TextField {
                     Layout.fillWidth: true
-                    placeholderText: "Optional — e.g. en-US, fr-FR, de-DE"
+                    // Qt sets implicitWidth from the placeholder; without
+                    // a 0 minimum the field refuses to shrink below it
+                    // and a long translated placeholder pushes the parent
+                    // RowLayout past the dialog width.
+                    Layout.minimumWidth: 0
+                    placeholderText: qsTr("Optional — e.g. en-US, fr-FR, de-DE")
                     text: app.locale
                     onTextEdited: app.locale = text
                 }
             }
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Time zone"; Layout.minimumWidth: 110 }
-                ComboBox {
+                Label { text: qsTr("Time zone"); Layout.minimumWidth: 110 }
+                FormCombo {
                     id: timezoneCombo
                     Layout.fillWidth: true
                     // Parallel newline-separated lists built once in Rust from
@@ -1607,19 +1725,19 @@ ApplicationWindow {
             }
 
             // --- Debloat ------------------------------------------------
-            Label { text: "Privacy & debloat"; font.bold: true; Layout.topMargin: 6 }
+            Label { text: qsTr("Privacy & debloat"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
-            CheckBox {
+            WrapCheckBox {
                 id: debloatBox
-                text: "Apply debloat profile"
+                text: qsTr("Apply debloat profile")
                 checked: app.applyDebloat
                 onToggled: app.applyDebloat = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Writes usbooty-debloat.reg to the USB and imports it during specialize " +
-                    "(HKLM machine policies + HKU\\DFT default-user policies). Disables Cortana, " +
-                    "Copilot, Recall, telemetry, lockscreen ads, suggested apps, advertising ID, " +
-                    "and assorted recommendation surfaces. Win 11-only keys are no-ops on Win 10."
+                ToolTip.text: qsTr("Writes usbooty-debloat.reg to the USB and imports it during specialize "
+                    + "(HKLM machine policies + HKU\\DFT default-user policies). Disables Cortana, "
+                    + "Copilot, Recall, telemetry, lockscreen ads, suggested apps, advertising ID, "
+                    + "and assorted recommendation surfaces. Win 11-only keys are no-ops on Win 10.")
             }
             Label {
                 visible: debloatBox.checked
@@ -1629,35 +1747,35 @@ ApplicationWindow {
                 color: palette.placeholderText
                 font.pointSize: 9
                 textFormat: Text.RichText
-                text:
-                    "<b>Applied machine-wide (HKLM Group Policy):</b><br>" +
-                    "&nbsp;• News &amp; Interests feed (taskbar widget)<br>" +
-                    "&nbsp;• Consumer-feature ads — suggested Store apps, OEM-style inserts<br>" +
-                    "&nbsp;• Activity History sync to Microsoft<br>" +
-                    "&nbsp;• Cortana in Search<br>" +
-                    "&nbsp;• Windows Copilot service<br>" +
-                    "&nbsp;• Windows Recall — the rolling-screenshot AI history (Win 11 24H2+)<br>" +
-                    "&nbsp;• Diagnostic data — set to Required only<br>" +
-                    "<br>" +
-                    "<b>Applied to the default user profile (inherited by every new account):</b><br>" +
-                    "&nbsp;• Bing / web suggestions in Start &amp; Search<br>" +
-                    "&nbsp;• File extensions shown (instead of hidden)<br>" +
-                    "&nbsp;• Copilot, Task View, Widgets and \"People\" buttons hidden from the taskbar<br>" +
-                    "&nbsp;• Sync-provider ads in Explorer suppressed<br>" +
-                    "&nbsp;• Start menu \"recommendations\" and Iris suggestions disabled<br>" +
-                    "&nbsp;• ContentDeliveryManager: lock-screen rotation ads, pre-installed-app suggestions, \"subscribed content\" tiles<br>" +
-                    "&nbsp;• Cortana / Bing inside per-user Search<br>" +
-                    "&nbsp;• Advertising ID disabled<br>" +
-                    "&nbsp;• \"Tailored experiences\" derived from diagnostic data<br>" +
-                    "&nbsp;• \"Suggested\" toast notifications<br>" +
-                    "&nbsp;• Phone Link / \"use your mobile with Windows\" prompts<br>" +
-                    "&nbsp;• Online speech recognition (voice stays local)<br>" +
-                    "&nbsp;• Contact harvesting for input personalization<br>" +
-                    "&nbsp;• Feedback Hub frequency set to Never<br>" +
-                    "&nbsp;• \"Finish setting up your device\" prompts<br>" +
-                    "<br>" +
-                    "Windows 11-only keys (Copilot, Widgets, News &amp; Interests, Recall) " +
-                    "are silently ignored on Windows 10."
+                text: qsTr(
+                    "<b>Applied machine-wide (HKLM Group Policy):</b><br>"
+                    + "&nbsp;• News &amp; Interests feed (taskbar widget)<br>"
+                    + "&nbsp;• Consumer-feature ads — suggested Store apps, OEM-style inserts<br>"
+                    + "&nbsp;• Activity History sync to Microsoft<br>"
+                    + "&nbsp;• Cortana in Search<br>"
+                    + "&nbsp;• Windows Copilot service<br>"
+                    + "&nbsp;• Windows Recall — the rolling-screenshot AI history (Win 11 24H2+)<br>"
+                    + "&nbsp;• Diagnostic data — set to Required only<br>"
+                    + "<br>"
+                    + "<b>Applied to the default user profile (inherited by every new account):</b><br>"
+                    + "&nbsp;• Bing / web suggestions in Start &amp; Search<br>"
+                    + "&nbsp;• File extensions shown (instead of hidden)<br>"
+                    + "&nbsp;• Copilot, Task View, Widgets and \"People\" buttons hidden from the taskbar<br>"
+                    + "&nbsp;• Sync-provider ads in Explorer suppressed<br>"
+                    + "&nbsp;• Start menu \"recommendations\" and Iris suggestions disabled<br>"
+                    + "&nbsp;• ContentDeliveryManager: lock-screen rotation ads, pre-installed-app suggestions, \"subscribed content\" tiles<br>"
+                    + "&nbsp;• Cortana / Bing inside per-user Search<br>"
+                    + "&nbsp;• Advertising ID disabled<br>"
+                    + "&nbsp;• \"Tailored experiences\" derived from diagnostic data<br>"
+                    + "&nbsp;• \"Suggested\" toast notifications<br>"
+                    + "&nbsp;• Phone Link / \"use your mobile with Windows\" prompts<br>"
+                    + "&nbsp;• Online speech recognition (voice stays local)<br>"
+                    + "&nbsp;• Contact harvesting for input personalization<br>"
+                    + "&nbsp;• Feedback Hub frequency set to Never<br>"
+                    + "&nbsp;• \"Finish setting up your device\" prompts<br>"
+                    + "<br>"
+                    + "Windows 11-only keys (Copilot, Widgets, News &amp; Interests, Recall) "
+                    + "are silently ignored on Windows 10.")
             }
             }
         }
@@ -1683,8 +1801,8 @@ ApplicationWindow {
         header: DialogHeader {
             tint: "#C0392B"
             iconGlyph: "⚠"
-            title: "Erase device?"
-            subtitle: "All data on the target will be permanently lost"
+            title: qsTr("Erase device?")
+            subtitle: qsTr("All data on the target will be permanently lost")
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: app.start()
@@ -1751,7 +1869,7 @@ ApplicationWindow {
                     }
                     Label {
                         visible: confirmDialog.serialLabel !== ""
-                        text: "Serial: " + confirmDialog.serialLabel
+                        text: qsTr("Serial: %1").arg(confirmDialog.serialLabel)
                         color: palette.placeholderText
                         font.family: "monospace"
                         font.pointSize: 9
@@ -1762,8 +1880,8 @@ ApplicationWindow {
                         visible: confirmDialog.internalDisk
                         Layout.fillWidth: true
                         Layout.topMargin: 6
-                        text: "⚠ This is an INTERNAL (non-removable) disk. " +
-                              "Make absolutely sure it is the device you mean to erase."
+                        text: qsTr("⚠ This is an INTERNAL (non-removable) disk. "
+                                 + "Make absolutely sure it is the device you mean to erase.")
                         // Red-shifted from the theme's main text colour so
                         // the warning pops on both light and dark themes.
                         color: Qt.tint(window.palette.windowText,
@@ -1782,11 +1900,11 @@ ApplicationWindow {
             Button {
                 flat: true
                 Layout.alignment: Qt.AlignLeft
-                text: "🔍  Inspect device details…"
+                text: qsTr("🔍  Inspect device details…")
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: "Open lsblk + udevadm + smartctl output for this device " +
-                    "in a read-only panel. Useful if anything above looks off."
+                ToolTip.text: qsTr("Open lsblk + udevadm + smartctl output for this device "
+                    + "in a read-only panel. Useful if anything above looks off.")
                 onClicked: {
                     inspectText.text = app.inspectSelected()
                     inspectDialog.open()
@@ -1794,13 +1912,13 @@ ApplicationWindow {
             }
             Label {
                 text: app.method === 3 && app.ventoyUpdate
-                    ? "Ventoy will be updated — your existing ISOs on the data partition are kept."
-                    : "All data on this device will be permanently erased."
+                    ? qsTr("Ventoy will be updated — your existing ISOs on the data partition are kept.")
+                    : qsTr("All data on this device will be permanently erased.")
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
             Label {
-                text: "This cannot be undone."
+                text: qsTr("This cannot be undone.")
                 font.bold: true
             }
         }
@@ -1822,8 +1940,8 @@ ApplicationWindow {
         header: DialogHeader {
             tint: palette.highlight
             iconGlyph: "ⓘ"
-            title: "Device details"
-            subtitle: "Read-only — lsblk + udevadm output for the chosen device"
+            title: qsTr("Device details")
+            subtitle: qsTr("Read-only — lsblk + udevadm output for the chosen device")
         }
         standardButtons: Dialog.Close
         contentItem: ScrollView {
@@ -1857,17 +1975,17 @@ ApplicationWindow {
         header: DialogHeader {
             tint: resultDialog.success ? "#27AE60" : "#E74C3C"
             iconGlyph: resultDialog.success ? "✓" : "✕"
-            title: resultDialog.success ? "Finished" : "Failed"
+            title: resultDialog.success ? qsTr("Finished") : qsTr("Failed")
             subtitle: resultDialog.success
-                ? "The device is ready to use."
-                : "The job did not complete — see details below."
+                ? qsTr("The device is ready to use.")
+                : qsTr("The job did not complete — see details below.")
         }
         // Custom footer so the success case can offer an "Eject" action
         // alongside Close, without the standard-button reordering trickery.
         footer: DialogButtonBox {
             standardButtons: DialogButtonBox.Close
             Button {
-                text: "Eject device"
+                text: qsTr("Eject device")
                 visible: resultDialog.success && app.selectedDevice >= 0
                 DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
                 onClicked: {
@@ -1906,14 +2024,14 @@ ApplicationWindow {
                 smooth: true
             }
             title: "usbooty"
-            subtitle: "Bootable USB Creator · Version " + app.appVersion
+            subtitle: qsTr("Bootable USB Creator · Version %1").arg(app.appVersion)
         }
         standardButtons: Dialog.Ok
         contentItem: ColumnLayout {
             spacing: 12
 
             Label {
-                text: "Create bootable USB drives from ISO images."
+                text: qsTr("Create bootable USB drives from ISO images.")
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
@@ -1922,20 +2040,20 @@ ApplicationWindow {
                 columns: 2
                 columnSpacing: 16
                 rowSpacing: 3
-                Label { text: "Author"; font.bold: true }
+                Label { text: qsTr("Author"); font.bold: true }
                 Label { text: "Thoxy" }
-                Label { text: "License"; font.bold: true }
+                Label { text: qsTr("License"); font.bold: true }
                 Label { text: "GPL-3.0-or-later" }
             }
 
             Label {
-                text: "DD raw write (with transparent .gz/.xz/.zst/.bz2 and "
+                text: qsTr("DD raw write (with transparent .gz/.xz/.zst/.bz2 and "
                     + "VHD support), partition-and-copy (FAT32 / NTFS / exFAT "
                     + "/ ext4, UEFI:NTFS or wimlib-split for large install.wim), "
                     + "Linux persistence (Debian, Ubuntu, Fedora, openSUSE), "
                     + "Windows 11 setup customization, Ventoy multi-boot USBs, "
                     + "optional Syslinux MBR install, device snapshot, "
-                    + "fake-drive / bad-blocks checks, SBAT revocation scan."
+                    + "fake-drive / bad-blocks checks, SBAT revocation scan.")
                 wrapMode: Text.Wrap
                 color: palette.placeholderText
                 font.pointSize: 9
@@ -1966,15 +2084,15 @@ ApplicationWindow {
         header: DialogHeader {
             tint: "#0078D4"
             iconComponent: WindowsLogo { size: 24; tint: "white" }
-            title: "Download a Windows ISO"
-            subtitle: "Pull an official image directly from Microsoft"
+            title: qsTr("Download a Windows ISO")
+            subtitle: qsTr("Pull an official image directly from Microsoft")
         }
         standardButtons: Dialog.Close
         contentItem: ColumnLayout {
             spacing: 10
             Label {
-                text: "Fetch an official ISO from Microsoft. Each step queries "
-                    + "Microsoft and may take a few seconds."
+                text: qsTr("Fetch an official ISO from Microsoft. Each step queries "
+                    + "Microsoft and may take a few seconds.")
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
@@ -1982,14 +2100,15 @@ ApplicationWindow {
             // Step 1 — choose the Windows release.
             RowLayout {
                 Layout.fillWidth: true
-                ComboBox {
+                FormCombo {
                     id: winVersion
                     Layout.fillWidth: true
                     enabled: !app.busy
+                    // Windows release names are brand identifiers — leave untranslated.
                     model: ["Windows 11", "Windows 10"]
                 }
                 Button {
-                    text: "List languages"
+                    text: qsTr("List languages")
                     enabled: !app.busy
                     onClicked: app.winFetchLanguages(winVersion.currentIndex)
                 }
@@ -1998,14 +2117,14 @@ ApplicationWindow {
             // Step 2 — choose a language.
             RowLayout {
                 Layout.fillWidth: true
-                ComboBox {
+                FormCombo {
                     id: winLang
                     Layout.fillWidth: true
                     enabled: !app.busy && app.winLanguages !== ""
                     model: app.winLanguages !== "" ? app.winLanguages.split("\n") : []
                 }
                 Button {
-                    text: "List downloads"
+                    text: qsTr("List downloads")
                     enabled: !app.busy && app.winLanguages !== ""
                     onClicked: app.winFetchOptions(winLang.currentIndex)
                 }
@@ -2014,14 +2133,14 @@ ApplicationWindow {
             // Step 3 — choose an edition/architecture and download.
             RowLayout {
                 Layout.fillWidth: true
-                ComboBox {
+                FormCombo {
                     id: winOpt
                     Layout.fillWidth: true
                     enabled: !app.busy && app.winOptions !== ""
                     model: app.winOptions !== "" ? app.winOptions.split("\n") : []
                 }
                 Button {
-                    text: "Download"
+                    text: qsTr("Download")
                     highlighted: true
                     enabled: !app.busy && app.winOptions !== ""
                     onClicked: {
@@ -2032,21 +2151,21 @@ ApplicationWindow {
             }
 
             Label {
-                text: app.status
+                text: qsTr(app.status)
                 color: palette.placeholderText
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
 
             Label {
-                text: "If Microsoft's anti-bot system rejects the request "
-                    + "(common on VPNs and some networks), download manually:"
+                text: qsTr("If Microsoft's anti-bot system rejects the request "
+                    + "(common on VPNs and some networks), download manually:")
                 color: palette.placeholderText
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
             Button {
-                text: "Open Microsoft download page"
+                text: qsTr("Open Microsoft download page")
                 Layout.fillWidth: true
                 onClicked: app.openMicrosoftPage(winVersion.currentIndex)
             }
