@@ -1340,7 +1340,10 @@ ApplicationWindow {
     Dialog {
         id: checkConfirm
         anchors.centerIn: parent
-        width: 480
+        // Clamp to the window's current width so the dialog never overflows
+        // when the user shrinks the window; the 40 px buffer leaves room
+        // for the modal backdrop and any window-manager shadow.
+        width: Math.min(480, window.width - 40)
         modal: true
         topPadding: 14
         bottomPadding: 14
@@ -1389,7 +1392,7 @@ ApplicationWindow {
     Dialog {
         id: windowsSetupDialog
         anchors.centerIn: parent
-        width: 600
+        width: Math.min(600, window.width - 40)
         // Cap the dialog height to the window minus chrome so the content
         // scrolls instead of overflowing on smaller displays.
         height: Math.min(window.height - 80, 760)
@@ -1668,7 +1671,7 @@ ApplicationWindow {
     Dialog {
         id: confirmDialog
         anchors.centerIn: parent
-        width: 480
+        width: Math.min(480, window.width - 40)
         modal: true
         topPadding: 14
         bottomPadding: 14
@@ -1842,7 +1845,7 @@ ApplicationWindow {
     Dialog {
         id: resultDialog
         anchors.centerIn: parent
-        width: 480
+        width: Math.min(480, window.width - 40)
         modal: true
         topPadding: 14
         bottomPadding: 14
@@ -1882,7 +1885,7 @@ ApplicationWindow {
     Dialog {
         id: aboutDialog
         anchors.centerIn: parent
-        width: 460
+        width: Math.min(460, window.width - 40)
         modal: true
         topPadding: 14
         bottomPadding: 14
@@ -1952,7 +1955,7 @@ ApplicationWindow {
     Dialog {
         id: winDialog
         anchors.centerIn: parent
-        width: 500
+        width: Math.min(500, window.width - 40)
         modal: true
         // Frame the contents away from the coloured header so the layout
         // mirrors the Windows Setup dialog above.
