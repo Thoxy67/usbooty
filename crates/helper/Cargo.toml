@@ -22,7 +22,12 @@ blake3 = { workspace = true }
 # Streaming decompression of pre-compressed images (foo.iso.{gz,xz,zst,bz2}).
 flate2 = "1"
 xz2 = "0.1"
-zstd = "0.13"
+# `pkg-config` feature → zstd-sys uses the system libzstd via pkg-config
+# instead of bundling its own vendored static build. The vendored path
+# silently drops its link directive in some chroot environments (notably
+# makepkg's clean build), leaving the linker without `-lzstd` and the
+# binary unresolved. Combined with ZSTD_SYS_USE_PKG_CONFIG=1 in PKGBUILD.
+zstd = { version = "0.13", features = ["pkg-config"] }
 bzip2 = "0.6"
 
 # The source ISO is loop-mounted, so the kernel parses ISO9660/UDF for us —

@@ -54,7 +54,7 @@ fn main() {
         // SAFETY: the pinned reference is borrowed only to grab a raw
         // pointer the C++ side stores; the engine outlives the call.
         let raw: *mut _ = unsafe { engine_pin.as_mut().get_unchecked_mut() };
-        translations::register_engine(raw);
+        translations::register_engine(raw as *mut std::ffi::c_void);
         engine_pin.load(&QUrl::from("qrc:/qt/qml/com/usbooty/qml/main.qml"));
     }
 

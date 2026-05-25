@@ -1,61 +1,42 @@
 //! Locale-aware translation loading via `QTranslator`.
 //!
-//! cxx-qt-lib doesn't expose `QTranslator` itself, so we hand-roll a tiny
-//! `extern "C++"` block that wraps the three calls we actually need:
-//! construct, load-from-resource, and install-onto-the-app. The translator
-//! is a global `static mut` because it has to outlive QML evaluation —
-//! freeing it would invalidate Qt's bound translation pointers.
+//! Wraps six functions from `include/translator_bridge.cpp` through a
+//! plain `extern "C"` ABI. Going through cxx / cxx-qt was the previous
+//! design, but cxx-qt-build's `.file()` doesn't pick up plain
+//! `#[cxx::bridge]` modules (it only processes cxx-qt bridges), so a
+//! clean build environment (like makepkg's chroot) ends up with the
+//! bridge stubs unresolved. The raw `extern "C"` approach + a small
+//! C++ shim compiled by the `cc` crate works everywhere.
 //!
-//! Strings are loaded from `qrc:/i18n/usbooty_<locale>.qm`, embedded into
-//! the binary by `crates/gui/qrc/translations.qrc` at build time.
+//! `.qm` files are loaded from `qrc:/i18n/usbooty_<locale>.qm`, embedded
+//! into the binary by `crates/gui/qrc/translations.qrc` at build time.
 
-use cxx::let_cxx_string;
+use std::ffi::{c_char, c_void, CString};
 use std::sync::Mutex;
 
-#[cxx::bridge]
-mod ffi {
-    unsafe extern "C++" {
-        include!("translator_bridge.h");
-
-        type QTranslator;
-        type QQmlApplicationEngine = cxx_qt_lib::QQmlApplicationEngine;
-
-        /// Heap-allocate a translator, returns the raw pointer. The caller
-        /// owns the allocation and is responsible for keeping it alive for
-        /// the lifetime of the Qt application.
-        fn translator_new() -> *mut QTranslator;
-
-        /// Load a `.qm` file from the given path (a `qrc:/…` URL is OK).
-        /// Returns whether the load succeeded.
-        unsafe fn translator_load(tr: *mut QTranslator, path: &CxxString) -> bool;
-
-        /// Install the translator onto the global QCoreApplication so
-        /// `qsTr` / `QObject::tr` start using it. Must run after a
-        /// `QGuiApplication` exists.
-        unsafe fn translator_install(tr: *mut QTranslator);
-
-        /// Remove a previously-installed translator. Qt emits a
-        /// LanguageChange event after this, which QML's `qsTr` bindings
-        /// pick up and re-evaluate, so the UI live-switches without a
-        /// restart.
-        unsafe fn translator_remove(tr: *mut QTranslator);
-
-        /// Free the translator allocation.
-        unsafe fn translator_delete(tr: *mut QTranslator);
-
-        /// Force every QML `qsTr()` binding on `engine` to re-evaluate.
-        /// QCoreApplication does fire LanguageChange after install /
-        /// removeTranslator, but in practice QML's TranslationBindings
-        /// only refresh reliably when QQmlEngine::retranslate() is invoked
-        /// explicitly.
-        unsafe fn engine_retranslate(engine: *mut QQmlApplicationEngine);
-    }
+// The C++ side is opaque to Rust; we juggle raw pointers and let the C++
+// code own the QTranslator / QQmlApplicationEngine instances.
+#[repr(C)]
+struct QTranslator {
+    _opaque: [u8; 0],
+}
+#[repr(C)]
+struct QQmlApplicationEngine {
+    _opaque: [u8; 0],
 }
 
-/// Raw pointer to the currently-installed translator, or null when the UI is
-/// in source-language (English) mode. Stored as a usize because raw
-/// pointers aren't `Send` — wrapped in a Mutex so the GUI thread can swap
-/// it from menu callbacks.
+extern "C" {
+    fn usbooty_translator_new() -> *mut QTranslator;
+    fn usbooty_translator_load(tr: *mut QTranslator, path: *const c_char) -> bool;
+    fn usbooty_translator_install(tr: *mut QTranslator);
+    fn usbooty_translator_remove(tr: *mut QTranslator);
+    fn usbooty_translator_delete(tr: *mut QTranslator);
+    fn usbooty_engine_retranslate(engine: *mut QQmlApplicationEngine);
+}
+
+/// Raw pointer to the currently-installed translator, or null when the UI
+/// is in source-language (English) mode. Stored as a usize because raw
+/// pointers aren't `Send`; a Mutex serialises menu-driven swaps.
 static CURRENT: Mutex<usize> = Mutex::new(0);
 
 /// Raw pointer to the QQmlApplicationEngine `main.rs` constructed, kept so
@@ -65,8 +46,9 @@ static ENGINE: Mutex<usize> = Mutex::new(0);
 
 /// Hand the engine pointer to the translation module so toggling the
 /// language at runtime can ping it. Call once, right after creating the
-/// QQmlApplicationEngine in `main.rs`.
-pub fn register_engine(engine: *mut ffi::QQmlApplicationEngine) {
+/// QQmlApplicationEngine in `main.rs`. The pointer must remain valid for
+/// the lifetime of the application.
+pub fn register_engine(engine: *mut c_void) {
     *ENGINE.lock().expect("engine lock poisoned") = engine as usize;
 }
 
@@ -77,7 +59,7 @@ pub fn register_engine(engine: *mut ffi::QQmlApplicationEngine) {
 ///
 /// Must be called *after* the QGuiApplication is constructed.
 pub fn install_for_system_locale() {
-    let locale_full = system_locale(); // e.g. "fr_FR"
+    let locale_full = system_locale();
     let short: String = locale_full.split('_').next().unwrap_or("en").to_string();
     for candidate in [locale_full.as_str(), short.as_str()] {
         if candidate == "en" {
@@ -91,53 +73,44 @@ pub fn install_for_system_locale() {
 
 /// Swap to English (no translator) or back to the system locale at runtime.
 /// QCoreApplication::removeTranslator / installTranslator both emit a
-/// QEvent::LanguageChange, which the QML engine forwards to every `qsTr`
-/// binding — so the UI re-renders in the new language without restart.
-///
-/// `force_english=true` strips the current translator so qsTr returns its
-/// English source strings. `false` re-installs the system-locale .qm.
+/// QEvent::LanguageChange; we also explicitly retranslate the QML engine
+/// so every `qsTr` binding re-evaluates.
 pub fn set_force_english(force_english: bool) {
-    unsafe {
+    {
         let mut slot = CURRENT.lock().expect("translator lock poisoned");
-        // Always remove the previous translator first; that triggers the
-        // LanguageChange event regardless of which way we're switching.
         if *slot != 0 {
-            let old = *slot as *mut ffi::QTranslator;
-            ffi::translator_remove(old);
-            ffi::translator_delete(old);
+            unsafe {
+                let old = *slot as *mut QTranslator;
+                usbooty_translator_remove(old);
+                usbooty_translator_delete(old);
+            }
             *slot = 0;
         }
-        if !force_english {
-            // Re-derive the locale every time — if the user changed it in
-            // their session env, we'll pick it up on toggle-off.
-            drop(slot);
-            install_for_system_locale();
-        }
-        // Force every qsTr binding to re-evaluate; QML's TranslationBinding
-        // doesn't always pick up the bare LanguageChange event.
-        let engine = *ENGINE.lock().expect("engine lock poisoned");
-        if engine != 0 {
-            ffi::engine_retranslate(engine as *mut ffi::QQmlApplicationEngine);
-        }
+    }
+    if !force_english {
+        install_for_system_locale();
+    }
+    let engine = *ENGINE.lock().expect("engine lock poisoned");
+    if engine != 0 {
+        unsafe { usbooty_engine_retranslate(engine as *mut QQmlApplicationEngine) };
     }
 }
 
 /// Load `usbooty_<locale>.qm` from the baked-in resource bundle and
-/// install it. Records the translator pointer in `CURRENT` so it can be
-/// removed by [`set_force_english`] later. Returns whether the load
-/// succeeded.
+/// install it. Records the translator pointer so [`set_force_english`]
+/// can remove it later. Returns whether the load succeeded.
 fn load_and_install(locale: &str) -> bool {
     let path = format!(":/i18n/usbooty_{locale}.qm");
+    let c_path = CString::new(path.clone()).expect("path has no interior NUL");
     unsafe {
-        let tr = ffi::translator_new();
-        let_cxx_string!(c_path = path.clone());
-        if ffi::translator_load(tr, &c_path) {
-            ffi::translator_install(tr);
+        let tr = usbooty_translator_new();
+        if usbooty_translator_load(tr, c_path.as_ptr()) {
+            usbooty_translator_install(tr);
             *CURRENT.lock().expect("translator lock poisoned") = tr as usize;
             eprintln!("usbooty: loaded translation {path}");
             true
         } else {
-            ffi::translator_delete(tr);
+            usbooty_translator_delete(tr);
             false
         }
     }
@@ -149,11 +122,9 @@ fn system_locale() -> String {
     for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
         if let Ok(value) = std::env::var(var) {
             if !value.is_empty() && value != "C" && value != "POSIX" {
-                // "fr_FR.UTF-8" → "fr_FR"
                 return value.split(['.', '@']).next().unwrap_or(&value).to_string();
             }
         }
     }
     "en_US".to_string()
 }
-

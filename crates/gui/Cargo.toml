@@ -27,4 +27,7 @@ md-5 = "0.11"
 sha1 = "0.11"
 
 [build-dependencies]
+# The translator C++ shim (include/translator_bridge.cpp) is added to
+# cxx-qt-build's batch via .cpp_file() so it gets the same Qt include
+# paths, link order and ABI flags as the rest of the generated glue.
 cxx-qt-build = { version = "0.8", features = ["link_qt_object_files"] }

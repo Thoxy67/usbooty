@@ -15,6 +15,9 @@ depends=(
     # present on Arch, but make it explicit since the helper *will* fail
     # without them. (No-op on most installs; keeps `pacman -Rs` honest.)
     'util-linux'
+    # libzstd is linked dynamically (see build()); list it explicitly so the
+    # transitive dep is visible to `pacman -Rs`. `zstd` is in base anyway.
+    'zstd'
 )
 makedepends=(
     'rust'
@@ -22,6 +25,12 @@ makedepends=(
     'qt6-base'
     'qt6-declarative'
     'pkgconf'
+    # libzstd dev headers for zstd-sys's system-libzstd path.
+    'zstd'
+    # `lrelease6` compiles the .ts translation sources into the .qm files
+    # that the qrc embeds; the .qm files are gitignored so they have to be
+    # generated at build time.
+    'qt6-tools'
 )
 optdepends=(
     # Filesystem formatters — one per FS the user can pick in the GUI.
@@ -70,6 +79,32 @@ build() {
     cd "$_pkgname"
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
+    # zstd-sys's vendored static build silently drops its link directive in
+    # the makepkg environment (clean chroot or makepkg's RUSTFLAGS/LDFLAGS
+    # interfere with the bundled C compile), so the final link fails with
+    # `undefined symbol: ZSTD_*`. Force the system libzstd via pkg-config —
+    # `zstd` package is in `base`, so it's always present on the user's
+    # system anyway, and listed in depends= to make the runtime link
+    # explicit. See https://github.com/gyscos/zstd-rs/issues/229
+    export ZSTD_SYS_USE_PKG_CONFIG=1
+
+    # Strip every -flto* token from the C/C++ flags. The cc::Build invoked
+    # by cxx-qt-build (and by cxx, ring, blake3, etc.) honours CXXFLAGS /
+    # CFLAGS straight from the environment. On distros whose makepkg.conf
+    # adds `-flto=auto` (CachyOS does), every .cpp / .c is compiled to
+    # LLVM bitcode and rust-lld — invoked without LTO since our Rust
+    # profile sets `lto = false` — can't read those object files, so the
+    # final link reports every cxxbridge / ring symbol as undefined. The
+    # PKGBUILD's `options=('!lto')` removes the plain `-flto` token on
+    # standard Arch but doesn't always strip `-flto=auto`, so do it
+    # ourselves to make the build deterministic everywhere.
+    export CXXFLAGS="$(printf '%s\n' $CXXFLAGS | grep -v '^-flto' | tr '\n' ' ')"
+    export CFLAGS="$(printf '%s\n' $CFLAGS | grep -v '^-flto' | tr '\n' ' ')"
+    export LDFLAGS="$(printf '%s\n' $LDFLAGS | grep -v '^-flto' | tr '\n' ' ')"
+
+    # The .qm translation binaries are gitignored, so a fresh clone
+    # won't have them; crates/gui/build.rs auto-runs `lrelease6` (from
+    # qt6-tools in makedepends) over every .ts before the qrc embed step.
     cargo build --release --locked
 }
 
@@ -77,6 +112,7 @@ check() {
     cd "$_pkgname"
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
+    export ZSTD_SYS_USE_PKG_CONFIG=1
     # The ISO-analysis tests need `xorriso` and skip themselves when it is
     # absent; every other test is deterministic and hardware-free.
     cargo test --release --locked --workspace
