@@ -1,0 +1,58 @@
+name: publish-wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.forgejo/workflows/wiki.yml'
+
+jobs:
+  sync:
+    runs-on: docker
+    container:
+      image: docker.io/debian:bookworm-slim
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Sync docs/ to wiki
+        env:
+          TOKEN: ${{ secrets.GIT_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          git config --global user.email "wiki-bot@${REPO_OWNER}"
+          git config --global user.name  "wiki-bot"
+
+          # Strip scheme so we can splice in the token, then re-add https://.
+          host="${SERVER#https://}"
+          host="${host#http://}"
+          git clone "https://wiki-bot:${TOKEN}@${host}/${REPO_OWNER}/${REPO_NAME}.wiki.git" wiki
+
+          # Wipe the existing top-level .md pages so deletions in docs/ propagate.
+          # Leaves _Sidebar.md / _Footer.md / images/ alone if you add them later.
+          find wiki -maxdepth 1 -type f -name '*.md' ! -name '_*.md' -delete
+
+          cp docs/*.md wiki/
+
+          # Forgejo/Gitea wiki landing page must be Home.md.
+          if [ -f wiki/index.md ]; then
+            mv wiki/index.md wiki/Home.md
+          fi
+
+          cd wiki
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date."
+            exit 0
+          fi
+          short=$(echo "${GITHUB_SHA:-unknown}" | cut -c1-7)
+          git commit -m "sync docs from main@${short}"
+          git push

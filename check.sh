@@ -6,8 +6,8 @@
 #   ./check.sh
 #
 # Exits non-zero on the first failure so CI / pre-push hooks can short-circuit.
-# This is the single source of truth for "is the tree healthy?"; there is no
-# GitHub Actions or Forgejo Workflow file at the moment.
+# This is the single source of truth for "is the tree healthy?" and is invoked
+# verbatim by .forgejo/workflows/check.yml on push + PR to main.
 
 set -euo pipefail
 
