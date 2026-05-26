@@ -17,7 +17,9 @@ use usbooty_core::JobOptions;
 
 use crate::{blockdev, emit};
 
-const BUF_SIZE: usize = 4 * 1024 * 1024;
+// Match dd.rs: 8 MiB reads on the backup path so dumping a large drive to
+// an image doesn't double the syscall count vs. the write path.
+const BUF_SIZE: usize = 8 * 1024 * 1024;
 const REPORT_EVERY: Duration = Duration::from_millis(100);
 
 /// Read `device_path` start-to-end into `image_path`.

@@ -12,8 +12,11 @@ use usbooty_core::JobOptions;
 
 use crate::{blockdev, emit, image};
 
-/// Copy chunk size. 4 MiB balances syscall overhead against memory use.
-const BUF_SIZE: usize = 4 * 1024 * 1024;
+/// Copy chunk size. 8 MiB is comfortable for modern USB 3+ devices; the
+/// emit::progress throttle (0.1 % deduplication) keeps the GUI feed clean
+/// regardless, so the coarser chunks roughly halve read/write syscall
+/// count without any UI penalty.
+const BUF_SIZE: usize = 8 * 1024 * 1024;
 /// Minimum interval between `Progress` messages, to avoid flooding the GUI.
 const REPORT_EVERY: Duration = Duration::from_millis(100);
 
