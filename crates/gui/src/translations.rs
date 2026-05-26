@@ -25,7 +25,10 @@ struct QQmlApplicationEngine {
     _opaque: [u8; 0],
 }
 
-extern "C" {
+// Edition 2024 requires `extern` blocks to be marked `unsafe`: the compiler
+// can't verify the signatures match the C side, so importing them is the
+// unsafe act, while each individual call is still `unsafe { ... }` at use.
+unsafe extern "C" {
     fn usbooty_translator_new() -> *mut QTranslator;
     fn usbooty_translator_load(tr: *mut QTranslator, path: *const c_char) -> bool;
     fn usbooty_translator_install(tr: *mut QTranslator);

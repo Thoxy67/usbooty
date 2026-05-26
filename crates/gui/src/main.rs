@@ -20,12 +20,6 @@ fn main() {
         cli::Parsed::Args(parsed) => cli::install(parsed),
     }
 
-    // Use the cross-platform Fusion style for a predictable desktop look,
-    // rather than whatever Qt Quick Controls style the system defaults to.
-    if std::env::var_os("QT_QUICK_CONTROLS_STYLE").is_none() {
-        std::env::set_var("QT_QUICK_CONTROLS_STYLE", "Fusion");
-    }
-
     // Drop stale entries from the decompression cache. A user who works
     // with the same big `.iso.xz` daily keeps it warm; a one-off pick is
     // forgotten after 30 days so the cache doesn't grow unbounded.

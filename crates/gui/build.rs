@@ -63,7 +63,10 @@ fn strip_lto_from_env(var: &str) {
         .collect::<Vec<_>>()
         .join(" ");
     if cleaned != value {
-        std::env::set_var(var, &cleaned);
+        // SAFETY: build scripts run single-threaded before any user code, so
+        // the data-race concern that made `set_var` unsafe in edition 2024
+        // does not apply here.
+        unsafe { std::env::set_var(var, &cleaned) };
         println!("cargo:warning=stripped -flto from {var} ({value:?} -> {cleaned:?})");
     }
 }
