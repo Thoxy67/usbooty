@@ -96,6 +96,36 @@ of each supported format on the fly (no external compressor binaries
 required for `.Z`) and round-trips it through the GUI's decompressor
 adapters.
 
+## Pre-PR checks
+
+Run the workspace tripwire before pushing:
+
+```sh
+./check.sh
+```
+
+It runs:
+
+* `cargo clippy --workspace --all-targets --locked -- -D warnings`. Every
+  warning fails the gate; this is the single source of truth for "is
+  clippy happy?".
+* `cargo test --workspace --locked`. Catches regressions in the 92 unit
+  and integration tests.
+* A scan of `data/translations/usbooty_fr.ts` for `type="unfinished"`
+  entries and a `lrelease6` smoke compile, so unfinished translations
+  don't slip through.
+* A `grep` for the em-dash character (U+2014) under `docs/`. The
+  project rule is that docs contain none.
+
+`cargo fmt` is intentionally NOT enforced; the tree predates a global
+rustfmt pass and turning it on as a tripwire would make every PR a
+drive-by reformat. Run `cargo fmt --all` manually if you want a clean
+diff.
+
+There is no GitHub Actions / Forgejo Workflow file at the moment.
+`check.sh` is the single source of truth; reference it from a pre-push
+hook if you want it to run automatically.
+
 ## Translations
 
 User-visible strings flow through Qt's `qsTr()`. Refresh the catalog

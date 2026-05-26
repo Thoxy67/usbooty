@@ -99,6 +99,13 @@ mean the matching features stay disabled (the filesystem combo only
 lists tools that are actually installed; the SMART chip stays empty
 if `smartctl` is absent; etc.).
 
+The table above lists the tools you are most likely to need.
+`packaging/PKGBUILD` ships the full `optdepends` array (every
+filesystem formatter plus `libisoburn`, `xdg-utils`, `libnotify`,
+etc.); install from the AUR and `pacman` offers them as part of the
+package install. If you build from source on a non-Arch distro, you
+can use the PKGBUILD as a checklist for the bigger optional set.
+
 ## User preferences
 
 USBooty persists two preferences in `~/.config/usbooty/settings.json`:
