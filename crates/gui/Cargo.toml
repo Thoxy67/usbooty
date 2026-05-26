@@ -29,9 +29,11 @@ sha2 = { workspace = true }
 blake3 = { workspace = true }
 md-5 = "0.11"
 sha1 = "0.11"
-# Transparent decompression of compressed disk images. Pure-Rust where
-# practical so no new system runtime dep is added.
-lzma-rs = "0.3"
+# Transparent decompression of compressed disk images. Mostly pure-Rust;
+# xz / .lzma route through xz2 (system liblzma) for true streaming so a
+# multi-GB compressed image doesn't have to live in RAM. liblzma is already
+# pulled by the helper, so no new system link is added overall.
+xz2 = "0.1"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 bzip2 = { version = "0.6", features = ["static"] }
 zstd = "0.13"

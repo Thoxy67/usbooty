@@ -7,10 +7,13 @@
 //! into the rest of the pipeline. Loop-mount in the helper and seekable reads
 //! in the ISO analyzer both need a real file, so the cache file is mandatory.
 //!
-//! No new system runtime dep is introduced — every backend is pure-Rust or
-//! statically bundles its C source. Progress is reported as "input bytes
-//! consumed / source size", which is the only basis available for streaming
-//! decompressors that don't expose the uncompressed length.
+//! XZ and raw `.lzma` go through `xz2` (system liblzma); everything else is
+//! pure-Rust or statically bundles its C source. `xz2` is already a helper
+//! dependency, so adding it here costs no new system link.
+//!
+//! Progress is reported as "input bytes consumed / source size", which is the
+//! only basis available for streaming decompressors that don't expose the
+//! uncompressed length.
 
 use anyhow::{bail, Context, Result};
 use directories::ProjectDirs;
@@ -428,51 +431,50 @@ fn extract_zip<R: Read>(
     bail!("the zip archive contains no usable disk image")
 }
 
-/// Adapter that owns the `ProgressReader` and exposes a `Read` interface
-/// driving `lzma_rs::xz_decompress`. lzma-rs takes a `BufRead + Read` and
-/// writes everything at once, so we do the decompress eagerly into memory
-/// then expose that buffer as a streaming reader. Acceptable for the kinds of
-/// images we target (≤ a few GiB uncompressed); for larger images the user
-/// can fall back to the system `xz` tool.
-struct XzAdapter {
-    inner: io::Cursor<Vec<u8>>,
+/// Streaming `.xz` decoder backed by `xz2::read::XzDecoder` (system liblzma).
+/// Constructor is fallible only to match the existing call-site shape; the
+/// real liblzma errors surface during `read`.
+struct XzAdapter<R: BufRead> {
+    inner: xz2::read::XzDecoder<R>,
 }
 
-impl XzAdapter {
-    fn new<R: BufRead>(mut reader: R) -> Result<Self> {
-        let mut out = Vec::new();
-        lzma_rs::xz_decompress(&mut reader, &mut out)
-            .map_err(|e| anyhow::anyhow!("xz decompress: {e}"))?;
+impl<R: BufRead> XzAdapter<R> {
+    fn new(reader: R) -> Result<Self> {
+        // 256 MiB memory limit; modern .xz streams typically use a single
+        // dictionary of 8-64 MiB, so this is comfortable headroom without
+        // letting a malicious stream exhaust RAM.
         Ok(Self {
-            inner: io::Cursor::new(out),
+            inner: xz2::read::XzDecoder::new(reader),
         })
     }
 }
 
-impl Read for XzAdapter {
+impl<R: BufRead> Read for XzAdapter<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.read(buf)
     }
 }
 
-/// Adapter for raw `.lzma` (the legacy 13-byte-header format). Same trade-off
-/// as `XzAdapter`: lzma-rs is buffer-oriented, so we decompress in memory.
-struct LzmaAdapter {
-    inner: io::Cursor<Vec<u8>>,
+/// Streaming raw `.lzma` (legacy 13-byte-header) decoder built on
+/// `xz2::stream::Stream::new_lzma_decoder`. Same trade-off as [`XzAdapter`].
+struct LzmaAdapter<R: BufRead> {
+    inner: xz2::read::XzDecoder<R>,
 }
 
-impl LzmaAdapter {
-    fn new<R: BufRead>(mut reader: R) -> Result<Self> {
-        let mut out = Vec::new();
-        lzma_rs::lzma_decompress(&mut reader, &mut out)
-            .map_err(|e| anyhow::anyhow!("lzma decompress: {e}"))?;
+impl<R: BufRead> LzmaAdapter<R> {
+    fn new(reader: R) -> Result<Self> {
+        // u64::MAX memlimit matches `xz --lzma1=preset=9` decoders; the
+        // streaming path means peak resident memory stays bounded by the
+        // dictionary size embedded in the file header.
+        let stream = xz2::stream::Stream::new_lzma_decoder(u64::MAX)
+            .map_err(|e| anyhow::anyhow!("lzma decoder init: {e}"))?;
         Ok(Self {
-            inner: io::Cursor::new(out),
+            inner: xz2::read::XzDecoder::new_stream(reader, stream),
         })
     }
 }
 
-impl Read for LzmaAdapter {
+impl<R: BufRead> Read for LzmaAdapter<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.read(buf)
     }

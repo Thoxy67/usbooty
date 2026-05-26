@@ -999,16 +999,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "616ec5685824bcc94416c6d4a7a446eea774a31efd7062c8480ba6fd06d7a6e5"
 
 [[package]]
-name = "lzma-rs"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "297e814c836ae64db86b36cf2a557ba54368d03f6afcd7d947c266692f71115e"
-dependencies = [
- "byteorder",
- "crc",
-]
-
-[[package]]
 name = "lzma-sys"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1679,7 +1669,6 @@ dependencies = [
  "cxx-qt-lib",
  "directories",
  "flate2",
- "lzma-rs",
  "md-5",
  "serde",
  "serde_json",
@@ -1689,6 +1678,7 @@ dependencies = [
  "ureq",
  "usbooty-core",
  "weezl",
+ "xz2",
  "zip",
  "zstd",
 ]
