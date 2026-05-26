@@ -40,13 +40,17 @@ jobs:
       - name: Install system deps + Rust (parallel)
         run: |
           set -euo pipefail
-          # Run apt and rustup in parallel: apt is I/O bound on the mirror,
-          # rustup is bound on data.forgejo.org's CDN, so they overlap cleanly.
+          # node:20-bookworm-slim has no curl, so install the minimum needed
+          # to bootstrap rustup *before* parallelising. ~5s cost.
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl
+
+          # Now the heavy installs run concurrently: apt's mirror download is
+          # I/O bound, rustup's CDN download is too, so they overlap cleanly.
           (
-            apt-get update
             DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-              ca-certificates curl git lld \
-              build-essential pkg-config \
+              git lld build-essential pkg-config \
               libzstd-dev libfuse3-dev libgl-dev \
               qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-l10n-tools
             # crates/gui/build.rs invokes `lrelease6` (Arch name); Debian ships
