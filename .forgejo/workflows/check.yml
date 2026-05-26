@@ -20,6 +20,12 @@ jobs:
       RUSTUP_HOME: /usr/local/rustup
       CARGO_HOME: /usr/local/cargo
       PATH: /usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      # Force lld for the final link. The Debian CI image inherits a
+      # `-fuse-ld=gold` somewhere in its default flags, and gold mishandles
+      # cxx-qt's `--whole-archive` initialiser archives, producing undefined
+      # references to `cxx_qt_init_*`. lld (and bfd) link them correctly.
+      # Rust itself now prints a deprecation warning for gold.
+      RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
     steps:
       - name: Install system deps
         run: |
