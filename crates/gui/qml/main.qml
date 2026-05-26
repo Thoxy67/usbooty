@@ -27,11 +27,11 @@ ApplicationWindow {
     // window is in the background / minimized to the taskbar.
     title: {
         if (app.busy && app.progress > 0)
-            return "usbooty — " + qsTr(app.phase) + " "
+            return "USBooty — " + qsTr(app.phase) + " "
                  + Math.round(app.progress * 100) + " %"
         if (app.busy)
-            return "usbooty — " + (app.phase !== "" ? qsTr(app.phase) : qsTr("Working")) + "…"
-        return qsTr("usbooty — Bootable USB Creator")
+            return "USBooty — " + (app.phase !== "" ? qsTr(app.phase) : qsTr("Working")) + "…"
+        return qsTr("USBooty — Bootable USB Creator")
     }
 
     AppController {
@@ -68,10 +68,12 @@ ApplicationWindow {
     }
 
     // Whether the user can launch a job right now. Format-only (method 2)
-    // needs no source image; Ventoy (method 3) treats the ISO as optional.
+    // and FreeDOS (method 4) need no source image; Ventoy (method 3)
+    // treats the ISO as optional.
     readonly property bool ready:
         !app.busy && app.selectedDevice >= 0
         && (app.method === 2
+            || app.method === 4
             || (app.method === 3 && app.fitWarning === "")
             || (app.isoPath !== "" && app.fitWarning === ""))
 
@@ -457,6 +459,9 @@ ApplicationWindow {
     Behavior on width {
         NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
     }
+    // Effective visibility of the activity log column: forced on by the
+    // user setting, OR auto-expanded once the buffer holds something.
+    readonly property bool logVisible: app.showLogsAlways || logExpanded
     Connections {
         target: app
         function onLogTextChanged() {
@@ -466,7 +471,19 @@ ApplicationWindow {
                     window.width = window.expandedWidth
             }
         }
+        function onShowLogsAlwaysChanged() {
+            // When the user flips the menu toggle on, grow the window to
+            // make room for the log column right away.
+            if (app.showLogsAlways && window.width < window.expandedWidth)
+                window.width = window.expandedWidth
+        }
     }
+    Component.onCompleted: {
+        // Honour the persisted "always show logs" choice on first paint.
+        if (app.showLogsAlways && window.width < window.expandedWidth)
+            window.width = window.expandedWidth
+    }
+
 
     menuBar: MenuBar {
         Menu {
@@ -489,19 +506,28 @@ ApplicationWindow {
             }
         }
         Menu {
-            title: qsTr("?")
-            MenuItem {
-                text: qsTr("About usbooty")
-                onTriggered: aboutDialog.open()
-            }
-            MenuSeparator { }
+            title: qsTr("Settings")
             MenuItem {
                 // Checkable so the active state is visible at-a-glance.
-                // Hidden on English-locale machines (nothing to force).
+                // Useful on non-English desktops to force the canonical
+                // English strings (e.g. for screenshots / bug reports).
                 text: qsTr("Force English")
                 checkable: true
                 checked: app.forceEnglish
                 onTriggered: app.applyForceEnglish(checked)
+            }
+            MenuItem {
+                text: qsTr("Always show activity log")
+                checkable: true
+                checked: app.showLogsAlways
+                onTriggered: app.applyShowLogsAlways(checked)
+            }
+        }
+        Menu {
+            title: qsTr("?")
+            MenuItem {
+                text: qsTr("About USBooty")
+                onTriggered: aboutDialog.open()
             }
         }
     }
@@ -538,11 +564,29 @@ ApplicationWindow {
             message: app.method === 2 ? "" : app.fitWarning
         }
         Banner {
-            // SBAT / DBX revocation hits from scanning the ISO's EFI binaries.
-            // Warning, not blocking: legacy BIOS boot still works, and many
-            // firmwares accept the revoked binary anyway.
-            severity: "warn"
+            // SBAT / DBX revocation hits from scanning the ISO's EFI
+            // binaries. Promoted to "error" so it stands out as a real
+            // boot risk — modern Secure-Boot-enforcing firmware will
+            // *refuse* to load a revoked bootloader. Legacy BIOS or
+            // firmware with stale SbatLevel still boots, so it's a
+            // warning the user can ignore deliberately.
+            severity: "error"
             message: app.revocationWarnings
+            ToolTip.delay: 500
+            ToolTip.visible: hovered
+            ToolTip.text: qsTr("USBooty scanned this ISO's signed EFI binaries against the "
+                + "Secure Boot revocation database (SBAT generations + the live UEFI Forum "
+                + "DBX update). One or more bootloaders are flagged as obsolete. UEFI firmware "
+                + "with current revocations will refuse to load them — try a newer ISO, or "
+                + "boot in legacy / non-Secure-Boot mode.")
+            // `hovered` is a Banner-level alias for the Label's MouseArea.
+            property bool hovered: bannerHoverArea.containsMouse
+            MouseArea {
+                id: bannerHoverArea
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.NoButton
+            }
         }
         Banner {
             // SMART probe result for the selected device; populated
@@ -559,12 +603,13 @@ ApplicationWindow {
             // Header reflects optionality so the user isn't blocked looking
             // for an ISO when they only want a plain format or a Ventoy
             // stick (which seeds itself empty if no ISO is given).
-            heading: app.method === 2 ? qsTr("Source image (not used)")
+            heading: (app.method === 2 || app.method === 4)
+                        ? qsTr("Source image (not used)")
                     : app.method === 3 ? qsTr("Source image (optional)")
                     : qsTr("Source image")
             accent: "#3498db"
-            // The format-only method takes no source image.
-            enabled: app.method !== 2
+            // Format-only and FreeDOS need no source image.
+            enabled: app.method !== 2 && app.method !== 4
 
             RowLayout {
                 Layout.fillWidth: true
@@ -574,9 +619,18 @@ ApplicationWindow {
                     readOnly: true
                     placeholderText:
                         app.method === 2 ? qsTr("Not used for a plain format")
+                      : app.method === 4 ? qsTr("Not used — FreeDOS files are downloaded from upstream")
                       : app.method === 3 ? qsTr("Optional — Ventoy lets you drop ISOs onto the data partition later")
                       : qsTr("Choose an ISO image, or drag one onto the window…")
                     text: app.isoPath
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered && enabled
+                    ToolTip.text: app.isoPath !== ""
+                        ? app.isoPath
+                        : qsTr("Drop an .iso / .img / .vhd / compressed image (.xz / .gz / .bz2 / "
+                             + ".zst / .lzma / .zip / .Z) anywhere on the window, or use Browse… "
+                             + "to pick one. Compressed and VHD images are unpacked into "
+                             + "~/.cache/usbooty/ before writing.")
                 }
                 // Split button: "Browse…" plus a dropdown to download Windows.
                 SplitButton {
@@ -734,6 +788,34 @@ ApplicationWindow {
                         font.pointSize: 8
                         Layout.fillWidth: true
                     }
+                    // Green "verified by rg-adguard" badge — only shown when
+                    // the upstream SHA-1 database recognised this ISO.
+                    Rectangle {
+                        visible: app.isoAdguardBadge !== ""
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        color: "#1E7E34"
+                        radius: 4
+                        implicitHeight: badgeRow.implicitHeight + 8
+                        RowLayout {
+                            id: badgeRow
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            spacing: 6
+                            Label {
+                                text: "✓"
+                                color: "white"
+                                font.bold: true
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("Verified by rg-adguard: %1").arg(app.isoAdguardBadge)
+                                color: "white"
+                                wrapMode: Text.Wrap
+                                font.pointSize: 9
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -791,6 +873,10 @@ ApplicationWindow {
                 }
                 Button {
                     text: qsTr("Refresh")
+                    icon.name: "view-refresh"
+                    display: icon.name
+                        ? AbstractButton.IconOnly
+                        : AbstractButton.TextOnly
                     enabled: !app.busy
                     onClicked: app.refreshDevices()
                     ToolTip.delay: 500
@@ -835,7 +921,8 @@ ApplicationWindow {
                     model: [qsTr("DD image (raw copy)"),
                             qsTr("Partition & copy files"),
                             qsTr("Format only (no ISO)"),
-                            qsTr("Ventoy (multi-boot USB)")]
+                            qsTr("Ventoy (multi-boot USB)"),
+                            qsTr("FreeDOS bootable USB")]
                     currentIndex: app.method
                     onActivated: function(index) { app.method = index }
                     ToolTip.delay: 500
@@ -843,20 +930,24 @@ ApplicationWindow {
                     ToolTip.text: qsTr(
                         "DD — bit-for-bit copy of the ISO, no partitioning. Works for any "
                         + "isohybrid (most Linux ISOs).\n\n"
-                        + "Partition & copy — usbooty creates a fresh partition table, formats it, "
+                        + "Partition & copy — USBooty creates a fresh partition table, formats it, "
                         + "and copies the ISO files. Required for Windows install media and for "
                         + "anything that needs persistence.\n\n"
                         + "Format only — wipe + new partition table, no ISO involved.\n\n"
                         + "Ventoy — install Ventoy so you can drop multiple ISOs on the data partition "
-                        + "and pick one at boot.")
+                        + "and pick one at boot.\n\n"
+                        + "FreeDOS — download the latest FreeDOS kernel + shell from upstream and "
+                        + "build a self-contained bootable DOS stick (no ISO needed). Useful for "
+                        + "BIOS flashing utilities and legacy DOS tools.")
                 }
 
                 Label { text: qsTr("Filesystem") }
                 FormCombo {
                     Layout.fillWidth: true
                     // The filesystem is chosen automatically when writing an
-                    // image; it is only user-selectable for a plain format.
-                    enabled: !app.busy && app.method === 2
+                    // image; it is only user-selectable for a plain format
+                    // or for the FreeDOS method (which needs FAT16/FAT32).
+                    enabled: !app.busy && (app.method === 2 || app.method === 4)
                     // Bound to the list of filesystems whose mkfs tools are
                     // installed on this host — keeps the user from picking a
                     // variant that would fail at format time. Filesystem
@@ -877,11 +968,32 @@ ApplicationWindow {
                     // Meaningful for the partition and format methods; a raw
                     // DD copy keeps the ISO's own embedded table.
                     enabled: !app.busy && app.method !== 0
-                    model: [qsTr("GPT (UEFI)"), qsTr("MBR (BIOS/Legacy)")]
+                    // Order is mirrored by `filesystem_kind_from_index` on
+                    // the Rust side — keep them aligned when adding entries.
+                    model: [
+                        qsTr("GPT (UEFI)"),
+                        qsTr("MBR (BIOS)"),
+                        qsTr("MBR (BIOS+UEFI)"),
+                        qsTr("Hybrid MBR+GPT (BIOS+UEFI)")
+                    ]
                     currentIndex: app.table
                     onActivated: function(index) { app.table = index }
-                    ToolTip.visible: hovered && !enabled
-                    ToolTip.text: qsTr("The DD method preserves the ISO's own partition table.")
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text: !enabled
+                        ? qsTr("The DD method preserves the ISO's own partition table.")
+                        : qsTr("How the disk is laid out for the firmware that boots it.\n\n"
+                             + "• GPT (UEFI) — modern default. Boots only on UEFI firmware. Required "
+                             + "for disks larger than 2 TiB and for more than 4 partitions.\n\n"
+                             + "• MBR (BIOS) — legacy 1980s table. Boots only on BIOS / CSM. Pick this "
+                             + "when the target PC's firmware truly is BIOS-only.\n\n"
+                             + "• MBR (BIOS+UEFI) — same on-disk layout as MBR, plus a bootable FAT "
+                             + "partition with /EFI/BOOT/BOOTx64.EFI so UEFI firmware finds it via the "
+                             + "fallback path. Simplest dual-firmware stick.\n\n"
+                             + "• Hybrid MBR+GPT (BIOS+UEFI) — real GPT + a synthesised MBR mirror "
+                             + "of the data partition (Apple-style). Maximum compatibility, but some "
+                             + "buggy firmwares dislike hybrid MBRs entirely. Use only if MBR(BIOS+UEFI) "
+                             + "doesn't boot on a specific machine.")
                 }
 
                 // Ventoy names its own data partition — no label field for it.
@@ -934,7 +1046,7 @@ ApplicationWindow {
             WrapCheckBox {
                 // Windows ISO with oversized install.wim, partition method.
                 // The default is the UEFI:NTFS two-partition layout; ticking
-                // this asks usbooty to split install.wim into <4 GiB chunks
+                // this asks USBooty to split install.wim into <4 GiB chunks
                 // via wimlib-imagex and keep a single FAT32 partition.
                 visible: app.windowsIso && app.method === 1
                 text: qsTr("Split install.wim onto FAT32 (needs wimlib-imagex) — broader firmware support than UEFI:NTFS")
@@ -1070,6 +1182,12 @@ ApplicationWindow {
                     text: qsTr("Enable persistent changes (saves to /slax/changes/)")
                     checked: app.persistenceSize > 0
                     onToggled: app.persistenceSize = checked ? 1 : 0
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Creates /slax/changes/ on the data partition and patches the "
+                        + "kernel command line with `perch`, so Slax saves your edits straight back "
+                        + "into the changes folder on shutdown. No separate persistence partition is "
+                        + "made — Slax just writes into the data partition until it fills.")
                 }
                 Label {
                     text: app.persistenceInline
@@ -1134,6 +1252,16 @@ ApplicationWindow {
             highlighted: true
             font.bold: true
             enabled: !window.cancelling && (app.busy || window.ready)
+            ToolTip.delay: 500
+            ToolTip.visible: hovered
+            ToolTip.text: app.busy
+                ? qsTr("Ask the running helper to stop. The current sector finishes writing, then "
+                     + "the partition table is left in whatever state the helper had got to — "
+                     + "expect a partially-written drive.")
+                : (app.windowsIso && app.method === 1
+                    ? qsTr("Opens the Windows-setup dialog first (TPM/Secure-Boot/RAM bypasses, "
+                         + "local account, debloat, …); the actual write begins after you click OK there.")
+                    : qsTr("Confirm and start writing. All data on the selected device is erased."))
             onClicked: {
                 if (app.busy) {
                     window.cancelling = true
@@ -1308,7 +1436,7 @@ ApplicationWindow {
         // ---- Activity log (right column, lazy) -------------------------
         Frame {
             id: logFrame
-            visible: window.logExpanded
+            visible: window.logVisible
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 340
@@ -1328,16 +1456,48 @@ ApplicationWindow {
                         Layout.fillWidth: true
                     }
                     Button {
+                        // Freedesktop theme name — Breeze / Adwaita /
+                        // Papirus all ship `document-save`. When the icon
+                        // is available we hide the text label so the
+                        // button stays compact; on icon-less themes the
+                        // text appears as a fallback (Qt drops to
+                        // TextOnly automatically when icon.source/name
+                        // resolves to nothing).
+                        text: qsTr("Save…")
+                        icon.name: "document-save"
+                        display: icon.name && (icon.source.toString() !== "" || true)
+                            ? AbstractButton.IconOnly
+                            : AbstractButton.TextOnly
+                        flat: true
+                        enabled: app.logText !== ""
+                        onClicked: saveLogDialog.open()
+                        ToolTip.delay: 500
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Write the current activity log to a text file. Useful "
+                            + "for bug reports — attach the file instead of pasting in the panel.")
+                    }
+                    Button {
                         text: qsTr("Clear")
+                        icon.name: "edit-clear"
+                        display: icon.name
+                            ? AbstractButton.IconOnly
+                            : AbstractButton.TextOnly
                         flat: true
                         enabled: app.logText !== "" && !app.busy
+                        ToolTip.delay: 500
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Empty the activity log panel.")
                         onClicked: {
                             app.logText = ""
                             // Collapsing back also shrinks the window —
                             // the user explicitly asked for the screen
-                            // estate back, so honour that.
-                            window.logExpanded = false
-                            window.width = window.compactWidth
+                            // estate back, so honour that. Unless they
+                            // turned on "always show logs", in which
+                            // case the panel stays put.
+                            if (!app.showLogsAlways) {
+                                window.logExpanded = false
+                                window.width = window.compactWidth
+                            }
                         }
                     }
                 }
@@ -1402,6 +1562,7 @@ ApplicationWindow {
             || u.endsWith(".iso.zst") || u.endsWith(".img.zst") || u.endsWith(".zst")
             || u.endsWith(".iso.lzma") || u.endsWith(".img.lzma") || u.endsWith(".lzma")
             || u.endsWith(".iso.zip") || u.endsWith(".img.zip") || u.endsWith(".zip")
+            || u.endsWith(".iso.z") || u.endsWith(".img.z") || u.endsWith(".z")
     }
     DropArea {
         id: isoDrop
@@ -1478,8 +1639,8 @@ ApplicationWindow {
         id: isoDialog
         title: qsTr("Select an ISO image")
         nameFilters: [
-            qsTr("Disk images (*.iso *.img *.vhd *.iso.xz *.iso.gz *.iso.bz2 *.iso.zst *.iso.lzma *.iso.zip *.img.xz *.img.gz *.img.bz2 *.img.zst *.img.lzma *.img.zip)"),
-            qsTr("Compressed (*.xz *.gz *.bz2 *.zst *.lzma *.zip)"),
+            qsTr("Disk images (*.iso *.img *.vhd *.iso.xz *.iso.gz *.iso.bz2 *.iso.zst *.iso.lzma *.iso.zip *.iso.Z *.img.xz *.img.gz *.img.bz2 *.img.zst *.img.lzma *.img.zip *.img.Z)"),
+            qsTr("Compressed (*.xz *.gz *.bz2 *.zst *.lzma *.zip *.Z)"),
             qsTr("All files (*)")
         ]
         onAccepted: app.setIso(selectedFile)
@@ -1498,6 +1659,16 @@ ApplicationWindow {
             qsTr("All files (*)")
         ]
         onAccepted: app.startBackup(selectedFile)
+    }
+
+    FileDialog {
+        // Save the activity-log buffer to a user-chosen text file.
+        id: saveLogDialog
+        title: qsTr("Save activity log")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "log"
+        nameFilters: [qsTr("Log files (*.log *.txt)"), qsTr("All files (*)")]
+        onAccepted: app.saveLogTo(selectedFile)
     }
 
     // Lightweight confirmation for the destructive device checks (both
@@ -1612,9 +1783,10 @@ ApplicationWindow {
                 }
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Writes six LabConfig registry keys during Setup so Win 11 skips its "
-                    + "hardware requirements: TPM 2.0, Secure Boot, 8 GB RAM, 64 GB system disk, "
-                    + "supported-CPU allowlist, and disk-geometry check. Harmless on Windows 10.")
+                ToolTip.text: qsTr("Lets Windows 11 install on hardware that fails its requirements check: "
+                    + "no TPM 2.0, Secure Boot disabled, less than 8 GB RAM, system drive smaller than 64 GB, "
+                    + "an older / non-allowlisted CPU, or unusual disk geometry. Sets the six LabConfig "
+                    + "registry flags during Setup. Has no effect on Windows 10 (which doesn't check any of these).")
             }
             WrapCheckBox {
                 text: qsTr("Auto-accept the Setup EULA")
@@ -1622,8 +1794,9 @@ ApplicationWindow {
                 onToggled: app.acceptEula = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Sets <AcceptEula>true</AcceptEula> in the windowsPE UserData block "
-                    + "so the Setup-time license prompt is skipped.")
+                ToolTip.text: qsTr("Pre-clicks 'Accept' on the licence-agreement page that appears near "
+                    + "the start of Windows Setup, so the install proceeds without waiting for the user to "
+                    + "scroll and tick the box.")
             }
             WrapCheckBox {
                 text: qsTr("Enable .NET Framework 3.5 from the install media")
@@ -1631,8 +1804,10 @@ ApplicationWindow {
                 onToggled: app.enableDotnet35 = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Runs DISM in the specialize pass to enable NetFx3 from the install "
-                    + "media's sources\\sxs folder. Needed by many legacy apps; no network required.")
+                ToolTip.text: qsTr("Installs the legacy .NET Framework 3.5 runtime alongside the modern "
+                    + ".NET 4.x that Windows ships with by default. Many older desktop apps (games, accounting "
+                    + "software, in-house tools from the 2000s) refuse to run without it. The files are pulled "
+                    + "from the install media itself, so no internet is needed.")
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -1659,9 +1834,10 @@ ApplicationWindow {
                 onToggled: app.skipMsaccount = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Emits both BypassNRO (Win 10 / Win 11 pre-24H2) and "
-                    + "<HideOnlineAccountScreens>true</HideOnlineAccountScreens> (Win 11 24H2+), "
-                    + "so a single toggle covers the whole supported matrix.")
+                ToolTip.text: qsTr("Lets you create a *local* Windows account during first-boot setup, "
+                    + "instead of being forced to sign in with (or create) a Microsoft account. Works on "
+                    + "every supported Windows version — Win 10, Win 11 pre-24H2, and Win 11 24H2+ all use "
+                    + "different mechanisms, this option applies whichever one is needed.")
             }
             WrapCheckBox {
                 text: qsTr("Disable network during OOBE — force local account on Win 11 24H2+")
@@ -1669,10 +1845,11 @@ ApplicationWindow {
                 onToggled: app.disableNetworkDuringOobe = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Runs `Get-NetAdapter | Disable-NetAdapter` in specialize, then a "
-                    + "matching Enable-NetAdapter in FirstLogonCommands. With no network during OOBE, "
-                    + "Windows falls back to local-account creation — the most robust workaround when "
-                    + "BypassNRO and HideOnlineAccountScreens are ignored.")
+                ToolTip.text: qsTr("Hard-disables every network adapter for the duration of first-boot "
+                    + "setup, so Windows physically can't reach Microsoft's servers to force online "
+                    + "sign-in. Network is re-enabled automatically after the first sign-in. The most "
+                    + "reliable local-account workaround on recent Win 11 builds where the regular "
+                    + "'skip Microsoft account' flags are silently ignored.")
             }
             WrapCheckBox {
                 text: qsTr("Skip the \"connect to a network\" Wi-Fi screen")
@@ -1680,8 +1857,9 @@ ApplicationWindow {
                 onToggled: app.hideWirelessSetup = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Sets <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE> so the "
-                    + "OOBE \"Let's connect you to a network\" page is skipped entirely.")
+                ToolTip.text: qsTr("Skips the 'Let's connect you to a network' page during first boot. "
+                    + "Useful if the machine already has wired Ethernet (no Wi-Fi password to enter), or "
+                    + "if you'd rather finish OOBE first and configure Wi-Fi inside Windows after.")
             }
             WrapCheckBox {
                 text: qsTr("Hide the OEM-registration screen")
@@ -1689,8 +1867,9 @@ ApplicationWindow {
                 onToggled: app.hideOemRegistration = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Sets <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen> "
-                    + "so OEM-branded OOBE pages do not appear (irrelevant on clean Microsoft ISOs).")
+                ToolTip.text: qsTr("Skips the OEM-registration / product-activation pages that appear "
+                    + "during first boot on factory-restore images (Dell, HP, Lenovo). Has no effect on "
+                    + "clean Microsoft ISOs — there's no OEM page to hide.")
             }
             WrapCheckBox {
                 text: qsTr("Pre-answer the network-type prompt as \"Work\" (private/trusted)")
@@ -1698,8 +1877,10 @@ ApplicationWindow {
                 onToggled: app.networkLocationWork = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Sets <NetworkLocation>Work</NetworkLocation> so OOBE classifies the "
-                    + "network as private/trusted without prompting (file sharing and discovery enabled).")
+                ToolTip.text: qsTr("Tells Windows the network you connect to during setup is "
+                    + "private / trusted — no 'Is this a home, work or public network?' prompt. The result "
+                    + "is the same firewall profile a home or office LAN gets: file sharing and network "
+                    + "discovery enabled. Pick this on a LAN you control; skip it on cafés / hotels.")
             }
             WrapCheckBox {
                 text: qsTr("Disable data-collection / telemetry prompts")
@@ -1707,9 +1888,10 @@ ApplicationWindow {
                 onToggled: app.disableTelemetry = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Sets <HideEULAPage>true</HideEULAPage> and <ProtectYourPC>3</ProtectYourPC> "
-                    + "— the OOBE \"skip Express settings\" answer that opts out of every diagnostic / "
-                    + "advertising / tailored-experience prompt.")
+                ToolTip.text: qsTr("Pre-selects the most privacy-conscious answers on the OOBE "
+                    + "'Choose privacy settings for your device' screen: minimum required diagnostic "
+                    + "data, no inking & typing telemetry, no advertising ID, no tailored experiences, "
+                    + "no Find-my-device. Equivalent to clicking 'No' on every toggle and submitting.")
             }
 
             // --- Local account ------------------------------------------
@@ -1790,9 +1972,32 @@ ApplicationWindow {
                     // the Microsoft TimeZone catalog, sorted by UTC offset.
                     readonly property var tzIds: app.timezoneIds.split("\n")
                     model: app.timezoneLabels.split("\n")
-                    // Restore the previously-chosen ID on dialog open.
+                    // Restore the previously-chosen ID on dialog open, and
+                    // re-sync whenever `app.timezone` changes (e.g. the
+                    // 'Copy from system' button below).
                     Component.onCompleted: currentIndex = Math.max(0, tzIds.indexOf(app.timezone))
                     onActivated: app.timezone = tzIds[currentIndex] || ""
+                    Connections {
+                        target: app
+                        function onTimezoneChanged() {
+                            var i = timezoneCombo.tzIds.indexOf(app.timezone)
+                            if (i >= 0) timezoneCombo.currentIndex = i
+                        }
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: 2
+                Item { Layout.preferredWidth: 110 }
+                Button {
+                    text: qsTr("Copy from system")
+                    onClicked: app.replicateRegionalFromHost()
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Reads the host's $LANG and /etc/localtime, picks the "
+                        + "matching Microsoft TimeZone ID, and fills the Locale + Time zone "
+                        + "fields. Saves typing en-US / Pacific Standard Time by hand.")
                 }
             }
 
@@ -1800,16 +2005,45 @@ ApplicationWindow {
             Label { text: qsTr("Privacy & debloat"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             WrapCheckBox {
+                text: qsTr("Disable automatic BitLocker device encryption")
+                checked: app.disableBitlocker
+                onToggled: app.disableBitlocker = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Stops Windows 11 24H2+ from silently encrypting the system "
+                    + "drive on first sign-in. Without this, recent installs auto-turn-on BitLocker "
+                    + "and the user is never asked — leaving anyone who later mounts the disk from "
+                    + "Linux or another Windows install staring at an unreadable partition. "
+                    + "Recommended for dual-boot, lab, and IT-imaged systems.")
+            }
+            WrapCheckBox {
+                text: qsTr("Install Windows CA 2023 Secure Boot policy")
+                checked: app.windowsCa2023
+                onToggled: app.windowsCa2023 = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Lets older UEFI firmware boot recent Windows installers that "
+                    + "are signed by Microsoft's new 'Windows UEFI CA 2023' chain. If your motherboard "
+                    + "hasn't received the new CA via Windows Update yet (common on workstations / "
+                    + "servers that don't run Windows), Secure-Boot will otherwise refuse the install. "
+                    + "Needs wimlib-imagex on the host; the option silently no-ops on older Windows ISOs.")
+            }
+            WrapCheckBox {
                 id: debloatBox
                 text: qsTr("Apply debloat profile")
                 checked: app.applyDebloat
                 onToggled: app.applyDebloat = checked
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Writes usbooty-debloat.reg to the USB and imports it during specialize "
-                    + "(HKLM machine policies + HKU\\DFT default-user policies). Disables Cortana, "
-                    + "Copilot, Recall, telemetry, lockscreen ads, suggested apps, advertising ID, "
-                    + "and assorted recommendation surfaces. Win 11-only keys are no-ops on Win 10.")
+                ToolTip.text: qsTr("Turns off the Windows 'features' most people uninstall by hand: "
+                    + "Cortana voice assistant, Copilot, Recall (the AI screenshot history), the "
+                    + "News & Interests taskbar widget, Bing / web suggestions in Start search, "
+                    + "lockscreen ads + 'suggested' apps + suggested toast notifications, the "
+                    + "advertising ID, tailored experiences, online speech model downloads, the "
+                    + "Phone-Link prompt, and the Feedback-Hub frequency popups. Telemetry is "
+                    + "knocked down to the minimum the OS still requires. Applied both machine-wide "
+                    + "and for every new user account. Win-11-only entries silently no-op on Win 10. "
+                    + "Click the box again to see the full per-item list.")
             }
             Label {
                 visible: debloatBox.checked
@@ -2075,15 +2309,17 @@ ApplicationWindow {
     Dialog {
         id: aboutDialog
         anchors.centerIn: parent
-        width: Math.min(460, window.width - 40)
+        // Tight cap; the dialog has to fit comfortably inside the 660 px
+        // compact window so it never spills past the parent.
+        width: Math.min(420, window.width - 40)
         modal: true
         topPadding: 14
-        bottomPadding: 14
+        bottomPadding: 12
         leftPadding: 18
         rightPadding: 18
         header: DialogHeader {
             // Deep blurple — close to Discord's brand mark (#5865F2) but a
-            // few shades darker, so the white usbooty logo + title pop
+            // few shades darker, so the white USBooty logo + title pop
             // without competing with the Microsoft-blue / red Erase headers.
             tint: "#4752C4"
             iconComponent: Image {
@@ -2095,49 +2331,107 @@ ApplicationWindow {
                 fillMode: Image.PreserveAspectFit
                 smooth: true
             }
-            title: "usbooty"
+            title: "USBooty"
             subtitle: qsTr("Bootable USB Creator · Version %1").arg(app.appVersion)
         }
         standardButtons: Dialog.Ok
         contentItem: ColumnLayout {
             spacing: 12
 
+            // Centred logo + one-line tagline; small enough to keep the
+            // dialog short on the compact 660 px window.
+            Image {
+                source: "qrc:/icons/usbooty.svg"
+                sourceSize.width: 64
+                sourceSize.height: 64
+                Layout.preferredWidth: 64
+                Layout.preferredHeight: 64
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: 4
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+            }
             Label {
                 text: qsTr("Create bootable USB drives from ISO images.")
                 wrapMode: Text.Wrap
+                horizontalAlignment: Text.AlignHCenter
                 Layout.fillWidth: true
             }
 
+            // Author + License + Source on one tidy row each.
             GridLayout {
                 columns: 2
-                columnSpacing: 16
+                columnSpacing: 14
                 rowSpacing: 3
+                Layout.fillWidth: true
+                Layout.topMargin: 4
                 Label { text: qsTr("Author"); font.bold: true }
                 Label { text: "Thoxy" }
                 Label { text: qsTr("License"); font.bold: true }
-                Label { text: "GPL-3.0-or-later" }
+                Label {
+                    Layout.fillWidth: true
+                    text: "<a href=\"https://www.gnu.org/licenses/gpl-3.0.html\">GPL-3.0-or-later</a>"
+                    textFormat: Text.RichText
+                    onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+                }
+                Label { text: qsTr("Source"); font.bold: true }
+                Label {
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    text: "<a href=\"https://git.thoxy.xyz/thoxy/usbooty\">git.thoxy.xyz/thoxy/usbooty</a>"
+                    textFormat: Text.RichText
+                    onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+                }
             }
 
+            // Single-line "what it does" — replaces the four-column
+            // feature grid that was overflowing the compact window.
             Label {
-                text: qsTr("DD raw write (with transparent .gz/.xz/.zst/.bz2 and "
-                    + "VHD support), partition-and-copy (FAT32 / NTFS / exFAT "
-                    + "/ ext4, UEFI:NTFS or wimlib-split for large install.wim), "
-                    + "Linux persistence (Debian, Ubuntu, Fedora, openSUSE), "
-                    + "Windows 11 setup customization, Ventoy multi-boot USBs, "
-                    + "optional Syslinux MBR install, device snapshot, "
-                    + "fake-drive / bad-blocks checks, SBAT revocation scan.")
-                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                Layout.topMargin: 4
                 color: palette.placeholderText
                 font.pointSize: 9
-                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: qsTr("DD raw / partition+copy / format / Ventoy / FreeDOS · "
+                    + "FAT16-32, NTFS, exFAT, UDF, ext2/3/4, Btrfs, XFS, F2FS · "
+                    + "Linux persistence · Windows 11 setup customisation · "
+                    + "BLAKE3 verify · SBAT + DBX revocation · SMART probe.")
             }
 
-            Label {
-                text: "<a href=\"https://git.thoxy.xyz/thoxy/usbooty\">"
-                    + "git.thoxy.xyz/thoxy/usbooty</a>"
-                textFormat: Text.RichText
-                font.pointSize: 9
-                onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+            // Quick action row — Docs / Source-code / Report-issue.
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: 2
+                spacing: 4
+                Button {
+                    text: qsTr("Docs")
+                    icon.name: "help-contents"
+                    display: icon.name
+                        ? AbstractButton.TextBesideIcon
+                        : AbstractButton.TextOnly
+                    flat: true
+                    onClicked: Qt.openUrlExternally(
+                        "https://git.thoxy.xyz/thoxy/usbooty/src/branch/main/docs/index.md")
+                }
+                Button {
+                    text: qsTr("Source code")
+                    icon.name: "applications-development"
+                    display: icon.name
+                        ? AbstractButton.TextBesideIcon
+                        : AbstractButton.TextOnly
+                    flat: true
+                    onClicked: Qt.openUrlExternally("https://git.thoxy.xyz/thoxy/usbooty")
+                }
+                Button {
+                    text: qsTr("Report an issue")
+                    icon.name: "tools-report-bug"
+                    display: icon.name
+                        ? AbstractButton.TextBesideIcon
+                        : AbstractButton.TextOnly
+                    flat: true
+                    onClicked: Qt.openUrlExternally("https://git.thoxy.xyz/thoxy/usbooty/issues")
+                }
+                Item { Layout.fillWidth: true }
             }
         }
     }

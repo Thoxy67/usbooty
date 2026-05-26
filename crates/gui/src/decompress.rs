@@ -35,6 +35,10 @@ pub enum Compression {
     Zst,
     Lzma,
     Zip,
+    /// Unix `compress(1)` — legacy LZW. Rarely seen on modern distros
+    /// (last common use was IRIX / Solaris), included for completeness
+    /// because the cost of adding it is one tiny crate.
+    Z,
     None,
 }
 
@@ -47,6 +51,7 @@ impl Compression {
             Compression::Zst => "zstd",
             Compression::Lzma => "lzma",
             Compression::Zip => "zip",
+            Compression::Z => "z",
             Compression::None => "none",
         }
     }
@@ -76,6 +81,10 @@ pub fn detect(path: &Path) -> Compression {
         Compression::Lzma
     } else if lower.ends_with(".zip") {
         Compression::Zip
+    } else if lower.ends_with(".z") || lower.ends_with(".tz") {
+        // Unix `compress(1)` — extension is case-sensitive by convention
+        // (always uppercase `.Z`), but `lower` here matches both spellings.
+        Compression::Z
     } else {
         Compression::None
     };
@@ -109,6 +118,10 @@ fn magic_of(path: &Path) -> Option<Compression> {
         Some(Compression::Zst)
     } else if h.starts_with(&[0x50, 0x4B, 0x03, 0x04]) {
         Some(Compression::Zip)
+    } else if h.starts_with(&[0x1F, 0x9D]) {
+        // Unix compress(1): `1F 9D` then a flag byte. Low 5 bits = max code
+        // width (typically 16), bit 7 = block mode (typically set).
+        Some(Compression::Z)
     } else if h.starts_with(&[0x5D, 0x00, 0x00]) {
         // `.lzma` legacy framing: properties byte 0x5D, then a 4-byte
         // dictionary size (commonly 0x00100000 or 0x00800000). We accept any
@@ -242,6 +255,13 @@ pub fn decompress_to_cache(
         )?,
         Compression::Zip => extract_zip(
             counter,
+            tmp.as_file_mut(),
+            &consumed,
+            source_size,
+            &mut progress,
+        )?,
+        Compression::Z => copy_with_progress(
+            &mut DotZAdapter::new(counter)?,
             tmp.as_file_mut(),
             &consumed,
             source_size,
@@ -453,6 +473,60 @@ impl LzmaAdapter {
 }
 
 impl Read for LzmaAdapter {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+/// Adapter for Unix `compress(1)` (`.Z`) streams.
+///
+/// `.Z` wraps an LZW bitstream in a 3-byte header: `1F 9D` plus a flag byte
+/// whose low 5 bits hold the maximum code width (typically 16). Producers
+/// pack codes LSB-first and start at 9 bits, growing as the dictionary fills.
+/// `weezl` handles that LZW dialect; we just strip the header and pass the
+/// rest through.
+///
+/// Decode-into-memory pattern, same as `XzAdapter` and `LzmaAdapter`: `weezl`
+/// is buffer-oriented and `.Z` images are tiny in practice (no modern distro
+/// ships gigabyte-class Unix-compress media). If a user ever feeds in a
+/// monstrous one, switching to a streaming `weezl` adapter is mechanical.
+struct DotZAdapter {
+    inner: io::Cursor<Vec<u8>>,
+}
+
+impl DotZAdapter {
+    fn new<R: Read>(mut reader: R) -> Result<Self> {
+        let mut hdr = [0u8; 3];
+        reader
+            .read_exact(&mut hdr)
+            .context("reading .Z header")?;
+        if hdr[0] != 0x1F || hdr[1] != 0x9D {
+            anyhow::bail!(".Z stream has wrong magic bytes");
+        }
+        let max_bits = (hdr[2] & 0x1F) as u32;
+        // 9 is the smallest legal Unix-compress width (8 bits is `pack(1)`,
+        // not `compress(1)`); 16 is the upstream maximum.
+        if !(9..=16).contains(&max_bits) {
+            anyhow::bail!(".Z header reports an out-of-range max-bits value: {max_bits}");
+        }
+        let mut compressed = Vec::new();
+        reader
+            .read_to_end(&mut compressed)
+            .context("reading .Z payload")?;
+
+        // BitOrder::Lsb + size 8: matches Unix compress (256-symbol alphabet,
+        // codes packed LSB-first, dictionary grows from 9 bits up to max_bits).
+        let mut decoder = weezl::decode::Decoder::new(weezl::BitOrder::Lsb, 8);
+        let out = decoder
+            .decode(&compressed)
+            .map_err(|e| anyhow::anyhow!(".Z decode failed: {e:?}"))?;
+        Ok(Self {
+            inner: io::Cursor::new(out),
+        })
+    }
+}
+
+impl Read for DotZAdapter {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.read(buf)
     }

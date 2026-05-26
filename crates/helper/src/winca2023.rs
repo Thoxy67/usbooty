@@ -1,0 +1,189 @@
+//! Copy `SkuSiPolicy.p7b` from `install.wim` to `EFI\Microsoft\Boot\` on
+//! the USB so older UEFI firmwares can boot the Windows CA 2023–signed
+//! Microsoft bootloader chain.
+//!
+//! Background: Microsoft rotated the Secure Boot CA chain in 2023 (the new
+//! "Windows UEFI CA 2023" signs current Windows bootloaders). Firmwares
+//! that don't pick up the new CA via Windows Update refuse the signed
+//! `.efi` files. The `SkuSiPolicy.p7b` policy file *vouches for* the new
+//! CA without needing a UEFI variable update — drop it at the canonical
+//! `EFI\Microsoft\Boot\SkuSiPolicy.p7b` path and the firmware accepts the
+//! chain on first boot.
+//!
+//! The file isn't in the ISO root; it lives inside `sources/install.wim`
+//! at `Windows\System32\SecureBootUpdates\SkuSiPolicy.p7b`. Extracting it
+//! needs `wimlib-imagex extract` against the *source* ISO (the destination
+//! USB only has the WIM as a single file, not the unpacked tree). The
+//! flag is best-effort: when wimlib isn't installed or the file isn't in
+//! the WIM (older Windows builds), the step is logged and skipped, never
+//! aborts the job.
+//!
+//! Reference: Microsoft KB5025885 and Rufus's `src/format.c` ApplyWinCa
+//! routine.
+
+use anyhow::{Context, Result};
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+use crate::emit;
+
+/// Path of the policy file inside `install.wim`. Windows itself reads from
+/// `\Windows\System32\SecureBootUpdates\` so the layout matches.
+const SOURCE_PATH: &str = "Windows/System32/SecureBootUpdates/SkuSiPolicy.p7b";
+
+/// Destination on the USB, mirroring the EFI fallback path Windows expects.
+const DEST_RELATIVE: &str = "EFI/Microsoft/Boot/SkuSiPolicy.p7b";
+
+/// Extract `SkuSiPolicy.p7b` from `src_iso`'s install image and place it
+/// at `<dest_mount>/EFI/Microsoft/Boot/SkuSiPolicy.p7b`. Returns `Ok(())`
+/// on either a successful copy or a soft skip (with a log line).
+pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
+    if !wimlib_available() {
+        emit::log(
+            "wimlib-imagex not installed — skipping Windows CA 2023 \
+             policy install. Install `wimtools` / `wimlib` to enable it.",
+        );
+        return Ok(());
+    }
+
+    let iso_mount = mount_iso_ro(src_iso)?;
+    let install_wim = ci_path(iso_mount.path(), &["sources", "install.wim"])?;
+
+    let staging = PathBuf::from(format!("/run/usbooty-winca-{}", std::process::id()));
+    fs::create_dir_all(&staging)
+        .with_context(|| format!("creating {}", staging.display()))?;
+
+    // wimlib-imagex extract <wim> <image-index> <internal-path> --dest-dir <dir>
+    // Image index 1 is "Windows Setup / install" in every Microsoft WIM.
+    let mut child = Command::new("wimlib-imagex")
+        .arg("extract")
+        .arg(&install_wim)
+        .arg("1")
+        .arg(SOURCE_PATH)
+        .arg("--dest-dir")
+        .arg(&staging)
+        .arg("--no-acls")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("spawning wimlib-imagex extract")?;
+    let status = child.wait().context("waiting for wimlib-imagex")?;
+    if !status.success() {
+        let mut stderr = String::new();
+        if let Some(mut s) = child.stderr.take() {
+            let _ = s.read_to_string(&mut stderr);
+        }
+        let stderr = stderr.trim();
+        // `SkuSiPolicy.p7b` is only in Windows builds that ship the CA 2023
+        // assets (Win 11 23H2 onwards, recent Win 10 servicing). Older WIMs
+        // just don't have the file — that's a soft-skip, not a failure.
+        if stderr.contains("Path not found") || stderr.contains("file not found") {
+            emit::log(format!(
+                "{SOURCE_PATH} not found inside install.wim — skipping \
+                 Windows CA 2023 policy (older Windows build)."
+            ));
+            let _ = fs::remove_dir_all(&staging);
+            return Ok(());
+        }
+        let _ = fs::remove_dir_all(&staging);
+        anyhow::bail!("wimlib-imagex extract failed: {stderr}");
+    }
+
+    let staged_file = staging
+        .join("Windows")
+        .join("System32")
+        .join("SecureBootUpdates")
+        .join("SkuSiPolicy.p7b");
+    if !staged_file.is_file() {
+        emit::log("wimlib reported success but produced no SkuSiPolicy.p7b — skipping.");
+        let _ = fs::remove_dir_all(&staging);
+        return Ok(());
+    }
+
+    let dest = dest_mount.join(DEST_RELATIVE);
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    fs::copy(&staged_file, &dest)
+        .with_context(|| format!("copying {} to {}", staged_file.display(), dest.display()))?;
+    let _ = fs::remove_dir_all(&staging);
+
+    emit::log(format!(
+        "Installed Windows CA 2023 policy at {}",
+        dest.display()
+    ));
+    Ok(())
+}
+
+fn wimlib_available() -> bool {
+    Command::new("wimlib-imagex")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Resolve a case-insensitive path under `root`. Returns the resolved path.
+fn ci_path(root: &Path, segments: &[&str]) -> Result<PathBuf> {
+    let mut current = root.to_path_buf();
+    for seg in segments {
+        let mut found = None;
+        for entry in
+            fs::read_dir(&current).with_context(|| format!("reading {}", current.display()))?
+        {
+            let entry = entry.context("reading a directory entry")?;
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(seg)
+            {
+                found = Some(entry.path());
+                break;
+            }
+        }
+        current = found.with_context(|| format!("{seg} not found in {}", current.display()))?;
+    }
+    Ok(current)
+}
+
+/// Loop-mount the source ISO read-only, unmounted on drop.
+struct IsoMount {
+    mountpoint: PathBuf,
+}
+
+impl IsoMount {
+    fn path(&self) -> &Path {
+        &self.mountpoint
+    }
+}
+
+impl Drop for IsoMount {
+    fn drop(&mut self) {
+        let _ = Command::new("umount").arg(&self.mountpoint).status();
+        let _ = fs::remove_dir(&self.mountpoint);
+    }
+}
+
+fn mount_iso_ro(iso: &Path) -> Result<IsoMount> {
+    let mountpoint = PathBuf::from(format!("/run/usbooty-winca-iso-{}", std::process::id()));
+    fs::create_dir_all(&mountpoint)
+        .with_context(|| format!("creating mountpoint {}", mountpoint.display()))?;
+    let mut last_err = String::new();
+    for fstype in ["udf", "iso9660"] {
+        let output = Command::new("mount")
+            .args(["-t", fstype, "-o", "loop,ro"])
+            .arg(iso)
+            .arg(&mountpoint)
+            .output()
+            .context("running mount")?;
+        if output.status.success() {
+            return Ok(IsoMount { mountpoint });
+        }
+        last_err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    }
+    let _ = fs::remove_dir(&mountpoint);
+    anyhow::bail!("could not mount the source ISO for SkuSiPolicy extract: {last_err}")
+}

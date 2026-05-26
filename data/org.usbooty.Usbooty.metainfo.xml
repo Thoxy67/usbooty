@@ -4,7 +4,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
 
-  <name>usbooty</name>
+  <name>USBooty</name>
   <summary>Create bootable USB drives from ISO images</summary>
 
   <developer id="xyz.thoxy">
@@ -13,7 +13,7 @@
 
   <description>
     <p>
-      usbooty turns an ISO image into a bootable USB drive. It can write a raw
+      USBooty turns an ISO image into a bootable USB drive. It can write a raw
       "DD" image, partition and copy an installer (FAT32, NTFS, exFAT or ext4 —
       including the Windows UEFI:NTFS layout), set up Linux live-USB
       persistence, customize a Windows 11 install, format a drive, and create

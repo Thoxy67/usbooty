@@ -183,6 +183,143 @@ pub fn extract_sbat(pe: &[u8]) -> Option<String> {
     None
 }
 
+/// The `SignatureType` GUID Microsoft uses for SHA-256 binary hashes in
+/// DBX entries (`c1c41626-504c-4092-aca9-41f936934328`).
+const EFI_CERT_SHA256_GUID: [u8; 16] = [
+    0x26, 0x16, 0xc4, 0xc1, 0x4c, 0x50, 0x92, 0x40,
+    0xac, 0xa9, 0x41, 0xf9, 0x36, 0x93, 0x43, 0x28,
+];
+
+/// Parse a UEFI Forum `dbxupdate_<arch>.bin` and return every revoked
+/// Authenticode SHA-256 hash it lists. The file is a signed
+/// `EFI_VARIABLE_AUTHENTICATION_2` envelope wrapping a sequence of
+/// `EFI_SIGNATURE_LIST` records; we skip the envelope and walk the lists.
+///
+/// Non-SHA-256 entries (x509 certs, SHA-384/512) are ignored — usbooty
+/// only matches Authenticode hashes today. Malformed input returns an
+/// empty set rather than panicking; the caller is expected to fall back
+/// to the baked-in DB.
+pub fn parse_dbxupdate(bytes: &[u8]) -> DbxHashes {
+    let mut out = DbxHashes::default();
+    // EFI_VARIABLE_AUTHENTICATION_2 layout:
+    //   [0..16]   EFI_TIME TimeStamp
+    //   [16..]    WIN_CERTIFICATE_UEFI_GUID:
+    //               [+0]  u32 dwLength  (size of the entire WIN_CERTIFICATE)
+    //               [+4]  u16 wRevision
+    //               [+6]  u16 wCertificateType
+    //               [+8]  GUID CertType  (PKCS7 signature wrapper)
+    //               [+24] CertData[dwLength - 24]
+    //   then the unsigned payload (signature list array).
+    let Some(dw_length_bytes) = bytes.get(16..20) else {
+        return out;
+    };
+    let dw_length = u32::from_le_bytes(dw_length_bytes.try_into().unwrap_or([0; 4])) as usize;
+    let payload_start = 16usize.saturating_add(dw_length);
+    let mut cursor = match bytes.get(payload_start..) {
+        Some(rest) => rest,
+        None => return out,
+    };
+
+    while cursor.len() >= 28 {
+        let sig_type: [u8; 16] = match cursor[0..16].try_into() {
+            Ok(g) => g,
+            Err(_) => return out,
+        };
+        let list_size = u32::from_le_bytes(cursor[16..20].try_into().unwrap_or([0; 4])) as usize;
+        let header_size = u32::from_le_bytes(cursor[20..24].try_into().unwrap_or([0; 4])) as usize;
+        let sig_size = u32::from_le_bytes(cursor[24..28].try_into().unwrap_or([0; 4])) as usize;
+        if list_size < 28 || list_size > cursor.len() || sig_size <= 16 {
+            return out;
+        }
+        let body_start = 28usize.saturating_add(header_size);
+        let body = match cursor.get(body_start..list_size) {
+            Some(b) => b,
+            None => return out,
+        };
+
+        if sig_type == EFI_CERT_SHA256_GUID && sig_size == 16 + 32 {
+            // Each entry: 16-byte SignatureOwner GUID + 32-byte SHA-256.
+            for chunk in body.chunks_exact(sig_size) {
+                if let Ok(hash) = chunk[16..16 + 32].try_into() {
+                    out.0.insert(hash);
+                }
+            }
+        }
+        // Skip to the next signature list.
+        cursor = &cursor[list_size..];
+    }
+    out
+}
+
+impl RevocationDb {
+    /// Merge an extra set of SHA-256 hashes into `self.dbx`. Used by the
+    /// GUI after fetching a fresh `dbxupdate_<arch>.bin` so the baked-in
+    /// baseline gets augmented without rebuilding the rest of the DB.
+    pub fn extend_dbx(&mut self, extra: DbxHashes) {
+        self.dbx.0.extend(extra.0);
+    }
+}
+
+#[cfg(test)]
+mod dbx_tests {
+    use super::*;
+
+    /// Build a minimal `dbxupdate.bin` consisting of one `EFI_SIGNATURE_LIST`
+    /// of SHA-256 hashes and the smallest valid envelope around it.
+    fn synth_dbx(hashes: &[[u8; 32]]) -> Vec<u8> {
+        let mut out = Vec::new();
+        // 16-byte TimeStamp (zeros).
+        out.extend_from_slice(&[0u8; 16]);
+        // WIN_CERTIFICATE_UEFI_GUID, minimum legal payload (24 bytes header + 0 CertData).
+        let dw_length: u32 = 24;
+        out.extend_from_slice(&dw_length.to_le_bytes()); // [16..20]
+        out.extend_from_slice(&0x0200u16.to_le_bytes()); // wRevision
+        out.extend_from_slice(&0x0EF1u16.to_le_bytes()); // wCertificateType
+        out.extend_from_slice(&[0u8; 16]); // CertType GUID
+
+        // EFI_SIGNATURE_LIST header.
+        out.extend_from_slice(&EFI_CERT_SHA256_GUID);
+        let sig_size: u32 = 16 + 32;
+        let list_size: u32 = 28 + hashes.len() as u32 * sig_size;
+        out.extend_from_slice(&list_size.to_le_bytes());
+        out.extend_from_slice(&0u32.to_le_bytes()); // SignatureHeaderSize
+        out.extend_from_slice(&sig_size.to_le_bytes());
+        for h in hashes {
+            out.extend_from_slice(&[0u8; 16]); // SignatureOwner GUID
+            out.extend_from_slice(h);
+        }
+        out
+    }
+
+    #[test]
+    fn parses_a_minimal_dbx_update() {
+        let h1 = [0x11u8; 32];
+        let h2 = [0x22u8; 32];
+        let bytes = synth_dbx(&[h1, h2]);
+        let dbx = parse_dbxupdate(&bytes);
+        assert_eq!(dbx.0.len(), 2);
+        assert!(dbx.0.contains(&h1));
+        assert!(dbx.0.contains(&h2));
+    }
+
+    #[test]
+    fn rejects_truncated_input() {
+        let dbx = parse_dbxupdate(&[]);
+        assert!(dbx.0.is_empty());
+        let dbx = parse_dbxupdate(&[0u8; 8]);
+        assert!(dbx.0.is_empty());
+    }
+
+    #[test]
+    fn extend_dbx_merges_into_existing_set() {
+        let mut db = RevocationDb::baked_in();
+        let mut extra = DbxHashes::default();
+        extra.0.insert([0x99; 32]);
+        db.extend_dbx(extra);
+        assert!(db.dbx.0.contains(&[0x99; 32]));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

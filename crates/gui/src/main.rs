@@ -8,7 +8,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
-use usbooty_gui::{cli, decompress, translations};
+use usbooty_gui::{cli, decompress, resources, translations};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -31,6 +31,12 @@ fn main() {
     // forgotten after 30 days so the cache doesn't grow unbounded.
     decompress::prune_cache(30);
 
+    // Fetch the live UEFI Forum DBX revocation update in the background,
+    // so the next ISO scan benefits from the freshest list. Soft-fails:
+    // when the network is down or the URL moves, the SBAT scan keeps
+    // working off the baked-in baseline.
+    std::thread::spawn(resources::prime_revocation_db);
+
     let mut app = QGuiApplication::new();
 
     // Wayland decides which icon to show in the taskbar / titlebar by matching
@@ -44,10 +50,11 @@ fn main() {
         app.set_application_name(&QString::from("usbooty"));
     }
 
-    // Pick the .qm matching the user's locale (LANG / LC_MESSAGES) from the
-    // baked-in qrc and install it on the application. Must run after the
-    // QGuiApplication exists; safe to skip if no translation is shipped.
-    translations::install_for_system_locale();
+    // Load persisted settings. `set_force_english` handles both branches
+    // — install the system .qm when false, leave the English baseline
+    // alone when true — so it's the only translation call we need here.
+    let prefs = usbooty_gui::settings::Settings::load();
+    translations::set_force_english(prefs.force_english);
 
     let mut engine = QQmlApplicationEngine::new();
 

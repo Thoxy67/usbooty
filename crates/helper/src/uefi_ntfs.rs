@@ -13,20 +13,30 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
-use usbooty_core::{JobOptions, PartitionTable, WindowsSetup};
+use usbooty_core::{FileSystem, JobOptions, PartitionTable, WindowsSetup};
 
 use crate::{blockdev, emit, fsutil, isocopy, partition};
 
-/// Build the UEFI:NTFS layout on `device`.
+/// Build the UEFI:NTFS / UEFI:exFAT layout on `device`. The same bundled
+/// bootloader image (`uefi-ntfs.img` from pbatard/uefi-ntfs) carries both
+/// drivers, so the only filesystem-dependent steps are the mkfs and mount
+/// calls.
 pub fn run(
     iso: &Path,
     device: &Path,
     table: PartitionTable,
+    main_filesystem: FileSystem,
     uefi_ntfs_img: &Path,
     windows_setup: Option<&WindowsSetup>,
     opts: &JobOptions,
     abort: &AtomicBool,
 ) -> Result<()> {
+    if !matches!(main_filesystem, FileSystem::Ntfs | FileSystem::ExFat) {
+        bail!(
+            "the UEFI:NTFS layout supports NTFS or exFAT for the main partition, not {}",
+            main_filesystem.label()
+        );
+    }
     let iso_size = std::fs::metadata(iso)
         .context("reading ISO metadata")?
         .len();
@@ -71,23 +81,27 @@ pub fn run(
         blockdev::reread_partition_table(&dev);
     }
 
-    let ntfs_part = blockdev::partition_path(device, 1);
+    let main_part = blockdev::partition_path(device, 1);
     let fat_part = blockdev::partition_path(device, 2);
-    fsutil::wait_for_node(&ntfs_part)?;
+    fsutil::wait_for_node(&main_part)?;
     fsutil::wait_for_node(&fat_part)?;
 
     emit::phase("Formatting");
-    fsutil::mkfs_ntfs(&ntfs_part, &opts.label)?;
+    fsutil::mkfs(main_filesystem, &main_part, &opts.label)?;
 
     emit::phase("Copying");
     {
-        let mount = fsutil::Mount::new_ntfs(&ntfs_part)?;
+        let mount = fsutil::Mount::for_filesystem(&main_part, main_filesystem)?;
         isocopy::copy_iso(iso, mount.path(), abort, &|_| false)?;
         if opts.verify {
             isocopy::verify_iso(iso, mount.path(), abort, &|_| false)?;
         }
         if let Some(setup) = windows_setup {
             crate::unattend::write(mount.path(), setup)?;
+            // Optional Windows CA 2023 policy (`SkuSiPolicy.p7b`).
+            if setup.windows_ca_2023 {
+                crate::winca2023::apply(iso, mount.path())?;
+            }
         }
         emit::phase("Flushing");
         // `mount` drops here: sync + unmount.

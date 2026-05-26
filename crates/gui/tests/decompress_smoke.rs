@@ -88,6 +88,37 @@ fn zip_roundtrip() {
 }
 
 #[test]
+#[ignore = "needs compressed fixtures from tests/decompress-test.sh"]
+fn z_roundtrip() {
+    assert_roundtrip("test.iso.Z");
+}
+
+/// Self-contained `.Z` round-trip — encode a small payload via `weezl` with
+/// the same parameters our `DotZAdapter` expects (Unix-compress framing,
+/// LSB-first packing, 8-bit alphabet), then decompress it through the
+/// real public API. Runs without needing `ncompress` installed.
+#[test]
+fn z_roundtrip_synthetic() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let payload: Vec<u8> = (0..8192u32).map(|i| (i & 0xff) as u8).collect();
+
+    // Build a minimal `.Z` stream: 3-byte header (1F 9D + flag) plus a raw
+    // LSB-Lsb LZW stream over an 8-bit alphabet.
+    let mut bytes = vec![0x1F, 0x9D, 0x90]; // flag: max-bits=16, block-mode set
+    let mut encoder = weezl::encode::Encoder::new(weezl::BitOrder::Lsb, 8);
+    let mut encoded = encoder.encode(&payload).expect("weezl encode");
+    bytes.append(&mut encoded);
+
+    let dot_z = dir.path().join("synthetic.Z");
+    std::fs::write(&dot_z, &bytes).unwrap();
+
+    let out = usbooty_gui::decompress::decompress_to_cache(&dot_z, |_, _| {})
+        .expect("decompress_to_cache");
+    let recovered = std::fs::read(&out).unwrap();
+    assert_eq!(recovered, payload, "synthetic .Z round-trip lost bytes");
+}
+
+#[test]
 fn detects_compression_by_magic() {
     // Make sure a renamed plain file isn't blindly trusted.
     let dir = tempfile::tempdir().expect("tempdir");

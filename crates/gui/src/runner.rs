@@ -151,6 +151,38 @@ pub fn run_job(
         }
     }
 
+    // FreeDOS: download the kernel + command-shell zips (latest GitHub
+    // release per repo), extract the three files we need, and hand the
+    // helper the cached paths. Same justification as UEFI:NTFS — the
+    // helper has no network access.
+    if let Job::Freedos {
+        filesystem,
+        kernel_sys,
+        command_com,
+        boot_bin,
+        ..
+    } = &mut job
+    {
+        if kernel_sys.as_os_str().is_empty() {
+            apply(
+                &qt,
+                ProgressMsg::info("Fetching the latest FreeDOS kernel + shell…"),
+            );
+            let fat32 = matches!(*filesystem, usbooty_core::FileSystem::Fat32);
+            match resources::ensure_freedos(fat32) {
+                Ok(files) => {
+                    *kernel_sys = files.kernel_sys;
+                    *command_com = files.command_com;
+                    *boot_bin = files.boot_bin;
+                }
+                Err(e) => {
+                    finish(&qt, false, format!("FreeDOS fetch failed: {e:#}"));
+                    return;
+                }
+            }
+        }
+    }
+
     let helper = helper_path();
     let mut child = match Command::new("pkexec")
         .arg(&helper)
@@ -584,12 +616,21 @@ pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String) {
             ctrl.as_mut().set_hash_progress(fraction);
         });
     });
+    // SHA-1 in hand → optionally cross-check against the rg-adguard
+    // database. The lookup is bounded by a short HTTP timeout and any
+    // failure path is silent, so this never holds up the hash display.
+    let sha1 = hashes.sha1.clone();
+    let badge = crate::rgadguard::lookup(&sha1)
+        .map(|v| v.badge())
+        .unwrap_or_default();
+
     let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
         ctrl.as_mut().set_iso_md5(QString::from(&hashes.md5));
         ctrl.as_mut().set_iso_sha1(QString::from(&hashes.sha1));
         ctrl.as_mut().set_iso_sha256(QString::from(&hashes.sha256));
         ctrl.as_mut().set_iso_sha512(QString::from(&hashes.sha512));
         ctrl.as_mut().set_iso_blake3(QString::from(&hashes.blake3));
+        ctrl.as_mut().set_iso_adguard_badge(QString::from(&badge));
         ctrl.as_mut().set_hash_progress(1.0);
     });
 }

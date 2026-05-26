@@ -24,6 +24,7 @@ mod dd;
 mod devlock;
 mod distro_fixes;
 mod emit;
+mod freedos;
 mod format;
 mod fsutil;
 mod image;
@@ -38,6 +39,7 @@ mod unattend;
 mod ventoy;
 mod vhd;
 mod wimsplit;
+mod winca2023;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -190,6 +192,24 @@ fn run() -> Result<()> {
             opts,
         } => backup::run(&device_path, &image_path, &opts, &ABORT),
         Job::Check { device_path, mode } => check::run(&device_path, mode, &ABORT),
+        Job::Freedos {
+            device_path,
+            table,
+            filesystem,
+            kernel_sys,
+            command_com,
+            boot_bin,
+            opts,
+        } => freedos::run(
+            &device_path,
+            table,
+            filesystem,
+            &kernel_sys,
+            &command_com,
+            &boot_bin,
+            &opts,
+            &ABORT,
+        ),
     }
 }
 
@@ -244,6 +264,15 @@ fn describe_job(job: &Job) -> String {
                 usbooty_core::CheckMode::Full => "full",
             },
             device_path.display(),
+        ),
+        Job::Freedos {
+            device_path,
+            filesystem,
+            ..
+        } => format!(
+            "Job: FreeDOS bootable USB → {} ({})",
+            device_path.display(),
+            filesystem.label()
         ),
     }
 }

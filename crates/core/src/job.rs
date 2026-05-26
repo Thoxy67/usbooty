@@ -17,6 +17,18 @@ pub enum PartitionTable {
     Gpt,
     /// Master Boot Record — for legacy BIOS booting.
     Mbr,
+    /// MBR with the data partition flagged bootable, intended for *both*
+    /// legacy BIOS and UEFI (firmware loads `/EFI/BOOT/BOOT*.EFI` from the
+    /// FAT-formatted partition via the UEFI fallback path). On-disk layout
+    /// is identical to plain [`Mbr`]; the distinction is a UI promise that
+    /// the user picked a dual-firmware boot.
+    MbrBiosUefi,
+    /// GPT with a synthesised *hybrid* MBR: slot 1 mirrors the GPT data
+    /// partition as a real bootable entry so legacy BIOSes find it, slot 2
+    /// is the protective `0xEE` entry covering the GPT areas. UEFI follows
+    /// the GPT as normal. Apple-style. Some buggy firmwares dislike hybrid
+    /// MBRs — see the warning in [`crate::plan`].
+    HybridMbrGpt,
 }
 
 impl PartitionTable {
@@ -24,7 +36,9 @@ impl PartitionTable {
     pub fn label(self) -> &'static str {
         match self {
             PartitionTable::Gpt => "GPT (UEFI)",
-            PartitionTable::Mbr => "MBR (BIOS/Legacy)",
+            PartitionTable::Mbr => "MBR (BIOS)",
+            PartitionTable::MbrBiosUefi => "MBR (BIOS+UEFI)",
+            PartitionTable::HybridMbrGpt => "Hybrid MBR+GPT (BIOS+UEFI)",
         }
     }
 }
@@ -258,6 +272,21 @@ pub struct WindowsSetup {
     /// policies via `HKLM`, default-user policies via `HKU\DFT`).
     #[serde(default)]
     pub apply_debloat: bool,
+    /// Disable Windows 11 24H2+ automatic BitLocker device-encryption on
+    /// first boot. Writes `HKLM\SYSTEM\CurrentControlSet\Control\BitLocker
+    /// \PreventDeviceEncryption=1` during the `specialize` pass so OOBE
+    /// never auto-encrypts the system drive. Useful for dual-boot setups,
+    /// IT-imaged hardware, and labs that recover/clone disks regularly.
+    /// Silently no-ops on older Windows versions that don't auto-encrypt.
+    #[serde(default)]
+    pub disable_bitlocker: bool,
+    /// Copy `SkuSiPolicy.p7b` from `install.wim` to `EFI\Microsoft\Boot\`
+    /// on the USB so older UEFI firmwares that haven't picked up the
+    /// Windows CA 2023 chain through Windows Update can still boot the
+    /// new-CA-signed Microsoft bootloader. Requires `wimlib-imagex` on
+    /// the host; the helper falls back to a clear error if it's missing.
+    #[serde(default)]
+    pub windows_ca_2023: bool,
 }
 
 impl WindowsSetup {
@@ -284,6 +313,8 @@ impl WindowsSetup {
             || self.timezone.is_some()
             || self.product_key.is_some()
             || self.apply_debloat
+            || self.disable_bitlocker
+            || self.windows_ca_2023
     }
 }
 
@@ -369,6 +400,27 @@ pub enum Job {
         device_path: PathBuf,
         mode: CheckMode,
     },
+    /// Create a FreeDOS-bootable USB stick. No source ISO — the helper
+    /// formats the device as FAT (16 or 32, user's choice), installs the
+    /// FreeDOS boot sector, drops `KERNEL.SYS` + `COMMAND.COM` at the
+    /// FAT root, and stamps a generic MBR. The GUI downloads the upstream
+    /// FreeDOS files (one-shot, cached) and hands the helper local paths
+    /// so the helper itself stays network-free.
+    Freedos {
+        device_path: PathBuf,
+        table: PartitionTable,
+        /// `Fat16` or `Fat32`; the helper rejects anything else.
+        filesystem: FileSystem,
+        /// Cached path to the FreeDOS `KERNEL.SYS`.
+        kernel_sys: PathBuf,
+        /// Cached path to the FreeDOS `COMMAND.COM`.
+        command_com: PathBuf,
+        /// Cached path to the matching FAT boot sector (`BOOT16.BIN` for
+        /// FAT16, `BOOT32.BIN` for FAT32).
+        boot_bin: PathBuf,
+        #[serde(default)]
+        opts: JobOptions,
+    },
 }
 
 /// Intensity of a [`Job::Check`] run.
@@ -390,7 +442,8 @@ impl Job {
             | Job::Format { device_path, .. }
             | Job::Ventoy { device_path, .. }
             | Job::Backup { device_path, .. }
-            | Job::Check { device_path, .. } => device_path,
+            | Job::Check { device_path, .. }
+            | Job::Freedos { device_path, .. } => device_path,
         }
     }
 
@@ -399,7 +452,10 @@ impl Job {
         match self {
             Job::Dd { iso_path, .. } | Job::Partitioned { iso_path, .. } => Some(iso_path),
             Job::Ventoy { iso_path, .. } => iso_path.as_ref(),
-            Job::Format { .. } | Job::Backup { .. } | Job::Check { .. } => None,
+            Job::Format { .. }
+            | Job::Backup { .. }
+            | Job::Check { .. }
+            | Job::Freedos { .. } => None,
         }
     }
 }

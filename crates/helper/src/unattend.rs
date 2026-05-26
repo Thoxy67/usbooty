@@ -192,6 +192,18 @@ fn push_specialize(s: &mut String, setup: &WindowsSetup) {
             Some("Enable .NET Framework 3.5 from the install media's sources\\sxs"),
         ));
     }
+    if setup.disable_bitlocker {
+        // Set the registry guard *before* Windows reaches the OOBE phase
+        // where 24H2's automatic device encryption decision happens. The
+        // value is also valid (and harmless) on older versions that never
+        // auto-encrypt, so we don't need a Win-11-only gate.
+        deploy_cmds.push((
+            "reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\BitLocker \
+             /v PreventDeviceEncryption /t REG_DWORD /d 1 /f"
+                .to_string(),
+            Some("Disable Windows automatic BitLocker device encryption"),
+        ));
+    }
     if setup.apply_debloat {
         deploy_cmds.push((
             "reg load HKU\\DFT C:\\Users\\Default\\NTUSER.DAT".to_string(),

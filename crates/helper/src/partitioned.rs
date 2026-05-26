@@ -46,7 +46,23 @@ pub fn run(
         WimStrategy::UefiNtfs => {
             let img = uefi_ntfs_img
                 .context("the UEFI:NTFS layout requires the uefi-ntfs.img resource")?;
-            crate::uefi_ntfs::run(iso, device, table, img, windows_setup, opts, abort)
+            // The bundled driver supports both NTFS and exFAT; route the
+            // caller's choice through unchanged. Anything else falls back
+            // to NTFS so the layout has a working main filesystem.
+            let main_fs = match filesystem {
+                FileSystem::Ntfs | FileSystem::ExFat => filesystem,
+                _ => FileSystem::Ntfs,
+            };
+            crate::uefi_ntfs::run(
+                iso,
+                device,
+                table,
+                main_fs,
+                img,
+                windows_setup,
+                opts,
+                abort,
+            )
         }
     }
 }
@@ -122,6 +138,11 @@ fn plain_copy(
         }
         if let Some(setup) = windows_setup {
             crate::unattend::write(mount.path(), setup)?;
+            // Optional Windows CA 2023 (SkuSiPolicy.p7b) drop-in for older
+            // firmware that hasn't picked up the new Secure Boot chain.
+            if setup.windows_ca_2023 {
+                crate::winca2023::apply(iso, mount.path())?;
+            }
         }
         // Inline-directory persistence — currently Slax. The directory is
         // created on the main data partition and the kernel command line

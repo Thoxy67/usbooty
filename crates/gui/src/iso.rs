@@ -10,7 +10,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use cdfs::{DirectoryEntry, ISO9660};
-use usbooty_core::revocation::{self, RevocationDb};
+use usbooty_core::revocation;
 use usbooty_core::{DistroFamily, IsoReport, OsKind};
 
 /// FAT32's single-file ceiling, used for the `has_4gb_file` flag.
@@ -218,7 +218,7 @@ fn scan_efi_revocations_udf(udf: &mut usbooty_core::udf::UdfFs<File>) -> Vec<Str
     let Some(entries) = udf.list(&["efi", "boot"]) else {
         return warnings;
     };
-    let db = RevocationDb::baked_in();
+    let db = crate::resources::cached_revocation_db();
     let names: Vec<String> = entries
         .into_iter()
         .filter(|e| !e.is_dir && e.name.to_ascii_lowercase().ends_with(".efi"))
@@ -249,7 +249,7 @@ fn scan_efi_revocations(iso: &ISO9660<File>) -> Vec<String> {
     // Resolve /EFI/BOOT case-insensitively and yield each child file directly,
     // since `iso.open(path)` may not match arbitrary case combinations.
     let mut warnings = Vec::new();
-    let db = RevocationDb::baked_in();
+    let db = crate::resources::cached_revocation_db();
 
     let Ok(Some(root)) = iso.open("/") else {
         return warnings;

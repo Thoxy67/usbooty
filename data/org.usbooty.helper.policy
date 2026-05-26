@@ -3,7 +3,7 @@
  "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
 <policyconfig>
-  <vendor>usbooty</vendor>
+  <vendor>USBooty</vendor>
   <vendor_url>https://git.thoxy.xyz/thoxy/usbooty</vendor_url>
 
   <action id="org.usbooty.helper.run">

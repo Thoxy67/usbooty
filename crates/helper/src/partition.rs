@@ -123,7 +123,12 @@ pub fn write_single_partition<D: Read + Write + Seek>(
 ) -> Result<()> {
     match table {
         PartitionTable::Gpt => write_gpt(device, filesystem, name),
-        PartitionTable::Mbr => write_mbr(device, filesystem),
+        // Plain BIOS-only MBR and the BIOS+UEFI variant share the same
+        // on-disk layout: one bootable partition spanning the device. The
+        // BIOS+UEFI flavour just commits the user to a FAT-family FS so
+        // UEFI fallback (`/EFI/BOOT/BOOT*.EFI` on the partition) works.
+        PartitionTable::Mbr | PartitionTable::MbrBiosUefi => write_mbr(device, filesystem),
+        PartitionTable::HybridMbrGpt => write_hybrid_mbr_gpt(device, filesystem, name),
     }
 }
 
@@ -171,6 +176,76 @@ fn write_mbr<D: Read + Write + Seek>(device: &mut D, filesystem: FileSystem) -> 
     Ok(())
 }
 
+/// Write a GPT + one-partition layout, then synthesise a hybrid MBR pointing
+/// the legacy slot at the same data partition.
+fn write_hybrid_mbr_gpt<D: Read + Write + Seek>(
+    device: &mut D,
+    filesystem: FileSystem,
+    name: &str,
+) -> Result<()> {
+    write_gpt(device, filesystem, name)?;
+    synthesize_hybrid_mbr(device, mbr_type_byte(filesystem), 1)
+}
+
+/// Replace the protective MBR that `gptman` writes with a *hybrid* MBR:
+/// slot 1 mirrors GPT partition entry `gpt_index` as a real, bootable
+/// partition that legacy BIOSes will pick up; slot 2 keeps the protective
+/// `0xEE` entry covering the GPT primary header so partitioning tools
+/// recognise the disk as GPT-aware.
+///
+/// Compatible with most modern BIOSes (and required for Apple Macs that
+/// support legacy boot from a GPT disk). A handful of buggy firmwares
+/// dislike any hybrid layout; that's the trade-off of the option.
+fn synthesize_hybrid_mbr<D: Read + Write + Seek>(
+    device: &mut D,
+    mbr_type: u8,
+    gpt_index: u32,
+) -> Result<()> {
+    // Re-parse the GPT just to learn the data partition's LBA range; we
+    // could plumb the values through arguments, but reading them straight
+    // from disk keeps the call sites tiny and self-consistent.
+    let gpt = gptman::GPT::find_from(device).context("re-reading GPT for hybrid MBR")?;
+    let entry = gpt
+        .iter()
+        .find(|(i, e)| *i as u32 == gpt_index && e.is_used())
+        .map(|(_, e)| e)
+        .context("GPT data partition missing for hybrid MBR")?;
+    let start = u32::try_from(entry.starting_lba)
+        .context("hybrid MBR cannot address a partition past 2 TiB")?;
+    let end = u32::try_from(entry.ending_lba)
+        .context("hybrid MBR cannot address a partition past 2 TiB")?;
+    let sectors = end - start + 1;
+
+    let mut mbr =
+        mbrman::MBR::read_from(device, SECTOR as u32).context("re-reading protective MBR")?;
+
+    // Slot 1: real bootable mirror entry for legacy BIOS.
+    mbr[1] = mbrman::MBRPartitionEntry {
+        boot: mbrman::BOOT_ACTIVE,
+        first_chs: mbrman::CHS::empty(),
+        sys: mbr_type,
+        last_chs: mbrman::CHS::empty(),
+        starting_lba: start,
+        sectors,
+    };
+    // Slot 2: protective EFI-GPT entry, covering the area before the data
+    // partition (which holds the GPT primary header + entries). Keeps
+    // partitioning tools from treating the disk as legacy-only.
+    mbr[2] = mbrman::MBRPartitionEntry {
+        boot: mbrman::BOOT_INACTIVE,
+        first_chs: mbrman::CHS::empty(),
+        sys: 0xEE,
+        last_chs: mbrman::CHS::empty(),
+        starting_lba: 1,
+        sectors: start.saturating_sub(1).max(1),
+    };
+    mbr[3] = mbrman::MBRPartitionEntry::empty();
+    mbr[4] = mbrman::MBRPartitionEntry::empty();
+
+    mbr.write_into(device).context("writing hybrid MBR")?;
+    Ok(())
+}
+
 /// Write the UEFI:NTFS two-partition layout: a large NTFS partition holding the
 /// Windows files, plus a tiny FAT32 partition at the end of the disk carrying
 /// the UEFI:NTFS bootloader image. `fat_bytes` is the exact size of that image.
@@ -182,8 +257,21 @@ pub fn write_uefi_ntfs_layout<D: Read + Write + Seek>(
 ) -> Result<()> {
     let fat_sectors = fat_bytes.div_ceil(SECTOR);
     match table {
+        // GPT-based variants — the hybrid one then synthesises an MBR mirror.
         PartitionTable::Gpt => write_gpt_uefi_ntfs(device, fat_sectors, main_name),
-        PartitionTable::Mbr => write_mbr_uefi_ntfs(device, fat_sectors),
+        PartitionTable::HybridMbrGpt => {
+            write_gpt_uefi_ntfs(device, fat_sectors, main_name)?;
+            // Build a hybrid MBR over the GPT layout: slot 1 mirrors the
+            // *main* (NTFS) partition as bootable so legacy BIOSes can find
+            // it. Slot 2 is the protective entry for the GPT areas. The
+            // tiny FAT bootloader partition is reachable via UEFI through
+            // the GPT; BIOSes don't need it.
+            synthesize_hybrid_mbr(device, MBR_TYPE_NTFS, 1)
+        }
+        // Pure-MBR variants — same on-disk layout.
+        PartitionTable::Mbr | PartitionTable::MbrBiosUefi => {
+            write_mbr_uefi_ntfs(device, fat_sectors)
+        }
     }
 }
 
@@ -280,7 +368,16 @@ pub fn write_persistence_layout<D: Read + Write + Seek>(
     let pers_sectors = persistence_bytes.div_ceil(SECTOR);
     match table {
         PartitionTable::Gpt => write_gpt_persistence(device, filesystem, pers_sectors, main_name),
-        PartitionTable::Mbr => write_mbr_persistence(device, filesystem, pers_sectors),
+        PartitionTable::HybridMbrGpt => {
+            write_gpt_persistence(device, filesystem, pers_sectors, main_name)?;
+            // Mirror the data partition (slot 1, GPT entry 1) into the MBR
+            // so a legacy BIOS can boot the live system; the persistence
+            // overlay isn't bootable and stays GPT-only.
+            synthesize_hybrid_mbr(device, mbr_type_byte(filesystem), 1)
+        }
+        PartitionTable::Mbr | PartitionTable::MbrBiosUefi => {
+            write_mbr_persistence(device, filesystem, pers_sectors)
+        }
     }
 }
 

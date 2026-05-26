@@ -37,9 +37,11 @@ if [ ! -s "$ISO" ]; then
     echo "Built $ISO ($(stat -c %s "$ISO") bytes)"
 fi
 
-# Compress with each available tool, skipping any that are missing — the
+# Build one compressed fixture, skipping any tool that isn't installed — the
 # decompressor still has to handle whichever ones the CI host happens to have.
-compress() {
+# (Named `make_fixture` so it doesn't shadow the `compress(1)` binary the .Z
+# arm needs to invoke.)
+make_fixture() {
     tool=$1; ext=$2; cmd=$3
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "  $tool: missing, skipping"
@@ -53,11 +55,16 @@ compress() {
 }
 
 echo "=== Compressing fixtures ==="
-compress xz   xz   'xz -c -T0'
-compress gzip gz   'gzip -c'
-compress bzip2 bz2 'bzip2 -c'
-compress zstd zst  'zstd -q'
-compress xz   lzma 'xz --format=lzma -c'
+make_fixture xz       xz   'xz -c -T0'
+make_fixture gzip     gz   'gzip -c'
+make_fixture bzip2    bz2  'bzip2 -c'
+make_fixture zstd     zst  'zstd -q'
+make_fixture xz       lzma 'xz --format=lzma -c'
+# Unix compress(1). Provided by the `ncompress` package on most distros
+# (Arch: `ncompress`, Debian: `ncompress`). If absent, the fixture is
+# skipped and the Rust-side `.Z` test soft-passes via the same shape the
+# other unavailable tools use.
+make_fixture compress Z    'compress -c'
 if command -v zip >/dev/null 2>&1; then
     rm -f "$WORK/test.iso.zip"
     (cd "$WORK" && zip -q test.iso.zip test.iso) || true

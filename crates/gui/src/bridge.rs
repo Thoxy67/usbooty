@@ -42,6 +42,12 @@ pub mod qobject {
         // 0.0..=1.0 while `compute_hashes` runs; the UI binds to it to show
         // a percentage instead of a frozen "Computing…" placeholder.
         #[qproperty(f64, hash_progress)]
+        // Cross-check result from the rg-adguard SHA-1 database — when the
+        // computed SHA-1 matches a known retail Microsoft ISO, the upstream
+        // service returns a canonical filename + category which the UI
+        // surfaces as a green "verified" badge. Empty when no match (the
+        // common case for non-Windows ISOs and for unrecognised hashes).
+        #[qproperty(QString, iso_adguard_badge)]
         // The application version, for the About dialog.
         #[qproperty(QString, app_version)]
         // Target devices: newline-separated display strings for the combo box.
@@ -99,6 +105,12 @@ pub mod qobject {
         #[qproperty(bool, accept_eula)]
         #[qproperty(bool, enable_dotnet35)]
         #[qproperty(bool, apply_debloat)]
+        // Disable Windows 11 24H2+ automatic BitLocker device-encryption
+        // on first boot. Useful for dual-boot, lab, and IT-imaged systems.
+        #[qproperty(bool, disable_bitlocker)]
+        // Drop `SkuSiPolicy.p7b` onto the USB so older UEFI firmware can
+        // boot the Windows-CA-2023-signed Microsoft bootloader chain.
+        #[qproperty(bool, windows_ca_2023)]
         #[qproperty(QString, local_account)]
         #[qproperty(QString, local_account_password)]
         #[qproperty(QString, computer_name)]
@@ -133,6 +145,10 @@ pub mod qobject {
         #[qproperty(bool, force_english)]
         // Advisory warning about missing external tools (empty if all present).
         #[qproperty(QString, dep_warning)]
+        // Persistent flag — when true the activity-log column stays open
+        // even with an empty buffer, instead of auto-expanding only when
+        // the first log line arrives. Saved in `settings.json`.
+        #[qproperty(bool, show_logs_always)]
         // Newline-separated labels of the filesystems whose mkfs tools are
         // actually installed on the host — the QML combo binds to this so
         // a user only sees variants that will succeed.
@@ -233,6 +249,24 @@ pub mod qobject {
         /// (false). Live-switches via QTranslator — no restart needed.
         #[qinvokable]
         fn apply_force_english(self: Pin<&mut AppController>, force: bool);
+        /// Copy the host's locale (from `$LANG` / `$LC_ALL`) into `locale`
+        /// and the host's IANA time-zone (from `/etc/timezone` or
+        /// `/etc/localtime`) into the matching Microsoft TimeZone ID for
+        /// the `timezone` field. Falls back to `en-US` / `UTC` when the
+        /// host doesn't expose either.
+        #[qinvokable]
+        fn replicate_regional_from_host(self: Pin<&mut AppController>);
+        /// Dump the current activity-log buffer to `path` (file:// URLs
+        /// from QML's FileDialog are normalised). Reports success or the
+        /// IO error via the status bar; never panics.
+        #[qinvokable]
+        fn save_log_to(self: Pin<&mut AppController>, path: &QString);
+        /// Persist the "always show activity log" preference and update
+        /// the Qt property so the QML layout reacts immediately. The
+        /// existing onLogTextChanged auto-expand path keeps working when
+        /// this is off.
+        #[qinvokable]
+        fn apply_show_logs_always(self: Pin<&mut AppController>, on: bool);
         /// Apply parsed CLI startup arguments (preload ISO / select device).
         /// Called from QML once the engine has finished loading.
         #[qinvokable]
@@ -270,6 +304,7 @@ pub struct AppControllerRust {
     iso_sha256: QString,
     iso_md5: QString,
     iso_sha1: QString,
+    iso_adguard_badge: QString,
     iso_sha512: QString,
     iso_blake3: QString,
     hash_progress: f64,
@@ -307,6 +342,8 @@ pub struct AppControllerRust {
     accept_eula: bool,
     enable_dotnet35: bool,
     apply_debloat: bool,
+    disable_bitlocker: bool,
+    windows_ca_2023: bool,
     local_account: QString,
     local_account_password: QString,
     computer_name: QString,
@@ -326,6 +363,7 @@ pub struct AppControllerRust {
     revocation_warnings: QString,
     smart_warning: QString,
     force_english: bool,
+    show_logs_always: bool,
     dep_warning: QString,
     available_filesystems: QString,
     /// Parallel to `available_filesystems`: which FileSystem each combo
@@ -355,6 +393,7 @@ impl Default for AppControllerRust {
             iso_sha256: QString::default(),
             iso_md5: QString::default(),
             iso_sha1: QString::default(),
+            iso_adguard_badge: QString::default(),
             iso_sha512: QString::default(),
             iso_blake3: QString::default(),
             hash_progress: 0.0,
@@ -392,6 +431,8 @@ impl Default for AppControllerRust {
             accept_eula: false,
             enable_dotnet35: false,
             apply_debloat: false,
+            disable_bitlocker: false,
+            windows_ca_2023: false,
             local_account: QString::default(),
             local_account_password: QString::default(),
             computer_name: QString::default(),
@@ -410,7 +451,8 @@ impl Default for AppControllerRust {
             fit_warning: QString::default(),
             revocation_warnings: QString::default(),
             smart_warning: QString::default(),
-            force_english: false,
+            force_english: crate::settings::Settings::load().force_english,
+            show_logs_always: crate::settings::Settings::load().show_logs_always,
             dep_warning: QString::from(&crate::deps::warning()),
             available_filesystems: {
                 let labels = crate::deps::available_filesystems()
@@ -606,6 +648,7 @@ impl qobject::AppController {
         self.as_mut().set_iso_sha256(QString::default());
         self.as_mut().set_iso_sha512(QString::default());
         self.as_mut().set_iso_blake3(QString::default());
+        self.as_mut().set_iso_adguard_badge(QString::default());
         self.as_mut().set_hash_progress(0.0);
         self.as_mut().set_revocation_warnings(QString::default());
         self.as_mut().rust_mut().iso_report = None;
@@ -711,6 +754,8 @@ impl qobject::AppController {
             2 => true,
             // Ventoy: an ISO is optional, but if given it must fit.
             3 => self.fit_warning().to_string().is_empty(),
+            // FreeDOS bootable USB needs no ISO at all — just the device.
+            4 => true,
             _ => {
                 !self.iso_path().to_string().is_empty() && self.fit_warning().to_string().is_empty()
             }
@@ -769,10 +814,12 @@ impl qobject::AppController {
         let iso = self.iso_path().to_string();
         let device = selected.path.clone();
 
-        let table = if *self.table() == 0 {
-            PartitionTable::Gpt
-        } else {
-            PartitionTable::Mbr
+        // Keep this in sync with the QML combo's `model` order below.
+        let table = match *self.table() {
+            1 => PartitionTable::Mbr,
+            2 => PartitionTable::MbrBiosUefi,
+            3 => PartitionTable::HybridMbrGpt,
+            _ => PartitionTable::Gpt,
         };
         let label = self.label().to_string();
         let full_format = *self.full_format();
@@ -802,6 +849,31 @@ impl qobject::AppController {
                 // Seed the Ventoy partition with the loaded ISO, if any.
                 iso_path: (!iso.is_empty()).then(|| iso.into()),
             },
+            4 => {
+                // FreeDOS bootable USB. The user can pick FAT16 or FAT32
+                // (anything else is rejected by the helper). The cached
+                // FreeDOS files get filled in by the runner — see
+                // `crates/gui/src/runner.rs::run_job`.
+                let filesystem = match self.filesystem_kind_from_index(*self.filesystem()) {
+                    fs @ (usbooty_core::FileSystem::Fat16 | usbooty_core::FileSystem::Fat32) => fs,
+                    _ => usbooty_core::FileSystem::Fat32,
+                };
+                Job::Freedos {
+                    device_path: device.into(),
+                    table,
+                    filesystem,
+                    // Runner replaces these placeholders with real cache paths
+                    // after `resources::ensure_freedos` returns.
+                    kernel_sys: std::path::PathBuf::new(),
+                    command_com: std::path::PathBuf::new(),
+                    boot_bin: std::path::PathBuf::new(),
+                    opts: JobOptions {
+                        label,
+                        full_format,
+                        verify,
+                    },
+                }
+            }
             _ => {
                 // Filesystem and large-`install.wim` handling are decided
                 // automatically from the ISO analysis: NTFS + UEFI:NTFS for a
@@ -857,6 +929,8 @@ impl qobject::AppController {
                         accept_eula: *self.accept_eula(),
                         enable_dotnet35: *self.enable_dotnet35(),
                         apply_debloat: *self.apply_debloat(),
+                        disable_bitlocker: *self.disable_bitlocker(),
+                        windows_ca_2023: *self.windows_ca_2023(),
                         local_account: trimmed_opt(&self.local_account().to_string()),
                         local_account_password: non_empty_opt(
                             &self.local_account_password().to_string(),
@@ -1285,9 +1359,79 @@ impl qobject::AppController {
     /// LanguageChange event from removeTranslator/installTranslator, so the
     /// UI re-evaluates every `qsTr` binding and the swap is visible
     /// immediately.
+    /// Write the activity log buffer to a user-chosen file. Strips a
+    /// leading `file://` (QML FileDialog returns URLs even for local
+    /// paths) and reports the outcome via the status bar so the user
+    /// gets feedback without a modal popup.
+    pub fn save_log_to(mut self: core::pin::Pin<&mut Self>, path: &QString) {
+        let raw = path.to_string();
+        let path = raw.strip_prefix("file://").unwrap_or(&raw).to_string();
+        if path.is_empty() {
+            return;
+        }
+        let body = self.log_text().to_string();
+        match std::fs::write(&path, body.as_bytes()) {
+            Ok(()) => self.as_mut().set_status(QString::from(&format!(
+                "Activity log saved to {path}"
+            ))),
+            Err(e) => self.as_mut().set_status(QString::from(&format!(
+                "Could not save activity log to {path}: {e}"
+            ))),
+        }
+    }
+
     pub fn apply_force_english(mut self: core::pin::Pin<&mut Self>, force: bool) {
         self.as_mut().set_force_english(force);
         crate::translations::set_force_english(force);
+        // Persist the choice. Round-trip the existing struct with the
+        // new value so any other persisted fields keep their state.
+        let s = crate::settings::Settings {
+            force_english: force,
+            show_logs_always: *self.show_logs_always(),
+        };
+        if let Err(e) = s.save() {
+            let updated = format!(
+                "{}⚠ Could not persist 'Force English' preference: {e:#}\n",
+                self.log_text()
+            );
+            self.as_mut().set_log_text(QString::from(&updated));
+        }
+    }
+
+    /// Save the "always show activity log" toggle and update the
+    /// matching Qt property. The QML layout binds to `show_logs_always`
+    /// so the panel appears / disappears immediately.
+    pub fn apply_show_logs_always(mut self: core::pin::Pin<&mut Self>, on: bool) {
+        self.as_mut().set_show_logs_always(on);
+        let s = crate::settings::Settings {
+            force_english: *self.force_english(),
+            show_logs_always: on,
+        };
+        if let Err(e) = s.save() {
+            let updated = format!(
+                "{}⚠ Could not persist 'Always show logs' preference: {e:#}\n",
+                self.log_text()
+            );
+            self.as_mut().set_log_text(QString::from(&updated));
+        }
+    }
+
+    /// One-click "copy from system" for the Windows-setup locale + timezone
+    /// fields. Reads `$LANG` / `$LC_ALL` for the BCP-47 locale, resolves
+    /// `/etc/timezone` (or the `/etc/localtime` symlink) for the IANA zone,
+    /// maps the IANA zone to its Microsoft `TimeZone` ID via the catalog
+    /// we already ship, and writes the results back to the QML properties.
+    /// Unknown IANA zones fall back to `UTC`; missing `$LANG` falls back to
+    /// `en-US` so the autounattend always has something usable.
+    pub fn replicate_regional_from_host(mut self: core::pin::Pin<&mut Self>) {
+        let locale = crate::timezones::host_locale();
+        let iana = crate::timezones::host_iana();
+        let ms_tz = crate::timezones::from_iana(&iana).unwrap_or("UTC");
+        self.as_mut().set_locale(QString::from(&locale));
+        self.as_mut().set_timezone(QString::from(ms_tz));
+        self.as_mut().set_status(QString::from(&format!(
+            "Copied host regional settings: {locale} / {ms_tz}"
+        )));
     }
 
     /// `lsblk` + `udevadm info` for the selected device, joined into one

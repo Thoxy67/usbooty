@@ -47,6 +47,7 @@ optdepends=(
     # Optional feature backends — usbooty surfaces a banner if these are
     # missing only when the matching feature is selected.
     'ventoy: Ventoy multi-boot USB creation'
+    'mtools: FreeDOS bootable USB (mformat / mcopy)'
     'wimlib: split install.wim chunks for Windows installers on FAT32'
     'syslinux: BIOS / legacy MBR bootloader install for Linux ISOs on FAT/ext4'
     'libisoburn: xorriso for advanced ISO inspection / repair'

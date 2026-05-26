@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=usbooty
+Name=USBooty
 GenericName=Bootable USB Creator
 Comment=Create bootable USB drives from ISO images
 Exec=usbooty

@@ -84,6 +84,14 @@ const TOOLS: &[Tool] = &[
         package: "libisoburn",
         critical: false,
     },
+    // FreeDOS bootable USB needs mtools — `mformat -B` installs the
+    // FreeDOS boot sector while preserving the BPB, `mcopy` drops
+    // KERNEL.SYS + COMMAND.COM at the FAT root.
+    Tool {
+        bin: "mformat",
+        package: "mtools",
+        critical: false,
+    },
     // Quality-of-life integrations — silently degrade if absent, so they are
     // not flagged in the dep banner; included here for documentation only.
     // (Uncomment the entries if a future change makes them load-bearing.)
