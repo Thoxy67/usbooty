@@ -115,10 +115,8 @@ mod tests {
 
     #[test]
     fn parses_json_with_filename() {
-        let v = parse_response(
-            r#"{"name":"Win11_24H2_English_x64.iso","category":"Windows 11"}"#,
-        )
-        .unwrap();
+        let v = parse_response(r#"{"name":"Win11_24H2_English_x64.iso","category":"Windows 11"}"#)
+            .unwrap();
         assert_eq!(v.filename, "Win11_24H2_English_x64.iso");
         assert_eq!(v.category, "Windows 11");
         assert!(v.badge().contains("Windows 11"));

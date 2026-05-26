@@ -58,11 +58,31 @@ const TOOLS: &[Tool] = &[
     // for the combo box; we don't warn the user about their absence because
     // they're niche choices most installs won't have. A user who selects
     // one without the tool sees a clear helper error at format time.
-    Tool { bin: "mkfs.btrfs",  package: "btrfs-progs", critical: false },
-    Tool { bin: "mkfs.xfs",    package: "xfsprogs",    critical: false },
-    Tool { bin: "mkfs.f2fs",   package: "f2fs-tools",  critical: false },
-    Tool { bin: "mkfs.jfs",    package: "jfsutils",    critical: false },
-    Tool { bin: "mkfs.nilfs2", package: "nilfs-utils", critical: false },
+    Tool {
+        bin: "mkfs.btrfs",
+        package: "btrfs-progs",
+        critical: false,
+    },
+    Tool {
+        bin: "mkfs.xfs",
+        package: "xfsprogs",
+        critical: false,
+    },
+    Tool {
+        bin: "mkfs.f2fs",
+        package: "f2fs-tools",
+        critical: false,
+    },
+    Tool {
+        bin: "mkfs.jfs",
+        package: "jfsutils",
+        critical: false,
+    },
+    Tool {
+        bin: "mkfs.nilfs2",
+        package: "nilfs-utils",
+        critical: false,
+    },
     // Optional feature backends.
     Tool {
         bin: "ventoy",

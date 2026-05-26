@@ -532,10 +532,8 @@ impl qobject::AppController {
     /// way the slider's `to:` is always exactly what will fit on the chosen
     /// drive, never a stale 32 GiB hard-cap.
     fn refresh_persistence_max(mut self: core::pin::Pin<&mut Self>) {
-        let max_mib = compute_max_persistence_mib(
-            self.selected_info(),
-            self.rust().iso_report.as_ref(),
-        );
+        let max_mib =
+            compute_max_persistence_mib(self.selected_info(), self.rust().iso_report.as_ref());
         self.as_mut().set_persistence_max_mib(max_mib);
         // If the slider sat above the new ceiling (smaller device just
         // picked, or a larger ISO loaded), pull it down. Leave 0 alone so
@@ -935,9 +933,7 @@ impl qobject::AppController {
                     .iso_report
                     .as_ref()
                     .and_then(|r| r.persistence)
-                    .filter(|kind| {
-                        !kind.needs_partition() || *self.persistence_size() > 0
-                    })
+                    .filter(|kind| !kind.needs_partition() || *self.persistence_size() > 0)
                     .map(|kind| Persistence {
                         kind,
                         size_bytes: if kind.needs_partition() {
@@ -1407,9 +1403,9 @@ impl qobject::AppController {
         }
         let body = self.log_text().to_string();
         match std::fs::write(&path, body.as_bytes()) {
-            Ok(()) => self.as_mut().set_status(QString::from(&format!(
-                "Activity log saved to {path}"
-            ))),
+            Ok(()) => self
+                .as_mut()
+                .set_status(QString::from(&format!("Activity log saved to {path}"))),
             Err(e) => self.as_mut().set_status(QString::from(&format!(
                 "Could not save activity log to {path}: {e}"
             ))),
@@ -1530,7 +1526,6 @@ impl qobject::AppController {
         }
     }
 }
-
 
 /// `Some(trimmed)` when `s` has any non-whitespace content; `None` otherwise.
 ///

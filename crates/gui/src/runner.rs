@@ -660,10 +660,7 @@ pub fn analyze_then_apply(qt: CxxQtThread<AppController>, src: PathBuf) {
 
 pub fn decompress_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
     let display = src.display().to_string();
-    apply(
-        &qt,
-        ProgressMsg::info(format!("Decompressing {display} …")),
-    );
+    apply(&qt, ProgressMsg::info(format!("Decompressing {display} …")));
 
     let qt_for_progress = qt.clone();
     let mut meter = RateMeter::new();
@@ -698,7 +695,12 @@ pub fn decompress_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
         }
         Err(e) => {
             let message = format!("Could not decompress {display}: {e:#}");
-            apply(&qt, ProgressMsg::Error { text: message.clone() });
+            apply(
+                &qt,
+                ProgressMsg::Error {
+                    text: message.clone(),
+                },
+            );
             let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
                 ctrl.as_mut().set_busy(false);
                 ctrl.as_mut().set_progress(0.0);
@@ -740,7 +742,12 @@ pub fn strip_vhd_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
         }
         Err(e) => {
             let message = format!("Could not open VHD {display}: {e:#}");
-            apply(&qt, ProgressMsg::Error { text: message.clone() });
+            apply(
+                &qt,
+                ProgressMsg::Error {
+                    text: message.clone(),
+                },
+            );
             let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
                 ctrl.as_mut().set_busy(false);
                 ctrl.as_mut().set_progress(0.0);

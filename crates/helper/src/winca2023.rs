@@ -52,8 +52,7 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
     let install_wim = ci_path(iso_mount.path(), &["sources", "install.wim"])?;
 
     let staging = PathBuf::from(format!("/run/usbooty-winca-{}", std::process::id()));
-    fs::create_dir_all(&staging)
-        .with_context(|| format!("creating {}", staging.display()))?;
+    fs::create_dir_all(&staging).with_context(|| format!("creating {}", staging.display()))?;
 
     // wimlib-imagex extract <wim> <image-index> <internal-path> --dest-dir <dir>
     // Image index 1 is "Windows Setup / install" in every Microsoft WIM.
@@ -104,8 +103,7 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
 
     let dest = dest_mount.join(DEST_RELATIVE);
     if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("creating {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
     }
     fs::copy(&staged_file, &dest)
         .with_context(|| format!("copying {} to {}", staged_file.display(), dest.display()))?;

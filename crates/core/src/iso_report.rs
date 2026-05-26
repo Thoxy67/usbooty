@@ -202,9 +202,7 @@ impl DistroFamily {
             DistroFamily::Fedora | DistroFamily::Bazzite | DistroFamily::Nobara => {
                 Some(PersistenceKind::FedoraOverlay)
             }
-            DistroFamily::OpenSuse | DistroFamily::GeckoLinux => {
-                Some(PersistenceKind::OpenSuseCow)
-            }
+            DistroFamily::OpenSuse | DistroFamily::GeckoLinux => Some(PersistenceKind::OpenSuseCow),
             DistroFamily::Arch
             | DistroFamily::Manjaro
             | DistroFamily::EndeavourOs

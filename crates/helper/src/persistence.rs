@@ -67,8 +67,7 @@ pub fn setup_inline(data_mount: &Path, kind: PersistenceKind) -> Result<()> {
     match kind {
         PersistenceKind::SlaxChanges => {
             let dir = data_mount.join("slax").join("changes");
-            std::fs::create_dir_all(&dir)
-                .with_context(|| format!("creating {}", dir.display()))?;
+            std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
             emit::log(format!(
                 "Slax persistence directory created at {}",
                 dir.display()

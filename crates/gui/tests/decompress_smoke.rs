@@ -27,9 +27,8 @@ fn expected() -> Vec<u8> {
     let path = fixture_dir()
         .expect("USBOOTY_DECOMPRESS_FIXTURE_DIR must be set by tests/decompress-test.sh")
         .join("test.iso");
-    std::fs::read(&path).unwrap_or_else(|e| {
-        panic!("could not read reference ISO {}: {e}", path.display())
-    })
+    std::fs::read(&path)
+        .unwrap_or_else(|e| panic!("could not read reference ISO {}: {e}", path.display()))
 }
 
 fn assert_roundtrip(compressed_name: &str) {
@@ -39,10 +38,8 @@ fn assert_roundtrip(compressed_name: &str) {
     };
     // Re-export the GUI crate's modules — these tests live in the crate's
     // own `tests/` so they only see the public surface.
-    let out =
-        usbooty_gui::decompress::decompress_to_cache(&src, |_, _| {}).unwrap_or_else(|e| {
-            panic!("decompress {compressed_name}: {e:#}")
-        });
+    let out = usbooty_gui::decompress::decompress_to_cache(&src, |_, _| {})
+        .unwrap_or_else(|e| panic!("decompress {compressed_name}: {e:#}"));
     let actual = std::fs::read(&out).expect("reading cached output");
     assert_eq!(
         actual,
@@ -147,8 +144,7 @@ fn fixed_vhd_strips_to_original_bytes() {
 
     let vhd = dir.path().join("smoke.vhd");
     std::fs::write(&vhd, &bytes).unwrap();
-    let out = usbooty_gui::vhd::strip_footer_to_cache(&vhd)
-        .expect("strip_footer_to_cache");
+    let out = usbooty_gui::vhd::strip_footer_to_cache(&vhd).expect("strip_footer_to_cache");
     let recovered = std::fs::read(&out).unwrap();
     assert_eq!(recovered, raw, "stripped VHD payload differs from input");
 }

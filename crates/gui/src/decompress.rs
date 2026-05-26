@@ -162,8 +162,8 @@ pub fn decompress_to_cache(
         bail!("file does not look compressed: {}", src.display());
     }
 
-    let meta = fs::metadata(src)
-        .with_context(|| format!("reading metadata of {}", src.display()))?;
+    let meta =
+        fs::metadata(src).with_context(|| format!("reading metadata of {}", src.display()))?;
     let source_size = meta.len();
     let source_mtime = meta
         .modified()
@@ -239,8 +239,8 @@ pub fn decompress_to_cache(
             )?
         }
         Compression::Zst => {
-            let mut dec = zstd::stream::read::Decoder::new(counter)
-                .context("initialising zstd decoder")?;
+            let mut dec =
+                zstd::stream::read::Decoder::new(counter).context("initialising zstd decoder")?;
             copy_with_progress(
                 &mut dec,
                 tmp.as_file_mut(),
@@ -301,7 +301,9 @@ pub fn decompress_to_cache(
 /// glitch never blocks app startup.
 pub fn prune_cache(max_age_days: u64) {
     let Ok(dir) = cache_dir() else { return };
-    let Ok(entries) = fs::read_dir(&dir) else { return };
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return;
+    };
     let cutoff = Duration::from_secs(max_age_days * 24 * 3600);
     let now = SystemTime::now();
     for entry in entries.flatten() {
@@ -333,9 +335,7 @@ fn cache_dir() -> Result<PathBuf> {
 /// same mtime always hits cache — so users who pick the same `.iso.xz` twice
 /// don't pay for a second decompress.
 fn cache_key(path: &Path, size: u64, mtime: u64, algo: Compression) -> String {
-    let canonical = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf());
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let mut h = Sha256::new();
     h.update(canonical.to_string_lossy().as_bytes());
     h.update(b"\0");
@@ -400,7 +400,8 @@ fn copy_with_progress<R: Read, W: Write>(
         if n == 0 {
             break;
         }
-        dst.write_all(&buf[..n]).context("writing decompressed bytes")?;
+        dst.write_all(&buf[..n])
+            .context("writing decompressed bytes")?;
         written += n as u64;
         progress(consumed.load(Ordering::Relaxed).min(total), total);
     }
@@ -499,9 +500,7 @@ struct DotZAdapter {
 impl DotZAdapter {
     fn new<R: Read>(mut reader: R) -> Result<Self> {
         let mut hdr = [0u8; 3];
-        reader
-            .read_exact(&mut hdr)
-            .context("reading .Z header")?;
+        reader.read_exact(&mut hdr).context("reading .Z header")?;
         if hdr[0] != 0x1F || hdr[1] != 0x9D {
             anyhow::bail!(".Z stream has wrong magic bytes");
         }

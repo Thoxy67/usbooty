@@ -44,15 +44,14 @@ pub enum VhdKind {
 /// it represents. Errors only when the file can't be opened; an unrecognised
 /// footer just returns [`VhdKind::NotVhd`].
 pub fn inspect(path: &Path) -> Result<VhdKind> {
-    let meta = fs::metadata(path)
-        .with_context(|| format!("reading metadata of {}", path.display()))?;
+    let meta =
+        fs::metadata(path).with_context(|| format!("reading metadata of {}", path.display()))?;
     if meta.len() < FOOTER_LEN {
         return Ok(VhdKind::NotVhd);
     }
 
     let mut footer = [0u8; FOOTER_LEN as usize];
-    let mut f = File::open(path)
-        .with_context(|| format!("opening {}", path.display()))?;
+    let mut f = File::open(path).with_context(|| format!("opening {}", path.display()))?;
     f.seek(SeekFrom::End(-(FOOTER_LEN as i64)))
         .context("seeking to VHD footer")?;
     f.read_exact(&mut footer).context("reading VHD footer")?;
@@ -117,7 +116,8 @@ pub fn strip_footer_to_cache(src: &Path) -> Result<PathBuf> {
     let mut buf = vec![0u8; 1024 * 1024];
     while remaining > 0 {
         let want = remaining.min(buf.len() as u64) as usize;
-        input.read_exact(&mut buf[..want])
+        input
+            .read_exact(&mut buf[..want])
             .context("reading VHD payload")?;
         tmp.as_file_mut()
             .write_all(&buf[..want])
@@ -146,9 +146,7 @@ fn cache_dir() -> Result<PathBuf> {
 /// caches never collide on the same source.
 fn key_for(path: &Path, size: u64, mtime: u64) -> String {
     use sha2::{Digest, Sha256};
-    let canonical = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf());
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let mut h = Sha256::new();
     h.update(canonical.to_string_lossy().as_bytes());
     h.update(b"\0");

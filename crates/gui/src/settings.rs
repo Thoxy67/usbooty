@@ -49,16 +49,13 @@ impl Settings {
     /// Best-effort persist. Returns the I/O error to the caller for logging
     /// but never panics.
     pub fn save(&self) -> Result<()> {
-        let path = settings_path()
-            .context("could not locate the user config directory")?;
+        let path = settings_path().context("could not locate the user config directory")?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating {}", parent.display()))?;
         }
-        let json = serde_json::to_string_pretty(self)
-            .context("serialising settings to JSON")?;
-        std::fs::write(&path, json)
-            .with_context(|| format!("writing {}", path.display()))?;
+        let json = serde_json::to_string_pretty(self).context("serialising settings to JSON")?;
+        std::fs::write(&path, json).with_context(|| format!("writing {}", path.display()))?;
         Ok(())
     }
 }

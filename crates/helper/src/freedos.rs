@@ -71,9 +71,8 @@ pub fn run(layout: FreedosLayout<'_>, abort: &AtomicBool) -> Result<()> {
     }
 
     emit::phase("Partitioning");
-    let partition = crate::partitioned::setup_single_partition(
-        device, table, filesystem, 0, opts, abort,
-    )?;
+    let partition =
+        crate::partitioned::setup_single_partition(device, table, filesystem, 0, opts, abort)?;
 
     emit::phase("Installing FreeDOS boot sector");
     mformat_boot_sector(&partition, boot_bin)?;

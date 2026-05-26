@@ -460,10 +460,9 @@ impl Job {
         match self {
             Job::Dd { iso_path, .. } | Job::Partitioned { iso_path, .. } => Some(iso_path),
             Job::Ventoy { iso_path, .. } => iso_path.as_ref(),
-            Job::Format { .. }
-            | Job::Backup { .. }
-            | Job::Check { .. }
-            | Job::Freedos { .. } => None,
+            Job::Format { .. } | Job::Backup { .. } | Job::Check { .. } | Job::Freedos { .. } => {
+                None
+            }
         }
     }
 }

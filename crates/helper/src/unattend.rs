@@ -140,13 +140,11 @@ pub fn write(mount: &Path, setup: &WindowsSetup) -> Result<()> {
         // Notepad readable and stop cmd from choking on lone LF, which
         // some Windows builds tokenise unpredictably in batch files.
         let dir = mount.join(DESKTOP_HELPERS_DIR);
-        std::fs::create_dir_all(&dir)
-            .with_context(|| format!("creating {}", dir.display()))?;
+        std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
         for (name, body) in DESKTOP_HELPERS {
             let path = dir.join(name);
             let crlf = body.replace("\r\n", "\n").replace('\n', "\r\n");
-            std::fs::write(&path, crlf)
-                .with_context(|| format!("writing {}", path.display()))?;
+            std::fs::write(&path, crlf).with_context(|| format!("writing {}", path.display()))?;
         }
         emit::log("Wrote USBooty/ post-install helpers next to autounattend.xml");
     }

@@ -56,11 +56,11 @@ pub fn error(text: impl Into<String>) {
 /// A slow stick or a small image with one chunk per percent still emits
 /// every update.
 pub fn progress(phase: &str, done: u64, total: u64) {
-    let pct_x10 = if total > 0 {
-        ((done.saturating_mul(1000)) / total).min(1000) as u32
-    } else {
-        0
-    };
+    let pct_x10 = done
+        .saturating_mul(1000)
+        .checked_div(total)
+        .unwrap_or(0)
+        .min(1000) as u32;
     {
         let mut last = LAST_PROGRESS.lock().unwrap_or_else(|e| e.into_inner());
         match &*last {

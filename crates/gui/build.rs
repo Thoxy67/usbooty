@@ -54,7 +54,9 @@ fn main() {
 /// Anchored to `-flto` (matches `-flto`, `-flto=auto`, `-flto=thin`, …)
 /// so we don't accidentally strip something else.
 fn strip_lto_from_env(var: &str) {
-    let Ok(value) = std::env::var(var) else { return };
+    let Ok(value) = std::env::var(var) else {
+        return;
+    };
     let cleaned: String = value
         .split_whitespace()
         .filter(|tok| !tok.starts_with("-flto"))

@@ -398,13 +398,17 @@ mod tests {
 
     #[test]
     fn file_name_from_url_extracts_iso() {
-        let url = "https://software.download.prss.microsoft.com/foo/Win11_24H2_English_x64.iso?t=abc";
+        let url =
+            "https://software.download.prss.microsoft.com/foo/Win11_24H2_English_x64.iso?t=abc";
         assert_eq!(file_name_from_url(url), "Win11_24H2_English_x64.iso");
     }
 
     #[test]
     fn file_name_from_url_falls_back_when_no_iso() {
-        assert_eq!(file_name_from_url("https://example.com/redirect"), "Windows.iso");
+        assert_eq!(
+            file_name_from_url("https://example.com/redirect"),
+            "Windows.iso"
+        );
         assert_eq!(file_name_from_url(""), "Windows.iso");
     }
 
@@ -424,7 +428,10 @@ mod tests {
 
     #[test]
     fn extract_token_returns_none_when_marker_missing() {
-        assert_eq!(extract_token("nothing here", "&w=", |c| c.is_ascii_hexdigit()), None);
+        assert_eq!(
+            extract_token("nothing here", "&w=", |c| c.is_ascii_hexdigit()),
+            None
+        );
     }
 
     #[test]
@@ -438,7 +445,10 @@ mod tests {
         let v = json!({ "Errors": [ { "Type": 9, "Value": "blocked" } ] });
         let err = check_errors(&v).unwrap_err();
         let msg = format!("{err:#}");
-        assert!(msg.contains("anti-bot"), "expected anti-bot hint, got: {msg}");
+        assert!(
+            msg.contains("anti-bot"),
+            "expected anti-bot hint, got: {msg}"
+        );
     }
 
     #[test]

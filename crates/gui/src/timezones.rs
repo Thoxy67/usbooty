@@ -791,9 +791,10 @@ pub fn from_iana(iana: &str) -> Option<&'static str> {
     // a given IANA zone. A handful of zones with no exact Microsoft match
     // are mapped to their closest neighbour.
     Some(match iana {
-        "Africa/Abidjan" | "Africa/Accra" | "Africa/Bamako" | "Africa/Conakry"
-        | "Africa/Dakar" | "Africa/Lome" | "Africa/Nouakchott" | "Africa/Ouagadougou"
-        | "Atlantic/Reykjavik" => "Greenwich Standard Time",
+        "Africa/Abidjan" | "Africa/Accra" | "Africa/Bamako" | "Africa/Conakry" | "Africa/Dakar"
+        | "Africa/Lome" | "Africa/Nouakchott" | "Africa/Ouagadougou" | "Atlantic/Reykjavik" => {
+            "Greenwich Standard Time"
+        }
         "Africa/Algiers" | "Africa/Tunis" => "W. Central Africa Standard Time",
         "Africa/Cairo" => "Egypt Standard Time",
         "Africa/Casablanca" | "Africa/El_Aaiun" => "Morocco Standard Time",
@@ -801,31 +802,41 @@ pub fn from_iana(iana: &str) -> Option<&'static str> {
         "Africa/Lagos" | "Africa/Bangui" | "Africa/Brazzaville" | "Africa/Douala"
         | "Africa/Kinshasa" | "Africa/Libreville" | "Africa/Luanda" | "Africa/Malabo"
         | "Africa/Niamey" | "Africa/Porto-Novo" => "W. Central Africa Standard Time",
-        "Africa/Nairobi" | "Africa/Addis_Ababa" | "Africa/Asmara" | "Africa/Dar_es_Salaam"
-        | "Africa/Djibouti" | "Africa/Kampala" | "Africa/Mogadishu" => "E. Africa Standard Time",
+        "Africa/Nairobi"
+        | "Africa/Addis_Ababa"
+        | "Africa/Asmara"
+        | "Africa/Dar_es_Salaam"
+        | "Africa/Djibouti"
+        | "Africa/Kampala"
+        | "Africa/Mogadishu" => "E. Africa Standard Time",
         "America/Anchorage" | "America/Juneau" | "America/Nome" | "America/Sitka"
         | "America/Yakutat" => "Alaskan Standard Time",
         "America/Argentina/Buenos_Aires" | "America/Buenos_Aires" => "Argentina Standard Time",
-        "America/Bogota" | "America/Guayaquil" | "America/Lima"
-        | "America/Panama" => "SA Pacific Standard Time",
+        "America/Bogota" | "America/Guayaquil" | "America/Lima" | "America/Panama" => {
+            "SA Pacific Standard Time"
+        }
         "America/Caracas" => "Venezuela Standard Time",
-        "America/Chicago" | "America/Mexico_City" | "America/Monterrey"
-        | "America/Tegucigalpa" | "America/Winnipeg" => "Central Standard Time",
+        "America/Chicago"
+        | "America/Mexico_City"
+        | "America/Monterrey"
+        | "America/Tegucigalpa"
+        | "America/Winnipeg" => "Central Standard Time",
         "America/Denver" | "America/Edmonton" | "America/Boise" => "Mountain Standard Time",
         "America/Halifax" | "America/Glace_Bay" | "America/Moncton" => "Atlantic Standard Time",
         "America/Havana" => "Cuba Standard Time",
         "America/Indiana/Indianapolis" | "America/Indianapolis" => "US Eastern Standard Time",
         "America/Los_Angeles" | "America/Vancouver" | "America/Tijuana" => "Pacific Standard Time",
-        "America/New_York" | "America/Detroit" | "America/Montreal"
-        | "America/Toronto" => "Eastern Standard Time",
+        "America/New_York" | "America/Detroit" | "America/Montreal" | "America/Toronto" => {
+            "Eastern Standard Time"
+        }
         "America/Noronha" => "UTC-02",
         "America/Phoenix" => "US Mountain Standard Time",
         "America/Sao_Paulo" => "E. South America Standard Time",
         "America/St_Johns" => "Newfoundland Standard Time",
         "Antarctica/McMurdo" | "Pacific/Auckland" => "New Zealand Standard Time",
         "Asia/Almaty" => "Central Asia Standard Time",
-        "Asia/Baghdad" | "Asia/Aden" | "Asia/Bahrain" | "Asia/Kuwait"
-        | "Asia/Qatar" | "Asia/Riyadh" => "Arab Standard Time",
+        "Asia/Baghdad" | "Asia/Aden" | "Asia/Bahrain" | "Asia/Kuwait" | "Asia/Qatar"
+        | "Asia/Riyadh" => "Arab Standard Time",
         "Asia/Baku" => "Azerbaijan Standard Time",
         "Asia/Bangkok" | "Asia/Phnom_Penh" | "Asia/Vientiane" | "Asia/Saigon"
         | "Asia/Ho_Chi_Minh" | "Asia/Jakarta" => "SE Asia Standard Time",
@@ -863,21 +874,22 @@ pub fn from_iana(iana: &str) -> Option<&'static str> {
         "Australia/Perth" => "W. Australia Standard Time",
         "Australia/Sydney" | "Australia/Melbourne" => "AUS Eastern Standard Time",
         "Europe/Amsterdam" | "Europe/Berlin" | "Europe/Bern" | "Europe/Brussels"
-        | "Europe/Copenhagen" | "Europe/Luxembourg" | "Europe/Oslo"
-        | "Europe/Rome" | "Europe/Stockholm" | "Europe/Vaduz"
-        | "Europe/Vienna" | "Europe/Zurich" => "W. Europe Standard Time",
-        "Europe/Athens" | "Europe/Bucharest" | "Europe/Helsinki"
-        | "Europe/Kiev" | "Europe/Kyiv" | "Europe/Mariehamn"
-        | "Europe/Nicosia" | "Europe/Riga" | "Europe/Sofia"
-        | "Europe/Tallinn" | "Europe/Vilnius" => "FLE Standard Time",
-        "Europe/Belgrade" | "Europe/Bratislava" | "Europe/Budapest"
-        | "Europe/Ljubljana" | "Europe/Prague" | "Europe/Warsaw" => "Central European Standard Time",
+        | "Europe/Copenhagen" | "Europe/Luxembourg" | "Europe/Oslo" | "Europe/Rome"
+        | "Europe/Stockholm" | "Europe/Vaduz" | "Europe/Vienna" | "Europe/Zurich" => {
+            "W. Europe Standard Time"
+        }
+        "Europe/Athens" | "Europe/Bucharest" | "Europe/Helsinki" | "Europe/Kiev"
+        | "Europe/Kyiv" | "Europe/Mariehamn" | "Europe/Nicosia" | "Europe/Riga"
+        | "Europe/Sofia" | "Europe/Tallinn" | "Europe/Vilnius" => "FLE Standard Time",
+        "Europe/Belgrade" | "Europe/Bratislava" | "Europe/Budapest" | "Europe/Ljubljana"
+        | "Europe/Prague" | "Europe/Warsaw" => "Central European Standard Time",
         "Europe/Istanbul" => "Turkey Standard Time",
         "Europe/Lisbon" => "GMT Standard Time",
-        "Europe/London" | "Europe/Dublin" | "Europe/Guernsey"
-        | "Europe/Isle_of_Man" | "Europe/Jersey" => "GMT Standard Time",
-        "Europe/Madrid" | "Europe/Paris" | "Europe/Andorra"
-        | "Europe/Monaco" | "Africa/Ceuta" => "Romance Standard Time",
+        "Europe/London" | "Europe/Dublin" | "Europe/Guernsey" | "Europe/Isle_of_Man"
+        | "Europe/Jersey" => "GMT Standard Time",
+        "Europe/Madrid" | "Europe/Paris" | "Europe/Andorra" | "Europe/Monaco" | "Africa/Ceuta" => {
+            "Romance Standard Time"
+        }
         "Europe/Minsk" => "Belarus Standard Time",
         "Europe/Moscow" | "Europe/Volgograd" => "Russian Standard Time",
         "Pacific/Fiji" => "Fiji Standard Time",

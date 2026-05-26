@@ -404,8 +404,7 @@ fn latest_release_zip(repo: &str) -> Result<String> {
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
-    if now().saturating_sub(meta.fetched_at) < LATEST_RELEASE_TTL.as_secs()
-        && cache_path.is_file()
+    if now().saturating_sub(meta.fetched_at) < LATEST_RELEASE_TTL.as_secs() && cache_path.is_file()
     {
         if let Ok(url) = std::fs::read_to_string(&cache_path) {
             let trimmed = url.trim();
@@ -426,8 +425,8 @@ fn latest_release_zip(repo: &str) -> Result<String> {
         .body_mut()
         .read_to_vec()
         .context("reading GitHub API response")?;
-    let json: serde_json::Value = serde_json::from_slice(&body)
-        .with_context(|| format!("parsing {api}"))?;
+    let json: serde_json::Value =
+        serde_json::from_slice(&body).with_context(|| format!("parsing {api}"))?;
     let assets = json
         .get("assets")
         .and_then(|v| v.as_array())
@@ -437,7 +436,10 @@ fn latest_release_zip(repo: &str) -> Result<String> {
         .find_map(|asset| {
             let name = asset.get("name")?.as_str()?;
             if name.to_ascii_lowercase().ends_with(".zip") {
-                asset.get("browser_download_url")?.as_str().map(str::to_owned)
+                asset
+                    .get("browser_download_url")?
+                    .as_str()
+                    .map(str::to_owned)
             } else {
                 None
             }
@@ -461,19 +463,16 @@ fn latest_release_zip(repo: &str) -> Result<String> {
 /// at `dest`. Fails loudly if no candidate is found — that catches
 /// upstream release layouts shifting before they bite a user mid-write.
 fn extract_named(zip_path: &Path, candidates: &[&str], dest: &Path) -> Result<()> {
-    let f = std::fs::File::open(zip_path)
-        .with_context(|| format!("opening {}", zip_path.display()))?;
-    let mut archive = zip::ZipArchive::new(f)
-        .with_context(|| format!("parsing zip {}", zip_path.display()))?;
+    let f =
+        std::fs::File::open(zip_path).with_context(|| format!("opening {}", zip_path.display()))?;
+    let mut archive =
+        zip::ZipArchive::new(f).with_context(|| format!("parsing zip {}", zip_path.display()))?;
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
             .with_context(|| format!("reading zip entry {i}"))?;
         let lower = entry.name().to_ascii_lowercase();
-        if candidates
-            .iter()
-            .any(|c| lower == c.to_ascii_lowercase())
-        {
+        if candidates.iter().any(|c| lower == c.to_ascii_lowercase()) {
             let mut out = std::fs::File::create(dest)
                 .with_context(|| format!("creating {}", dest.display()))?;
             std::io::copy(&mut entry, &mut out)
