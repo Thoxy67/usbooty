@@ -401,6 +401,17 @@ pub struct AppControllerRust {
 
 impl Default for AppControllerRust {
     fn default() -> Self {
+        // Compute the values that would otherwise be queried twice. Both
+        // settings::load (disk read + JSON parse) and
+        // deps::available_filesystems (walks PATH for one mkfs.* per
+        // filesystem) are hot paths during the constructor.
+        let prefs = crate::settings::Settings::load();
+        let fs_kinds = crate::deps::available_filesystems();
+        let fs_labels = fs_kinds
+            .iter()
+            .map(|fs| fs.label())
+            .collect::<Vec<_>>()
+            .join("\n");
         Self {
             iso_path: QString::default(),
             iso_summary: QString::from("No image selected"),
@@ -467,19 +478,12 @@ impl Default for AppControllerRust {
             fit_warning: QString::default(),
             revocation_warnings: QString::default(),
             smart_warning: QString::default(),
-            force_english: crate::settings::Settings::load().force_english,
-            show_logs_always: crate::settings::Settings::load().show_logs_always,
+            force_english: prefs.force_english,
+            show_logs_always: prefs.show_logs_always,
             dep_warning: QString::from(&crate::deps::warning()),
             inspect_text: QString::default(),
-            available_filesystems: {
-                let labels = crate::deps::available_filesystems()
-                    .iter()
-                    .map(|fs| fs.label())
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                QString::from(&labels)
-            },
-            available_filesystem_kinds: crate::deps::available_filesystems(),
+            available_filesystems: QString::from(&fs_labels),
+            available_filesystem_kinds: fs_kinds,
             win_languages: QString::default(),
             win_options: QString::default(),
             device_list: Vec::new(),
