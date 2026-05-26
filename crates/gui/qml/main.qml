@@ -2364,7 +2364,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         // Tight cap; the dialog has to fit comfortably inside the 660 px
         // compact window so it never spills past the parent.
-        width: Math.min(420, window.width - 40)
+        width: Math.min(500, window.width - 40)
         modal: true
         topPadding: 14
         bottomPadding: 12
