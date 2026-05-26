@@ -21,6 +21,12 @@ const OPENSUSE_COW_LABEL: &str = "cow";
 const ARCH_COW_LABEL: &str = "PERSISTENCE";
 
 /// Format and configure the persistence partition at `device` for `kind`.
+///
+/// Caller guarantees `kind.needs_partition()` is true; the [`SlaxChanges`]
+/// variant uses [`setup_inline`] instead because it lives in the main
+/// data partition.
+///
+/// [`SlaxChanges`]: usbooty_core::PersistenceKind::SlaxChanges
 pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
     emit::phase("Persistence");
     // The live system locates the overlay by this volume label.
@@ -30,6 +36,14 @@ pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
         PersistenceKind::FedoraOverlay => FEDORA_OVERLAY_LABEL,
         PersistenceKind::OpenSuseCow => OPENSUSE_COW_LABEL,
         PersistenceKind::ArchOverlay => ARCH_COW_LABEL,
+        PersistenceKind::SlaxChanges => {
+            // The caller violated the contract — route it through the
+            // inline path instead of returning a useless empty partition.
+            anyhow::bail!(
+                "Slax persistence uses an inline directory, not a partition; \
+                 call setup_inline() instead"
+            );
+        }
     };
     fsutil::mkfs_ext4(device, label)?;
 
@@ -42,6 +56,30 @@ pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
     }
     emit::log("Persistence partition created");
     Ok(())
+}
+
+/// Inline-folder persistence: create the directory Slax saves changes into
+/// directly on the main data partition. The kernel option that activates the
+/// feature (`perch`) is added by [`patch_boot_config`] in the same flow, so
+/// the user lands on a working persistent stick on first boot — no boot-menu
+/// fiddling required.
+pub fn setup_inline(data_mount: &Path, kind: PersistenceKind) -> Result<()> {
+    match kind {
+        PersistenceKind::SlaxChanges => {
+            let dir = data_mount.join("slax").join("changes");
+            std::fs::create_dir_all(&dir)
+                .with_context(|| format!("creating {}", dir.display()))?;
+            emit::log(format!(
+                "Slax persistence directory created at {}",
+                dir.display()
+            ));
+            Ok(())
+        }
+        _ => anyhow::bail!(
+            "{:?} is a partition-based persistence scheme; call setup() instead",
+            kind
+        ),
+    }
 }
 
 /// Patch the copied bootloader configs on `target` so the live system
@@ -89,6 +127,14 @@ pub fn patch_boot_config(target: &Path, kind: PersistenceKind) -> Result<()> {
                 &format!("archisobasedir=arch {kernel_arg}"),
                 &mut patched,
             );
+        }
+        PersistenceKind::SlaxChanges => {
+            // Slax 9+ activates persistent changes when `perch` appears on
+            // the kernel command line. Slax's syslinux/GRUB configs use
+            // `from=/slax` as the canonical entry-point string; append
+            // `perch` right after it so every menu entry (BIOS isolinux and
+            // UEFI grub) gets the kernel arg.
+            patch_dir(target, "from=/slax", "from=/slax perch", &mut patched);
         }
     }
     emit::log(format!(

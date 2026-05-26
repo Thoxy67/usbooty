@@ -11,7 +11,7 @@ use std::path::Path;
 
 use cdfs::{DirectoryEntry, ISO9660};
 use usbooty_core::revocation::{self, RevocationDb};
-use usbooty_core::{IsoReport, OsKind, PersistenceKind};
+use usbooty_core::{DistroFamily, IsoReport, OsKind};
 
 /// FAT32's single-file ceiling, used for the `has_4gb_file` flag.
 const FOUR_GIB: u64 = 0xFFFF_FFFF;
@@ -78,53 +78,13 @@ pub fn analyze(path: &Path) -> IsoReport {
 
     report.os_kind = classify(&report);
 
-    // Linux live systems carry a persistent overlay when usbooty can match
-    // the distro family to a known partition-label/kernel-arg scheme:
-    //   * Ubuntu / casper → label `casper-rw`, append `persistent`
-    //   * Debian live     → label `persistence`, append `persistence`
-    //   * Fedora live     → label `OVERLAY`, append `rd.live.overlay=LABEL=…`
-    //   * openSUSE live   → label `cow`, no kernel-arg change
-    //   * archiso (Arch / CachyOS / Manjaro) → label `PERSISTENCE`, append
-    //     `cow_label=PERSISTENCE` (alongside the existing `archisobasedir=arch`)
+    // Linux distro family — drives persistence routing and the per-distro
+    // post-copy fix table. Mirrors Rufus's `iso.c` quirk table; see
+    // `DistroFamily::detect` in `usbooty-core` for the full cascade.
     if report.os_kind == OsKind::Linux {
         let root = list_dir(&iso, &[]).unwrap_or_default();
-        let has_casper = root
-            .iter()
-            .any(|(name, is_dir, _)| *is_dir && name.starts_with("casper"));
-        let has_live = root
-            .iter()
-            .any(|(name, is_dir, _)| *is_dir && name == "live");
-        let has_liveos = root
-            .iter()
-            .any(|(name, is_dir, _)| *is_dir && name == "liveos");
-        // archiso layout: `/arch/boot/x86_64/vmlinuz-*`. Catches upstream Arch
-        // plus every derivative that ships archiso unchanged (CachyOS,
-        // EndeavourOS, Manjaro, …).
-        let has_arch = root
-            .iter()
-            .any(|(name, is_dir, _)| *is_dir && name == "arch")
-            && list_dir(&iso, &["arch", "boot"]).is_some();
-        // openSUSE / kiwi-live: marker file in /boot.
-        let opensuse = report.label.to_ascii_lowercase().contains("opensuse")
-            || list_dir(&iso, &["boot", "x86_64", "loader"]).is_some();
-        // Fedora live: /LiveOS/squashfs.img plus a Fedora-ish volume label.
-        let fedora = has_liveos
-            && (report.label.to_ascii_lowercase().contains("fedora")
-                || report.label.to_ascii_lowercase().starts_with("fed_"));
-
-        report.persistence = if has_casper {
-            Some(PersistenceKind::CasperRw)
-        } else if has_live {
-            Some(PersistenceKind::DebianLive)
-        } else if fedora {
-            Some(PersistenceKind::FedoraOverlay)
-        } else if opensuse {
-            Some(PersistenceKind::OpenSuseCow)
-        } else if has_arch {
-            Some(PersistenceKind::ArchOverlay)
-        } else {
-            None
-        };
+        report.distro = DistroFamily::detect(&report.label, &root);
+        report.persistence = report.distro.persistence();
     }
 
     // Modern Windows ISOs are UDF images carrying only a near-empty ISO9660

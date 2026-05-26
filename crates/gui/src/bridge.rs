@@ -64,7 +64,19 @@ pub mod qobject {
         // Linux live-USB persistence: whether the ISO supports it, and the
         // chosen overlay size in MiB (0 = no persistence partition).
         #[qproperty(bool, persistence_supported)]
+        // True when persistence lives in a folder on the data partition
+        // rather than a dedicated partition (currently only Slax). QML
+        // swaps the size slider for a simple on/off checkbox in that case.
+        #[qproperty(bool, persistence_inline)]
         #[qproperty(i32, persistence_size)]
+        // Maximum slider value in MiB — derived from the *currently selected*
+        // device's free space minus the ISO and a small filesystem margin.
+        // Updates reactively whenever the device or the ISO changes, so the
+        // slider always reflects what will actually fit on the target.
+        #[qproperty(i32, persistence_max_mib)]
+        // Recognised distribution family — surfaced in the UI so the user
+        // can see why a particular persistence scheme was selected.
+        #[qproperty(QString, distro_label)]
         // Windows 11 installer customization (applied via autounattend.xml).
         // `windows_iso` / `linux_iso` reflect the detected OS of the source ISO.
         #[qproperty(bool, windows_iso)]
@@ -273,7 +285,10 @@ pub struct AppControllerRust {
     full_format: bool,
     verify: bool,
     persistence_supported: bool,
+    persistence_inline: bool,
     persistence_size: i32,
+    persistence_max_mib: i32,
+    distro_label: QString,
     windows_iso: bool,
     linux_iso: bool,
     split_wim: bool,
@@ -355,7 +370,10 @@ impl Default for AppControllerRust {
             full_format: false,
             verify: false,
             persistence_supported: false,
+            persistence_inline: false,
             persistence_size: 0,
+            persistence_max_mib: 0,
+            distro_label: QString::default(),
             windows_iso: false,
             linux_iso: false,
             split_wim: false,
@@ -430,7 +448,8 @@ impl qobject::AppController {
         let selected = if devices.is_empty() { -1 } else { 0 };
         self.as_mut().set_selected_device(selected);
         self.as_mut().rust_mut().device_list = devices;
-        self.refresh_fit_warning();
+        self.as_mut().refresh_fit_warning();
+        self.as_mut().refresh_persistence_max();
     }
 
     /// Select a target device by index, then refresh the capacity warning
@@ -439,7 +458,29 @@ impl qobject::AppController {
         self.as_mut().set_selected_device(index);
         self.as_mut().set_smart_warning(QString::default());
         self.as_mut().refresh_fit_warning();
+        self.as_mut().refresh_persistence_max();
         self.as_mut().probe_smart();
+    }
+
+    /// Recompute the slider's max from the *currently selected* device's
+    /// free space (size − ISO − 64 MiB filesystem margin) and clamp the
+    /// current value if the new ceiling fell below it. Called whenever the
+    /// device selection, the device list, or the loaded ISO changes — that
+    /// way the slider's `to:` is always exactly what will fit on the chosen
+    /// drive, never a stale 32 GiB hard-cap.
+    fn refresh_persistence_max(mut self: core::pin::Pin<&mut Self>) {
+        let max_mib = compute_max_persistence_mib(
+            self.selected_info(),
+            self.rust().iso_report.as_ref(),
+        );
+        self.as_mut().set_persistence_max_mib(max_mib);
+        // If the slider sat above the new ceiling (smaller device just
+        // picked, or a larger ISO loaded), pull it down. Leave 0 alone so
+        // an explicitly-off slider doesn't pop back to a non-zero value.
+        let current = *self.persistence_size();
+        if current > max_mib {
+            self.as_mut().set_persistence_size(max_mib.max(0));
+        }
     }
 
     /// Spawn a background thread that runs `smartctl --json` against the
@@ -557,6 +598,8 @@ impl qobject::AppController {
         self.as_mut().set_windows_iso(false);
         self.as_mut().set_linux_iso(false);
         self.as_mut().set_persistence_supported(false);
+        self.as_mut().set_persistence_inline(false);
+        self.as_mut().set_distro_label(QString::default());
         self.as_mut().set_persistence_size(0);
         self.as_mut().set_iso_md5(QString::default());
         self.as_mut().set_iso_sha1(QString::default());
@@ -566,7 +609,8 @@ impl qobject::AppController {
         self.as_mut().set_hash_progress(0.0);
         self.as_mut().set_revocation_warnings(QString::default());
         self.as_mut().rust_mut().iso_report = None;
-        self.refresh_fit_warning();
+        self.as_mut().refresh_fit_warning();
+        self.as_mut().refresh_persistence_max();
     }
 
     /// Set the source ISO from a just-downloaded file whose digests were
@@ -596,6 +640,15 @@ impl qobject::AppController {
         let summary = format!("{name}  ·  {}", report.summary());
         let vol_label = report.label.clone();
         let pers_supported = report.persistence.is_some();
+        let pers_inline = report
+            .persistence
+            .map(|k| !k.needs_partition())
+            .unwrap_or(false);
+        let distro_label = if report.distro == usbooty_core::DistroFamily::Unknown {
+            String::new()
+        } else {
+            report.distro.display().to_string()
+        };
         let is_windows = report.os_kind == OsKind::Windows;
         let is_linux = report.os_kind == OsKind::Linux;
 
@@ -604,6 +657,8 @@ impl qobject::AppController {
         // Pre-fill the editable volume label from the image's own label.
         self.as_mut().set_label(QString::from(&vol_label));
         self.as_mut().set_persistence_supported(pers_supported);
+        self.as_mut().set_persistence_inline(pers_inline);
+        self.as_mut().set_distro_label(QString::from(&distro_label));
         self.as_mut().set_persistence_size(0);
         self.as_mut().set_windows_iso(is_windows);
         self.as_mut().set_linux_iso(is_linux);
@@ -642,7 +697,8 @@ impl qobject::AppController {
             }
         }
 
-        self.refresh_fit_warning();
+        self.as_mut().refresh_fit_warning();
+        self.as_mut().refresh_persistence_max();
     }
 
     /// Whether [`start`](Self::start) would currently do anything useful.
@@ -763,16 +819,25 @@ impl qobject::AppController {
                     wim = WimStrategy::Split;
                 }
                 // A persistent overlay, when the ISO supports it and the user
-                // gave the slider a non-zero size.
+                // asked for it. Partition-based schemes need a non-zero slider
+                // value (the partition size); inline-directory schemes
+                // (currently Slax) ignore the slider — the data partition
+                // itself absorbs writes, no separate partition to size.
                 let persistence = self
                     .rust()
                     .iso_report
                     .as_ref()
                     .and_then(|r| r.persistence)
-                    .filter(|_| *self.persistence_size() > 0)
+                    .filter(|kind| {
+                        !kind.needs_partition() || *self.persistence_size() > 0
+                    })
                     .map(|kind| Persistence {
                         kind,
-                        size_bytes: *self.persistence_size() as u64 * 1024 * 1024,
+                        size_bytes: if kind.needs_partition() {
+                            *self.persistence_size() as u64 * 1024 * 1024
+                        } else {
+                            0
+                        },
                     });
                 // Windows-installer customization, when the source is Windows.
                 let windows_setup = if *self.windows_iso() {
@@ -825,6 +890,14 @@ impl qobject::AppController {
                     persistence,
                     windows_setup,
                     install_bootloader,
+                    // Forward the detected distribution so the helper can
+                    // run the matching post-copy quirk fixes.
+                    distro: self
+                        .rust()
+                        .iso_report
+                        .as_ref()
+                        .map(|r| r.distro)
+                        .unwrap_or_default(),
                     opts: JobOptions {
                         label,
                         full_format,
@@ -1165,19 +1238,13 @@ impl qobject::AppController {
     /// Compute the largest persistence size that still leaves room for the
     /// ISO + a 64 MiB partition-table / filesystem-overhead margin. Returns
     /// 0 when the slider should stay disabled (no device, no ISO, no room).
+    ///
+    /// Kept as an invokable for the "Max" button, which wants the freshest
+    /// value at the moment of the click — and as a thin wrapper around the
+    /// same pure function `refresh_persistence_max` uses, so the property
+    /// and the invokable can never drift apart.
     pub fn max_persistence_mib(&self) -> i32 {
-        let Some(device) = self.selected_info() else {
-            return 0;
-        };
-        let iso_size = self
-            .rust()
-            .iso_report
-            .as_ref()
-            .map_or(0u64, |r| r.total_size);
-        const MARGIN: u64 = 64 * 1024 * 1024;
-        let usable = device.size.saturating_sub(iso_size).saturating_sub(MARGIN);
-        let mib = usable / (1024 * 1024);
-        i32::try_from(mib).unwrap_or(i32::MAX)
+        compute_max_persistence_mib(self.selected_info(), self.rust().iso_report.as_ref())
     }
 
     /// Trim the current label down to whatever fits on the chosen filesystem,
@@ -1393,6 +1460,26 @@ fn mounted_sources(device_path: &str) -> Vec<String> {
         }
     }
     out
+}
+
+/// Pure version of [`AppController::max_persistence_mib`], used by both the
+/// property refresher and the legacy invokable so the two can never drift
+/// apart. Returns the largest persistence partition size that still leaves
+/// room for `iso` plus a 64 MiB filesystem / partition-table margin on
+/// `device`. `0` when there is no device, or no headroom (the slider
+/// should stay hidden in that case).
+fn compute_max_persistence_mib(
+    device: Option<&DeviceInfo>,
+    iso: Option<&usbooty_core::IsoReport>,
+) -> i32 {
+    let Some(device) = device else {
+        return 0;
+    };
+    let iso_size = iso.map_or(0u64, |r| r.total_size);
+    const MARGIN: u64 = 64 * 1024 * 1024;
+    let usable = device.size.saturating_sub(iso_size).saturating_sub(MARGIN);
+    let mib = usable / (1024 * 1024);
+    i32::try_from(mib).unwrap_or(i32::MAX)
 }
 
 /// Unmount every mounted partition of `device_path` via `udisksctl unmount`,

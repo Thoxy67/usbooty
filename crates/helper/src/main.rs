@@ -22,6 +22,7 @@ mod blockdev;
 mod check;
 mod dd;
 mod devlock;
+mod distro_fixes;
 mod emit;
 mod format;
 mod fsutil;
@@ -147,6 +148,7 @@ fn run() -> Result<()> {
             persistence,
             windows_setup,
             install_bootloader,
+            distro,
             opts,
         } => partitioned::run(
             &iso_path,
@@ -158,6 +160,7 @@ fn run() -> Result<()> {
             persistence,
             windows_setup.as_ref(),
             install_bootloader,
+            distro,
             &opts,
             &ABORT,
         ),

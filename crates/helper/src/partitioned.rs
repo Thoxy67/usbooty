@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 use usbooty_core::{
-    FileSystem, JobOptions, PartitionTable, Persistence, WimStrategy, WindowsSetup,
+    DistroFamily, FileSystem, JobOptions, PartitionTable, Persistence, WimStrategy, WindowsSetup,
 };
 
 use crate::{blockdev, emit, fsutil, isocopy, partition};
@@ -23,6 +23,7 @@ pub fn run(
     persistence: Option<Persistence>,
     windows_setup: Option<&WindowsSetup>,
     install_bootloader: bool,
+    distro: DistroFamily,
     opts: &JobOptions,
     abort: &AtomicBool,
 ) -> Result<()> {
@@ -38,6 +39,7 @@ pub fn run(
             // Forward the split decision so plain_copy can replace
             // install.wim after the file-by-file copy lands it on FAT32.
             matches!(wim, WimStrategy::Split),
+            distro,
             opts,
             abort,
         ),
@@ -63,6 +65,7 @@ fn plain_copy(
     windows_setup: Option<&WindowsSetup>,
     install_bootloader: bool,
     split_wim: bool,
+    distro: DistroFamily,
     opts: &JobOptions,
     abort: &AtomicBool,
 ) -> Result<()> {
@@ -76,17 +79,24 @@ fn plain_copy(
     if let Some(p) = persistence {
         // Persistence is a Linux-only flow; wim splitting does not apply.
         let _ = split_wim;
-        return copy_with_persistence(
-            iso,
-            device,
-            table,
-            filesystem,
-            iso_size,
-            p,
-            install_bootloader,
-            opts,
-            abort,
-        );
+        if p.kind.needs_partition() {
+            return copy_with_persistence(
+                iso,
+                device,
+                table,
+                filesystem,
+                iso_size,
+                p,
+                install_bootloader,
+                distro,
+                opts,
+                abort,
+            );
+        }
+        // Inline-folder persistence (Slax): one partition + a directory on
+        // it. The `setup_single_partition` path below already handles the
+        // single-partition layout; we just add the `slax/changes/` directory
+        // and kernel patch inside the mount scope.
     }
 
     // When splitting install.wim, the file itself cannot land on FAT32 via
@@ -113,6 +123,19 @@ fn plain_copy(
         if let Some(setup) = windows_setup {
             crate::unattend::write(mount.path(), setup)?;
         }
+        // Inline-directory persistence — currently Slax. The directory is
+        // created on the main data partition and the kernel command line
+        // patched so the live system picks the overlay up automatically.
+        if let Some(p) = persistence {
+            if !p.kind.needs_partition() {
+                crate::persistence::setup_inline(mount.path(), p.kind)?;
+                crate::persistence::patch_boot_config(mount.path(), p.kind)?;
+            }
+        }
+        // Per-distro post-copy quirk fixes (Arch GRUB redirect, Knoppix
+        // safe-VGA flags, …). Best-effort: failures are logged inside the
+        // module and never abort the job.
+        crate::distro_fixes::apply(mount.path(), distro, &opts.label);
         if install_bootloader {
             crate::syslinux::install_files(&part, mount.path(), filesystem)?;
         }
@@ -186,6 +209,7 @@ fn copy_with_persistence(
     iso_size: u64,
     persistence: Persistence,
     install_bootloader: bool,
+    distro: DistroFamily,
     opts: &JobOptions,
     abort: &AtomicBool,
 ) -> Result<()> {
@@ -234,6 +258,8 @@ fn copy_with_persistence(
         // Add the persistence kernel option to the copied bootloader configs,
         // so the live system actually uses the overlay partition.
         crate::persistence::patch_boot_config(mount.path(), persistence.kind)?;
+        // Distro-specific post-copy fixes — same as the no-persistence path.
+        crate::distro_fixes::apply(mount.path(), distro, &opts.label);
         if install_bootloader {
             crate::syslinux::install_files(&main_part, mount.path(), filesystem)?;
         }

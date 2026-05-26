@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::iso_report::PersistenceKind;
+use crate::iso_report::{DistroFamily, PersistenceKind};
 
 /// The partition table type to write (the user always chooses this explicitly).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -323,6 +323,10 @@ pub enum Job {
         /// BIOS. The GUI sets this for isolinux-based Linux ISOs.
         #[serde(default)]
         install_bootloader: bool,
+        /// Distribution family detected from the ISO. Drives the post-copy
+        /// quirk fix table; `Unknown` (default) skips every per-distro patch.
+        #[serde(default)]
+        distro: DistroFamily,
         #[serde(default)]
         opts: JobOptions,
     },
@@ -416,6 +420,7 @@ mod tests {
             persistence: None,
             windows_setup: None,
             install_bootloader: false,
+            distro: DistroFamily::Unknown,
             opts: JobOptions {
                 label: "WIN11".into(),
                 full_format: false,

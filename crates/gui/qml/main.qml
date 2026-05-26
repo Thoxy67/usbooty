@@ -1001,11 +1001,20 @@ ApplicationWindow {
             }
 
             // Persistence — only for Linux live ISOs that support it.
+            // Partition-based variants show a size slider; inline-folder
+            // variants (Slax) show a simple on/off checkbox because the
+            // changes directory lives inside the main data partition.
+            // The slider section also disappears when no device is plugged
+            // in / selected — there is nothing meaningful to slide against
+            // until the user picks the target drive.
             ColumnLayout {
                 Layout.fillWidth: true
-                visible: app.persistenceSupported && app.method === 1
+                visible: app.persistenceSupported
+                         && app.method === 1
+                         && (app.persistenceInline || (app.selectedDevice >= 0 && app.persistenceMaxMib > 0))
                 spacing: 2
                 Label {
+                    visible: !app.persistenceInline
                     // Below 1 GiB: show MiB. At or above 1 GiB: GiB with one
                     // decimal place; snapping makes that decimal meaningful.
                     text: {
@@ -1021,12 +1030,16 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 6
+                    visible: !app.persistenceInline
                     Slider {
                         id: persistenceSlider
                         Layout.fillWidth: true
-                        enabled: !app.busy
+                        enabled: !app.busy && app.persistenceMaxMib > 0
                         from: 0
-                        to: 32768
+                        // Always exactly the room the selected device has
+                        // left — recomputed by AppController whenever the
+                        // device or ISO changes.
+                        to: app.persistenceMaxMib
                         // 256 MiB steps below 1 GiB (fine-grained for small
                         // overlays), 512 MiB steps above (matches the displayed
                         // 0.5 GiB precision so the label never lies).
@@ -1040,24 +1053,41 @@ ApplicationWindow {
                     }
                     Button {
                         text: qsTr("Max")
-                        enabled: !app.busy && app.selectedDevice >= 0
-                        onClicked: {
-                            var m = app.maxPersistenceMib()
-                            if (m > 32768) m = 32768
-                            if (m < 0) m = 0
-                            app.persistenceSize = m
-                        }
+                        enabled: !app.busy && app.persistenceMaxMib > 0
+                        onClicked: app.persistenceSize = app.persistenceMaxMib
                         ToolTip.delay: 500
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Set the overlay to fill the device — uses every byte "
                             + "the chosen drive has left after the ISO and a small partition-table margin.")
                     }
                 }
+                // Inline-folder persistence (currently Slax): a single
+                // toggle. Non-zero `persistenceSize` is how the job builder
+                // detects the request; the value itself is ignored.
+                CheckBox {
+                    visible: app.persistenceInline
+                    enabled: !app.busy
+                    text: qsTr("Enable persistent changes (saves to /slax/changes/)")
+                    checked: app.persistenceSize > 0
+                    onToggled: app.persistenceSize = checked ? 1 : 0
+                }
                 Label {
-                    text: qsTr("Keeps your files and settings across reboots of this live USB.")
+                    text: app.persistenceInline
+                        ? qsTr("Slax writes changes directly into a folder on the data partition — "
+                             + "no separate overlay partition is created.")
+                        : qsTr("Keeps your files and settings across reboots of this live USB.")
                     color: palette.placeholderText
                     font.pointSize: 8
                     wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+                // The distro family usbooty matched, so the user can tell at
+                // a glance why a particular scheme was selected.
+                Label {
+                    visible: app.distroLabel.length > 0
+                    text: qsTr("Detected distribution: %1").arg(app.distroLabel)
+                    color: palette.placeholderText
+                    font.pointSize: 8
                     Layout.fillWidth: true
                 }
             }
@@ -1066,8 +1096,26 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 visible: app.linuxIso && !app.persistenceSupported && app.method === 1
-                text: qsTr("Persistent storage isn't supported for this distribution "
-                         + "(only Debian/Ubuntu-family live systems can use it).")
+                text: app.distroLabel.length > 0
+                    ? qsTr("Persistent storage isn't supported for %1.").arg(app.distroLabel)
+                    : qsTr("Persistent storage isn't supported for this distribution.")
+                color: palette.placeholderText
+                font.pointSize: 8
+                wrapMode: Text.Wrap
+            }
+
+            // Persistence is available but the user hasn't picked a device
+            // yet — explain why the slider isn't there so it doesn't look
+            // like the feature is missing.
+            Label {
+                Layout.fillWidth: true
+                visible: app.persistenceSupported
+                         && !app.persistenceInline
+                         && app.method === 1
+                         && (app.selectedDevice < 0 || app.persistenceMaxMib <= 0)
+                text: app.selectedDevice < 0
+                    ? qsTr("Plug in or select a target device to set the persistence size.")
+                    : qsTr("The selected device has no room left for a persistence partition once the ISO is written.")
                 color: palette.placeholderText
                 font.pointSize: 8
                 wrapMode: Text.Wrap

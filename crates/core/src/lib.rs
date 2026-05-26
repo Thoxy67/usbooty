@@ -17,7 +17,7 @@ pub mod udf;
 pub mod uefi_ntfs;
 
 pub use device::DeviceInfo;
-pub use iso_report::{IsoReport, OsKind, PersistenceKind};
+pub use iso_report::{DistroFamily, IsoReport, OsKind, PersistenceKind};
 pub use job::{
     CheckMode, FileSystem, Job, JobOptions, PartitionTable, Persistence, WimStrategy, WindowsSetup,
 };
