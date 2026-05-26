@@ -28,20 +28,33 @@ use usbooty_core::{FileSystem, JobOptions, PartitionTable};
 
 use crate::{emit, fsutil};
 
-/// Build a FreeDOS bootable USB on `device` using the three already-cached
-/// FreeDOS files. The single partition spans the device and is flagged
-/// bootable on MBR layouts (FreeDOS doesn't care about GPT but the user
-/// is free to pick either).
-pub fn run(
-    device: &Path,
-    table: PartitionTable,
-    filesystem: FileSystem,
-    kernel_sys: &Path,
-    command_com: &Path,
-    boot_bin: &Path,
-    opts: &JobOptions,
-    abort: &AtomicBool,
-) -> Result<()> {
+/// Inputs to [`run`]. Grouped into one struct so the function signature
+/// stays under the clippy `too_many_arguments` threshold and so callers
+/// can name each input at the call site.
+pub struct FreedosLayout<'a> {
+    pub device: &'a Path,
+    pub table: PartitionTable,
+    pub filesystem: FileSystem,
+    pub kernel_sys: &'a Path,
+    pub command_com: &'a Path,
+    pub boot_bin: &'a Path,
+    pub opts: &'a JobOptions,
+}
+
+/// Build a FreeDOS bootable USB using the three already-cached FreeDOS
+/// files. The single partition spans the device and is flagged bootable on
+/// MBR layouts (FreeDOS doesn't care about GPT but the user is free to
+/// pick either).
+pub fn run(layout: FreedosLayout<'_>, abort: &AtomicBool) -> Result<()> {
+    let FreedosLayout {
+        device,
+        table,
+        filesystem,
+        kernel_sys,
+        command_com,
+        boot_bin,
+        opts,
+    } = layout;
     if !matches!(filesystem, FileSystem::Fat16 | FileSystem::Fat32) {
         bail!(
             "FreeDOS requires FAT16 or FAT32, not {}",
@@ -70,7 +83,7 @@ pub fn run(
     mcopy_to_root(&partition, &[kernel_sys, command_com])?;
 
     // The MBR stub Syslinux ships will jump to the active partition's boot
-    // sector — which now points at FreeDOS's bootloader code.
+    // sector, which now points at FreeDOS's bootloader code.
     crate::syslinux::write_mbr(device).context("writing the MBR stub")?;
 
     emit::log("FreeDOS bootable USB ready");

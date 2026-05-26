@@ -123,7 +123,7 @@ fn compile_translations(dir: &Path) {
         if !needs_rebuild {
             continue;
         }
-        let status = Command::new(&lrelease)
+        let status = Command::new(lrelease)
             .arg(ts)
             .status()
             .unwrap_or_else(|e| panic!("failed to spawn {lrelease}: {e}"));

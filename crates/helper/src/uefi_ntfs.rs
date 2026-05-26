@@ -21,16 +21,28 @@ use crate::{blockdev, emit, fsutil, isocopy, partition};
 /// bootloader image (`uefi-ntfs.img` from pbatard/uefi-ntfs) carries both
 /// drivers, so the only filesystem-dependent steps are the mkfs and mount
 /// calls.
-pub fn run(
-    iso: &Path,
-    device: &Path,
-    table: PartitionTable,
-    main_filesystem: FileSystem,
-    uefi_ntfs_img: &Path,
-    windows_setup: Option<&WindowsSetup>,
-    opts: &JobOptions,
-    abort: &AtomicBool,
-) -> Result<()> {
+/// Inputs to [`run`]. Grouped into one struct so the function signature
+/// stays under the clippy `too_many_arguments` threshold.
+pub struct UefiNtfsLayout<'a> {
+    pub iso: &'a Path,
+    pub device: &'a Path,
+    pub table: PartitionTable,
+    pub main_filesystem: FileSystem,
+    pub uefi_ntfs_img: &'a Path,
+    pub windows_setup: Option<&'a WindowsSetup>,
+    pub opts: &'a JobOptions,
+}
+
+pub fn run(layout: UefiNtfsLayout<'_>, abort: &AtomicBool) -> Result<()> {
+    let UefiNtfsLayout {
+        iso,
+        device,
+        table,
+        main_filesystem,
+        uefi_ntfs_img,
+        windows_setup,
+        opts,
+    } = layout;
     if !matches!(main_filesystem, FileSystem::Ntfs | FileSystem::ExFat) {
         bail!(
             "the UEFI:NTFS layout supports NTFS or exFAT for the main partition, not {}",

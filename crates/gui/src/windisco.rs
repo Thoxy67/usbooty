@@ -4,9 +4,12 @@
 //! their `software-download-connector` API with a per-session GUID. Before the
 //! API will answer, that GUID must clear two anti-bot ("Sentinel") gates,
 //! exactly as Fido's PowerShell script does:
-//!   1. whitelist the GUID through `vlscppe.microsoft.com/tags`;
-//!   2. complete an `ov-df.microsoft.com` challenge — fetch `mdt.js`, read the
-//!      `w` / `rticks` values it embeds, and echo them straight back.
+//!
+//! 1. whitelist the GUID through `vlscppe.microsoft.com/tags`;
+//! 2. complete an `ov-df.microsoft.com` challenge by fetching `mdt.js`,
+//!    reading the `w` / `rticks` values it embeds, and echoing them
+//!    straight back.
+//!
 //! Skipping step 2 (as older builds did) makes Microsoft reject the
 //! `getskuinformationbyproductedition` call with a Type-9 Sentinel error.
 //!

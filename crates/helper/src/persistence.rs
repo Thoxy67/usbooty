@@ -161,12 +161,14 @@ fn patch_dir(dir: &Path, marker: &str, replacement: &str, patched: &mut u32) {
             if !(name.ends_with(".cfg") || name.ends_with(".conf")) {
                 continue;
             }
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if content.contains(marker) && !content.contains(replacement) {
-                    if std::fs::write(&path, content.replace(marker, replacement)).is_ok() {
-                        *patched += 1;
-                    }
-                }
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            if content.contains(marker)
+                && !content.contains(replacement)
+                && std::fs::write(&path, content.replace(marker, replacement)).is_ok()
+            {
+                *patched += 1;
             }
         }
     }

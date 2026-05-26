@@ -28,6 +28,25 @@ const FOOTER_COOKIE: &[u8; 8] = b"conectix";
 /// VHD dynamic-header cookie ("cxsparse").
 const DYNAMIC_COOKIE: &[u8; 8] = b"cxsparse";
 
+/// Read a big-endian u64 from `bytes[off..off+8]`. Callers pass an offset
+/// into a fixed-size buffer (the 512-byte footer, the 1024-byte dynamic
+/// header) so the slice length is statically known; the explicit
+/// `copy_from_slice` keeps `try_into().unwrap()` out of the call sites.
+#[inline]
+fn read_u64_be(bytes: &[u8], off: usize) -> u64 {
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(&bytes[off..off + 8]);
+    u64::from_be_bytes(buf)
+}
+
+/// Like [`read_u64_be`] but for a big-endian u32.
+#[inline]
+fn read_u32_be(bytes: &[u8], off: usize) -> u32 {
+    let mut buf = [0u8; 4];
+    buf.copy_from_slice(&bytes[off..off + 4]);
+    u32::from_be_bytes(buf)
+}
+
 /// A `Read` source backed by a VHD file, exposing the *virtual* disk contents.
 pub struct VhdReader {
     file: File,
@@ -67,12 +86,12 @@ impl VhdReader {
         }
 
         // Footer fields (all big-endian per the spec):
-        //   offset 48: CurrentSize  — virtual disk size in bytes
-        //   offset 60: DiskType     — 2=fixed, 3=dynamic, 4=differencing
-        //   offset 16: DataOffset   — file offset of the dynamic header
-        let virtual_size = u64::from_be_bytes(footer[48..56].try_into().unwrap());
-        let disk_type = u32::from_be_bytes(footer[60..64].try_into().unwrap());
-        let data_offset = u64::from_be_bytes(footer[16..24].try_into().unwrap());
+        //   offset 48: CurrentSize, virtual disk size in bytes
+        //   offset 60: DiskType, 2=fixed, 3=dynamic, 4=differencing
+        //   offset 16: DataOffset, file offset of the dynamic header
+        let virtual_size = read_u64_be(&footer, 48);
+        let disk_type = read_u32_be(&footer, 60);
+        let data_offset = read_u64_be(&footer, 16);
 
         let kind = match disk_type {
             2 => Kind::Fixed {
@@ -116,17 +135,17 @@ fn parse_dynamic(file: &mut File, data_offset: u64, virtual_size: u64) -> Result
     //   offset 16: TableOffset      — file offset of the BAT (8 bytes)
     //   offset 28: MaxTableEntries  — count of BAT entries (4 bytes)
     //   offset 32: BlockSize        — block size in bytes (4 bytes, typ. 2 MiB)
-    let table_offset = u64::from_be_bytes(hdr[16..24].try_into().unwrap());
-    let max_entries = u32::from_be_bytes(hdr[28..32].try_into().unwrap());
-    let block_size = u32::from_be_bytes(hdr[32..36].try_into().unwrap());
+    let table_offset = read_u64_be(&hdr, 16);
+    let max_entries = read_u32_be(&hdr, 28);
+    let block_size = read_u32_be(&hdr, 32);
     if block_size == 0 || !block_size.is_power_of_two() {
         bail!("VHD dynamic header has invalid block size {block_size}");
     }
 
     // Bytes for the per-block sector bitmap, padded up to 512.
     let sectors_per_block = block_size / 512;
-    let bitmap_bytes = ((sectors_per_block + 7) / 8).max(1);
-    let bitmap_bytes = ((bitmap_bytes + 511) / 512) * 512;
+    let bitmap_bytes = sectors_per_block.div_ceil(8).max(1);
+    let bitmap_bytes = bitmap_bytes.div_ceil(512) * 512;
 
     // Read the BAT itself: each entry is a 4-byte big-endian sector number
     // pointing at the block's bitmap + data area, or 0xFFFFFFFF if absent.
@@ -136,11 +155,16 @@ fn parse_dynamic(file: &mut File, data_offset: u64, virtual_size: u64) -> Result
     file.read_exact(&mut raw).context("reading BAT")?;
     let mut block_offsets = Vec::with_capacity(max_entries as usize);
     for chunk in raw.chunks_exact(4) {
-        let entry = u32::from_be_bytes(chunk.try_into().unwrap());
+        // `chunks_exact(4)` only yields slices of length 4, so the conversion
+        // is statically infallible. Pin the array length in the type to make
+        // that obvious to readers.
+        let mut bytes = [0u8; 4];
+        bytes.copy_from_slice(chunk);
+        let entry = u32::from_be_bytes(bytes);
         if entry == 0xFFFF_FFFF {
             block_offsets.push(None);
         } else {
-            // Sector number → byte offset of the bitmap; data starts after.
+            // Sector number to byte offset of the bitmap; data starts after.
             let byte_off = entry as u64 * 512 + bitmap_bytes as u64;
             block_offsets.push(Some(byte_off));
         }

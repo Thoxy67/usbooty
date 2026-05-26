@@ -140,9 +140,9 @@ fn fixed_vhd_strips_to_original_bytes() {
     let raw: Vec<u8> = (0..4096u32).map(|i| (i & 0xff) as u8).collect();
     let mut bytes = raw.clone();
     bytes.extend_from_slice(b"conectix");
-    bytes.extend(std::iter::repeat(0u8).take(52));
+    bytes.extend(std::iter::repeat_n(0u8, 52));
     bytes.extend_from_slice(&2u32.to_be_bytes()); // disk_type = fixed
-    bytes.extend(std::iter::repeat(0u8).take(512 - 8 - 52 - 4));
+    bytes.extend(std::iter::repeat_n(0u8, 512 - 8 - 52 - 4));
     assert_eq!(bytes.len(), raw.len() + 512);
 
     let vhd = dir.path().join("smoke.vhd");
@@ -158,9 +158,9 @@ fn dynamic_vhd_is_rejected() {
     let dir = tempfile::tempdir().expect("tempdir");
     let mut bytes = vec![0u8; 4096];
     bytes.extend_from_slice(b"conectix");
-    bytes.extend(std::iter::repeat(0u8).take(52));
+    bytes.extend(std::iter::repeat_n(0u8, 52));
     bytes.extend_from_slice(&3u32.to_be_bytes()); // disk_type = dynamic
-    bytes.extend(std::iter::repeat(0u8).take(512 - 8 - 52 - 4));
+    bytes.extend(std::iter::repeat_n(0u8, 512 - 8 - 52 - 4));
     let vhd = dir.path().join("dyn.vhd");
     std::fs::write(&vhd, &bytes).unwrap();
     let err = usbooty_gui::vhd::strip_footer_to_cache(&vhd).unwrap_err();

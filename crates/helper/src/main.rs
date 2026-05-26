@@ -201,13 +201,15 @@ fn run() -> Result<()> {
             boot_bin,
             opts,
         } => freedos::run(
-            &device_path,
-            table,
-            filesystem,
-            &kernel_sys,
-            &command_com,
-            &boot_bin,
-            &opts,
+            freedos::FreedosLayout {
+                device: &device_path,
+                table,
+                filesystem,
+                kernel_sys: &kernel_sys,
+                command_com: &command_com,
+                boot_bin: &boot_bin,
+                opts: &opts,
+            },
             &ABORT,
         ),
     }

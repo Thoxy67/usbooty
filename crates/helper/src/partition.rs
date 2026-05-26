@@ -207,7 +207,7 @@ fn synthesize_hybrid_mbr<D: Read + Write + Seek>(
     let gpt = gptman::GPT::find_from(device).context("re-reading GPT for hybrid MBR")?;
     let entry = gpt
         .iter()
-        .find(|(i, e)| *i as u32 == gpt_index && e.is_used())
+        .find(|(i, e)| *i == gpt_index && e.is_used())
         .map(|(_, e)| e)
         .context("GPT data partition missing for hybrid MBR")?;
     let start = u32::try_from(entry.starting_lba)

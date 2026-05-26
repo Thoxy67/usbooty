@@ -207,7 +207,7 @@ fn fall_back_to_windows(report: &mut IsoReport) {
     report.os_kind = OsKind::Windows;
     report.has_install_wim = true;
     report.has_4gb_file = true;
-    if report.install_wim_size.map_or(true, |s| s <= FOUR_GIB) {
+    if report.install_wim_size.is_none_or(|s| s <= FOUR_GIB) {
         report.install_wim_size = Some(FOUR_GIB + 1);
     }
 }

@@ -143,7 +143,7 @@ impl<R: Read + Seek> UdfFs<R> {
             let children = self.read_dir(current)?;
             let found = children
                 .into_iter()
-                .find(|e| e.is_dir && e.name.eq_ignore_ascii_case(*seg))?;
+                .find(|e| e.is_dir && e.name.eq_ignore_ascii_case(seg))?;
             current = found.icb;
         }
         self.read_dir(current)
@@ -156,7 +156,7 @@ impl<R: Read + Seek> UdfFs<R> {
         let parent = self.list(dir_segs)?;
         let entry = parent
             .into_iter()
-            .find(|e| !e.is_dir && e.name.eq_ignore_ascii_case(*name))?;
+            .find(|e| !e.is_dir && e.name.eq_ignore_ascii_case(name))?;
         self.read_file_data(entry.icb).ok()
     }
 
@@ -168,7 +168,7 @@ impl<R: Read + Seek> UdfFs<R> {
         let parent = self.list(dir_segs)?;
         let entry = parent
             .into_iter()
-            .find(|e| !e.is_dir && e.name.eq_ignore_ascii_case(*name))?;
+            .find(|e| !e.is_dir && e.name.eq_ignore_ascii_case(name))?;
         self.read_info_length(entry.icb)
     }
 

@@ -45,6 +45,10 @@ impl DeviceLock {
             .read(true)
             .write(true)
             .create(true)
+            // We never write to the file; only flock state matters. Truncate
+            // would race against any concurrent holder, so leave existing
+            // content alone.
+            .truncate(false)
             .mode(0o644)
             .open(&lock_path)
             .with_context(|| format!("creating lockfile {lock_path}"))?;

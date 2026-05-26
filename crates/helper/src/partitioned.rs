@@ -54,13 +54,15 @@ pub fn run(
                 _ => FileSystem::Ntfs,
             };
             crate::uefi_ntfs::run(
-                iso,
-                device,
-                table,
-                main_fs,
-                img,
-                windows_setup,
-                opts,
+                crate::uefi_ntfs::UefiNtfsLayout {
+                    iso,
+                    device,
+                    table,
+                    main_filesystem: main_fs,
+                    uefi_ntfs_img: img,
+                    windows_setup,
+                    opts,
+                },
                 abort,
             )
         }
