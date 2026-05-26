@@ -309,3 +309,60 @@ fn fill_fingerprint(buf: &mut [u8], seed: u64, offset: u64) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sample_offsets_returns_zero_for_tiny_device() {
+        // Smaller than one BLOCK: only valid offset is 0.
+        assert_eq!(sample_offsets(0, 32), vec![0]);
+        assert_eq!(sample_offsets(BLOCK as u64 - 1, 32), vec![0]);
+    }
+
+    #[test]
+    fn sample_offsets_spans_the_device_block_aligned() {
+        let size = 16 * 1024 * 1024;
+        let offs = sample_offsets(size, 8);
+        // At least the first offset is 0 and every offset is BLOCK-aligned
+        // and within bounds.
+        assert_eq!(offs.first().copied(), Some(0));
+        for &o in &offs {
+            assert!(o + BLOCK as u64 <= size, "offset {o} past device end");
+            assert_eq!(o % BLOCK as u64, 0, "offset {o} not 4 KiB aligned");
+        }
+    }
+
+    #[test]
+    fn fill_fingerprint_is_deterministic() {
+        let mut a = [0u8; 4096];
+        let mut b = [0u8; 4096];
+        fill_fingerprint(&mut a, 0xdead, 0xbeef);
+        fill_fingerprint(&mut b, 0xdead, 0xbeef);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn fill_fingerprint_header_encodes_seed_and_offset() {
+        let mut buf = [0u8; 4096];
+        fill_fingerprint(&mut buf, 0x1122_3344_5566_7788, 0x99AA_BBCC_DDEE_FF00);
+        assert_eq!(
+            u64::from_le_bytes(buf[..8].try_into().unwrap()),
+            0x1122_3344_5566_7788
+        );
+        assert_eq!(
+            u64::from_le_bytes(buf[8..16].try_into().unwrap()),
+            0x99AA_BBCC_DDEE_FF00
+        );
+    }
+
+    #[test]
+    fn fill_fingerprint_changes_on_different_offset() {
+        let mut a = [0u8; 4096];
+        let mut b = [0u8; 4096];
+        fill_fingerprint(&mut a, 0xdead, 0);
+        fill_fingerprint(&mut b, 0xdead, BLOCK as u64);
+        assert_ne!(a, b, "different offset should produce different bytes");
+    }
+}

@@ -385,3 +385,75 @@ fn new_guid() -> String {
         b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15],
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn hex_encodes_bytes_lowercase() {
+        assert_eq!(hex(&[0x00, 0x0f, 0xff, 0x1a]), "000fff1a");
+    }
+
+    #[test]
+    fn file_name_from_url_extracts_iso() {
+        let url = "https://software.download.prss.microsoft.com/foo/Win11_24H2_English_x64.iso?t=abc";
+        assert_eq!(file_name_from_url(url), "Win11_24H2_English_x64.iso");
+    }
+
+    #[test]
+    fn file_name_from_url_falls_back_when_no_iso() {
+        assert_eq!(file_name_from_url("https://example.com/redirect"), "Windows.iso");
+        assert_eq!(file_name_from_url(""), "Windows.iso");
+    }
+
+    #[test]
+    fn extract_token_reads_run_of_matching_chars() {
+        let body = r#"...&w=deadbeef" ... rticks="+1234567;..."#;
+        assert_eq!(
+            extract_token(body, "&w=", |c| c.is_ascii_hexdigit()),
+            Some("deadbeef".to_string())
+        );
+        // The `+` prefix is silently skipped (this is what mdt.js emits).
+        assert_eq!(
+            extract_token(body, "rticks=\"", |c| c.is_ascii_digit()),
+            Some("1234567".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_token_returns_none_when_marker_missing() {
+        assert_eq!(extract_token("nothing here", "&w=", |c| c.is_ascii_hexdigit()), None);
+    }
+
+    #[test]
+    fn check_errors_passes_when_array_empty_or_absent() {
+        check_errors(&json!({})).expect("no errors -> Ok");
+        check_errors(&json!({ "Errors": [] })).expect("empty array -> Ok");
+    }
+
+    #[test]
+    fn check_errors_flags_sentinel_type_9() {
+        let v = json!({ "Errors": [ { "Type": 9, "Value": "blocked" } ] });
+        let err = check_errors(&v).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("anti-bot"), "expected anti-bot hint, got: {msg}");
+    }
+
+    #[test]
+    fn check_errors_relays_generic_message() {
+        let v = json!({ "Errors": [ { "Type": 1, "Value": "Something broke" } ] });
+        let err = check_errors(&v).unwrap_err();
+        assert!(format!("{err:#}").contains("Something broke"));
+    }
+
+    #[test]
+    fn new_guid_has_v4_layout() {
+        let g = new_guid();
+        assert_eq!(g.len(), 36);
+        // RFC 4122 v4 fixes the 15th char (version) and the 20th char (variant).
+        assert_eq!(g.chars().nth(14), Some('4'));
+        assert!(matches!(g.chars().nth(19), Some('8' | '9' | 'a' | 'b')));
+    }
+}

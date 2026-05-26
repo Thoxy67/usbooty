@@ -113,3 +113,43 @@ fn attribute_raw(json: &Value, id: u64) -> Option<u64> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn fixture(reallocated: u64, pending: u64, uncorr: u64, temp: i64, passed: bool) -> Value {
+        json!({
+            "smart_support": { "available": true, "enabled": true },
+            "smart_status": { "passed": passed },
+            "temperature": { "current": temp },
+            "ata_smart_attributes": {
+                "table": [
+                    { "id": 5,   "raw": { "value": reallocated } },
+                    { "id": 197, "raw": { "value": pending } },
+                    { "id": 198, "raw": { "value": uncorr } },
+                ]
+            }
+        })
+    }
+
+    #[test]
+    fn attribute_raw_returns_known_attribute() {
+        let v = fixture(7, 0, 0, 35, true);
+        assert_eq!(attribute_raw(&v, 5), Some(7));
+        assert_eq!(attribute_raw(&v, 197), Some(0));
+    }
+
+    #[test]
+    fn attribute_raw_returns_none_for_missing_id() {
+        let v = fixture(0, 0, 0, 35, true);
+        assert_eq!(attribute_raw(&v, 191), None);
+    }
+
+    #[test]
+    fn attribute_raw_returns_none_when_table_missing() {
+        let v = json!({ "smart_status": { "passed": true } });
+        assert_eq!(attribute_raw(&v, 5), None);
+    }
+}

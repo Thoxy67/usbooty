@@ -237,3 +237,36 @@ pub fn refuse_vhdx() -> anyhow::Error {
          for example with: qemu-img convert -O raw input.vhdx output.img"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_u64_be_round_trips_through_known_offset() {
+        let mut buf = [0u8; 16];
+        buf[4..12].copy_from_slice(&0x1122_3344_5566_7788u64.to_be_bytes());
+        assert_eq!(read_u64_be(&buf, 4), 0x1122_3344_5566_7788);
+    }
+
+    #[test]
+    fn read_u32_be_round_trips_through_known_offset() {
+        let mut buf = [0u8; 8];
+        buf[2..6].copy_from_slice(&0xDEAD_BEEFu32.to_be_bytes());
+        assert_eq!(read_u32_be(&buf, 2), 0xDEAD_BEEF);
+    }
+
+    #[test]
+    fn refuse_vhdx_message_mentions_qemu_img() {
+        let err = refuse_vhdx();
+        assert!(format!("{err}").contains("qemu-img"));
+        assert!(format!("{err}").contains(".vhdx"));
+    }
+
+    #[test]
+    #[should_panic]
+    fn read_u64_be_panics_past_buffer_end() {
+        let buf = [0u8; 4];
+        let _ = read_u64_be(&buf, 0);
+    }
+}

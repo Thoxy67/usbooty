@@ -30,5 +30,8 @@ xz2 = "0.1"
 zstd = { version = "0.13", features = ["pkg-config"] }
 bzip2 = "0.6"
 
-# The source ISO is loop-mounted, so the kernel parses ISO9660/UDF for us —
+# The source ISO is loop-mounted, so the kernel parses ISO9660/UDF for us;
 # no userspace ISO reader is needed in the helper (the GUI still uses `cdfs`).
+
+[dev-dependencies]
+tempfile = "3"

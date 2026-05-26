@@ -187,3 +187,32 @@ fn mount_iso_ro(iso: &Path) -> Result<IsoMount> {
     let _ = fs::remove_dir(&mountpoint);
     anyhow::bail!("could not mount the source ISO for SkuSiPolicy extract: {last_err}")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ci_path_matches_case_insensitively() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let nested = dir.path().join("Sources").join("Install.WIM");
+        fs::create_dir_all(nested.parent().unwrap()).unwrap();
+        fs::write(&nested, b"x").unwrap();
+
+        // Lookup with the upstream Windows casing (lowercase) should find the
+        // PascalCase entry on disk.
+        let resolved = ci_path(dir.path(), &["sources", "install.wim"]).expect("ci_path");
+        assert_eq!(resolved, nested);
+    }
+
+    #[test]
+    fn ci_path_returns_error_when_segment_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = ci_path(dir.path(), &["sources", "install.wim"]).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("not found"),
+            "expected 'not found' in error, got: {msg}"
+        );
+    }
+}
