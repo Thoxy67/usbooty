@@ -2265,7 +2265,10 @@ ApplicationWindow {
                 ToolTip.text: qsTr("Open lsblk + udevadm + smartctl output for this device "
                     + "in a read-only panel. Useful if anything above looks off.")
                 onClicked: {
-                    inspectText.text = app.inspectSelected()
+                    // Kick the worker, then open the dialog right away.
+                    // The TextArea binds to app.inspectText, so it shows
+                    // the placeholder while lsblk/udevadm/smartctl run.
+                    app.requestInspect()
                     inspectDialog.open()
                 }
             }
@@ -2315,6 +2318,9 @@ ApplicationWindow {
                 font.family: "monospace"
                 font.pointSize: 9
                 selectByMouse: true
+                // Worker output lands here via the qproperty. The body of
+                // the bind shows the placeholder while the children run.
+                text: app.inspectText
             }
         }
     }

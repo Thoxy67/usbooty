@@ -151,6 +151,10 @@ pub mod qobject {
         #[qproperty(bool, force_english)]
         // Advisory warning about missing external tools (empty if all present).
         #[qproperty(QString, dep_warning)]
+        // Async-populated text for the device-Inspect dialog. Empty until
+        // the user opens the dialog; set to a "Loading…" placeholder when
+        // `request_inspect` fires, then overwritten with the worker output.
+        #[qproperty(QString, inspect_text)]
         // Persistent flag — when true the activity-log column stays open
         // even with an empty buffer, instead of auto-expanding only when
         // the first log line arrives. Saved in `settings.json`.
@@ -247,10 +251,13 @@ pub mod qobject {
         /// chars, ext4 → 16 chars). Used as a tooltip preview on the field.
         #[qinvokable]
         fn sanitized_label(self: &AppController) -> QString;
-        /// Combined `lsblk -O` and `udevadm info` dump for the selected
-        /// device, for the confirm dialog's "Inspect" panel.
+        /// Trigger an off-thread `lsblk` + `udevadm info` + `smartctl` dump
+        /// of the selected device. The result lands in
+        /// [`inspect_text`](AppController::inspect_text); the QML "Inspect"
+        /// dialog binds to that property and shows a "Loading…" placeholder
+        /// while the workers run.
         #[qinvokable]
-        fn inspect_selected(self: &AppController) -> QString;
+        fn request_inspect(self: Pin<&mut AppController>);
         /// Force the UI into English (true) or back to the system locale
         /// (false). Live-switches via QTranslator — no restart needed.
         #[qinvokable]
@@ -372,6 +379,7 @@ pub struct AppControllerRust {
     force_english: bool,
     show_logs_always: bool,
     dep_warning: QString,
+    inspect_text: QString,
     available_filesystems: QString,
     /// Parallel to `available_filesystems`: which FileSystem each combo
     /// index actually resolves to. Built once from `deps` detection at
@@ -462,6 +470,7 @@ impl Default for AppControllerRust {
             force_english: crate::settings::Settings::load().force_english,
             show_logs_always: crate::settings::Settings::load().show_logs_always,
             dep_warning: QString::from(&crate::deps::warning()),
+            inspect_text: QString::default(),
             available_filesystems: {
                 let labels = crate::deps::available_filesystems()
                     .iter()
@@ -1457,75 +1466,25 @@ impl qobject::AppController {
         )));
     }
 
-    /// `lsblk` + `udevadm info` for the selected device, joined into one
-    /// human-readable dump. Returns an empty string when no device is
-    /// selected. Blocking — the dialog opens once it returns.
-    pub fn inspect_selected(&self) -> QString {
-        let Some(device) = self.selected_info() else {
-            return QString::default();
+    /// Kick off an off-thread inspect: lsblk + udevadm + smartctl. The
+    /// dialog binds to [`inspect_text`](Self::inspect_text); we paint a
+    /// "Loading…" placeholder immediately so the dialog can open right
+    /// away instead of freezing for 50-500 ms while the children run.
+    pub fn request_inspect(mut self: core::pin::Pin<&mut Self>) {
+        let Some(device) = self.selected_info().cloned() else {
+            self.as_mut().set_inspect_text(QString::default());
+            return;
         };
         let path = device.path.clone();
-        // lsblk: passing both `-O` (all columns) and `--output` blanks the
-        // output on most versions, so pick a useful column set explicitly.
-        // Dropping `-d` keeps the disk + its partitions, which is exactly
-        // what the user wants to see before erasing.
-        let lsblk = std::process::Command::new("lsblk")
-            .args([
-                "-p",
-                "--output",
-                "NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,PARTLABEL,MOUNTPOINTS,MODEL,VENDOR,TRAN,REV,ROTA,RM,RO,HOTPLUG",
-            ])
-            .arg(&path)
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-            .unwrap_or_else(|e| format!("(lsblk failed: {e})"));
-        let udev_raw = std::process::Command::new("udevadm")
-            .args(["info", "--query=property", "--name"])
-            .arg(&path)
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-            .unwrap_or_else(|e| format!("(udevadm failed: {e})"));
-        let udev = clean_udev(&udev_raw);
-        // smartctl: info + overall health + attribute table is the
-        // "is this drive ok?" subset. Self-test and error logs would bloat
-        // the panel for no everyday benefit. Exit code is non-zero whenever
-        // SMART is unsupported or permission is denied (both common), so
-        // the panel inspects stderr to give a useful message either way.
-        let smart = match std::process::Command::new("smartctl")
-            .args(["-i", "-H", "-A"])
-            .arg(&path)
-            .output()
-        {
-            Ok(out) => {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                let combined = stdout.trim().to_string();
-                if combined.contains("Permission denied") || stderr.contains("Permission denied") {
-                    "(smartctl needs root for raw device access — either run\n \
-                       sudo chmod u+s $(which smartctl)\n \
-                     once to setuid the binary, or launch usbooty with sudo.)"
-                        .to_string()
-                } else if combined.is_empty() {
-                    let tail = stderr.trim();
-                    if tail.is_empty() {
-                        "(smartctl returned no output — device may not expose SMART)".to_string()
-                    } else {
-                        format!("(smartctl: {tail})")
-                    }
-                } else {
-                    combined
-                }
-            }
-            Err(_) => "(smartctl not installed — install the `smartmontools` package \
-                       to see SMART health here)"
-                .to_string(),
-        };
-        let combined = format!(
-            "── lsblk ───────────────────────────────────────────\n{lsblk}\n\
-             ── udevadm ─────────────────────────────────────────\n{udev}\n\
-             ── smartctl ────────────────────────────────────────\n{smart}"
-        );
-        QString::from(&combined)
+        self.as_mut()
+            .set_inspect_text(QString::from("Loading device details, please wait…"));
+        let qt = self.qt_thread();
+        std::thread::spawn(move || {
+            let text = collect_inspect_text(&path);
+            let _ = qt.queue(move |mut ctrl: core::pin::Pin<&mut Self>| {
+                ctrl.as_mut().set_inspect_text(QString::from(&text));
+            });
+        });
     }
 
     /// Try to power off the currently-selected USB device. Best-effort: prefers
@@ -1582,6 +1541,73 @@ fn trimmed_opt(s: &str) -> Option<String> {
 /// leading and trailing whitespace because Windows compares them exactly.
 fn non_empty_opt(s: &str) -> Option<String> {
     (!s.is_empty()).then(|| s.to_string())
+}
+
+/// Worker for [`AppController::request_inspect`]: shell out to lsblk,
+/// udevadm and smartctl, collate the output. Pure function (only depends
+/// on the device path) so it can run on a worker thread without touching
+/// any QObject state.
+fn collect_inspect_text(path: &str) -> String {
+    // lsblk: passing both `-O` (all columns) and `--output` blanks the
+    // output on most versions, so pick a useful column set explicitly.
+    // Dropping `-d` keeps the disk + its partitions, which is exactly
+    // what the user wants to see before erasing.
+    let lsblk = std::process::Command::new("lsblk")
+        .args([
+            "-p",
+            "--output",
+            "NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,PARTLABEL,MOUNTPOINTS,MODEL,VENDOR,TRAN,REV,ROTA,RM,RO,HOTPLUG",
+        ])
+        .arg(path)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_else(|e| format!("(lsblk failed: {e})"));
+    let udev_raw = std::process::Command::new("udevadm")
+        .args(["info", "--query=property", "--name"])
+        .arg(path)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_else(|e| format!("(udevadm failed: {e})"));
+    let udev = clean_udev(&udev_raw);
+    // smartctl: info + overall health + attribute table is the
+    // "is this drive ok?" subset. Self-test and error logs would bloat
+    // the panel for no everyday benefit. Exit code is non-zero whenever
+    // SMART is unsupported or permission is denied (both common), so
+    // the panel inspects stderr to give a useful message either way.
+    let smart = match std::process::Command::new("smartctl")
+        .args(["-i", "-H", "-A"])
+        .arg(path)
+        .output()
+    {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let combined = stdout.trim().to_string();
+            if combined.contains("Permission denied") || stderr.contains("Permission denied") {
+                "(smartctl needs root for raw device access. Either run\n \
+                   sudo chmod u+s $(which smartctl)\n \
+                 once to setuid the binary, or launch usbooty with sudo.)"
+                    .to_string()
+            } else if combined.is_empty() {
+                let tail = stderr.trim();
+                if tail.is_empty() {
+                    "(smartctl returned no output; device may not expose SMART)".to_string()
+                } else {
+                    format!("(smartctl: {tail})")
+                }
+            } else {
+                combined
+            }
+        }
+        Err(_) => "(smartctl not installed; install the `smartmontools` package \
+                   to see SMART health here)"
+            .to_string(),
+    };
+    format!(
+        "── lsblk ───────────────────────────────────────────\n{lsblk}\n\
+         ── udevadm ─────────────────────────────────────────\n{udev}\n\
+         ── smartctl ────────────────────────────────────────\n{smart}"
+    )
 }
 
 /// Strip noisy duplicates from a `udevadm info --query=property` dump:
