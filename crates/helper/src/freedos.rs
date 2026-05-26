@@ -21,7 +21,6 @@
 
 use anyhow::{bail, Context, Result};
 use std::path::Path;
-use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
 use usbooty_core::{FileSystem, JobOptions, PartitionTable};
@@ -96,49 +95,23 @@ pub fn run(layout: FreedosLayout<'_>, abort: &AtomicBool) -> Result<()> {
 /// only way to install a foreign boot sector onto a freshly-formatted
 /// FAT volume without corrupting cluster-size / sector-count fields.
 fn mformat_boot_sector(partition: &str, boot_bin: &Path) -> Result<()> {
-    emit::log(format!(
-        "Running: mformat -B {} -i {partition} ::",
-        boot_bin.display()
-    ));
-    let out = Command::new("mformat")
-        .arg("-B")
-        .arg(boot_bin)
-        .arg("-i")
-        .arg(partition)
-        .arg("::")
-        .output()
-        .context("running mformat — is `mtools` installed?")?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        bail!(
-            "mformat failed installing the FreeDOS boot sector: {}",
-            stderr.trim()
-        );
-    }
-    Ok(())
+    let boot_bin_str = boot_bin.to_string_lossy();
+    crate::fsutil::run_tool(
+        "mformat",
+        &["-B", &boot_bin_str, "-i", partition, "::"],
+        "installing the FreeDOS boot sector",
+    )
 }
 
 /// Copy each `file` to the FAT root with `mcopy -i <partition> <file> ::`.
 fn mcopy_to_root(partition: &str, files: &[&Path]) -> Result<()> {
     for file in files {
-        emit::log(format!("mcopy -i {partition} {} ::", file.display()));
-        let out = Command::new("mcopy")
-            .arg("-i")
-            .arg(partition)
-            .arg("-Q")
-            .arg("-o") // overwrite without prompting
-            .arg(file)
-            .arg("::")
-            .output()
-            .context("running mcopy — is `mtools` installed?")?;
-        if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            bail!(
-                "mcopy failed copying {} to the FAT root: {}",
-                file.display(),
-                stderr.trim()
-            );
-        }
+        let file_str = file.to_string_lossy();
+        crate::fsutil::run_tool(
+            "mcopy",
+            &["-i", partition, "-Q", "-o", &file_str, "::"],
+            "copying a file to the FreeDOS FAT root",
+        )?;
     }
 
     // Keep the freshly-mounted-then-immediately-unmounted invariant the

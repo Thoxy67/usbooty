@@ -12,7 +12,6 @@
 use anyhow::{bail, Context, Result};
 use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
-use std::process::Command;
 
 use usbooty_core::FileSystem;
 
@@ -65,16 +64,11 @@ pub fn install_files(partition: &str, mount: &Path, filesystem: FileSystem) -> R
 /// we mirror it across so the boot menu actually loads.
 fn install_fat(partition: &str, mount: &Path) -> Result<()> {
     ensure_syslinux_cfg(mount)?;
-    let out = Command::new("syslinux")
-        .args(["--install", "--directory", "/syslinux", partition])
-        .output()
-        .context("running syslinux")?;
-    if !out.status.success() {
-        bail!(
-            "syslinux failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-    }
+    crate::fsutil::run_tool(
+        "syslinux",
+        &["--install", "--directory", "/syslinux", partition],
+        "installing Syslinux",
+    )?;
     emit::log("Installed Syslinux to the FAT partition");
     Ok(())
 }
@@ -116,17 +110,12 @@ fn install_extlinux(mount: &Path) -> Result<()> {
             .with_context(|| format!("copying {}", source_cfg.display()))?;
     }
 
-    let out = Command::new("extlinux")
-        .arg("--install")
-        .arg(&target)
-        .output()
-        .context("running extlinux")?;
-    if !out.status.success() {
-        bail!(
-            "extlinux failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-    }
+    let target_str = target.to_string_lossy();
+    crate::fsutil::run_tool(
+        "extlinux",
+        &["--install", &target_str],
+        "installing Extlinux",
+    )?;
     emit::log("Installed Extlinux to the ext4 partition");
     Ok(())
 }

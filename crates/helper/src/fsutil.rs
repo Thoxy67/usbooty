@@ -186,8 +186,14 @@ pub fn mkfs(filesystem: FileSystem, device: &str, label: &str) -> Result<()> {
     }
 }
 
-/// Run an external formatting tool, surfacing its output in the log.
-fn run_tool(tool: &str, args: &[&str], doing: &str) -> Result<()> {
+/// Run an external short-lived tool, surfacing its output in the log.
+///
+/// Use this for any subprocess that completes in well under a second and
+/// doesn't need cancellation midway (mkfs.*, mformat, mcopy, syslinux,
+/// extlinux). Long-running cancellable children (wimlib-imagex split /
+/// extract, ventoy, mount) need direct stdin/stdout control and roll
+/// their own.
+pub(crate) fn run_tool(tool: &str, args: &[&str], doing: &str) -> Result<()> {
     emit::log(format!("Running: {tool} {}", args.join(" ")));
     let output = Command::new(tool)
         .args(args)
