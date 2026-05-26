@@ -639,6 +639,25 @@ pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String) {
 /// resulting plain image off to the regular `set_iso` path. Progress is
 /// reported on the same Qt `phase`/`progress` properties the helper drives,
 /// so the UI looks like a normal write-phase to the user.
+/// Analyze a plain ISO off the Qt thread and queue the result back. Replaces
+/// the previous synchronous `iso::analyze` call inside `set_iso` so picking
+/// a multi-GB source never freezes the UI. Also the common landing point for
+/// `decompress_then_analyze` and `strip_vhd_then_analyze` after they finish
+/// producing a plain file.
+pub fn analyze_then_apply(qt: CxxQtThread<AppController>, src: PathBuf) {
+    let display = src.display().to_string();
+    let report = crate::iso::analyze(&src);
+    let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
+        ctrl.as_mut().set_busy(false);
+        ctrl.as_mut().set_progress(0.0);
+        ctrl.as_mut().set_phase(QString::default());
+        ctrl.as_mut().set_speed(QString::default());
+        ctrl.as_mut().set_eta(QString::default());
+        ctrl.as_mut().set_status(QString::from("Ready"));
+        ctrl.as_mut().apply_iso(&display, report, None);
+    });
+}
+
 pub fn decompress_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
     let display = src.display().to_string();
     apply(
@@ -671,19 +690,11 @@ pub fn decompress_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
                 &qt,
                 ProgressMsg::info(format!("Decompressed → {}", path.display())),
             );
-            let path_str = path.to_string_lossy().into_owned();
-            let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
-                ctrl.as_mut().set_busy(false);
-                ctrl.as_mut().set_progress(0.0);
-                ctrl.as_mut().set_phase(QString::default());
-                ctrl.as_mut().set_speed(QString::default());
-                ctrl.as_mut().set_eta(QString::default());
-                ctrl.as_mut().set_status(QString::from("Ready"));
-                // Re-enter the analyze path with the decompressed file; it's
-                // a plain ISO now so it goes down the fast path.
-                ctrl.as_mut()
-                    .set_iso(&QString::from(&path_str));
-            });
+            // Drop straight into off-thread analysis with the decompressed
+            // file. Going through `set_iso` would spawn yet another worker
+            // for the same job; calling `analyze_then_apply` directly skips
+            // the extra hop.
+            analyze_then_apply(qt, path);
         }
         Err(e) => {
             let message = format!("Could not decompress {display}: {e:#}");
@@ -723,14 +734,9 @@ pub fn strip_vhd_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
                 &qt,
                 ProgressMsg::info(format!("Unwrapped → {}", path.display())),
             );
-            let path_str = path.to_string_lossy().into_owned();
-            let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
-                ctrl.as_mut().set_busy(false);
-                ctrl.as_mut().set_progress(0.0);
-                ctrl.as_mut().set_phase(QString::default());
-                ctrl.as_mut().set_status(QString::from("Ready"));
-                ctrl.as_mut().set_iso(&QString::from(&path_str));
-            });
+            // Same shortcut as the decompression path: skip the `set_iso`
+            // round-trip and analyze the unwrapped image directly.
+            analyze_then_apply(qt, path);
         }
         Err(e) => {
             let message = format!("Could not open VHD {display}: {e:#}");

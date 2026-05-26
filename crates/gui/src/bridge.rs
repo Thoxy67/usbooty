@@ -616,8 +616,21 @@ impl qobject::AppController {
                     });
                     return;
                 }
-                let report = crate::iso::analyze(&path_buf);
-                self.apply_iso(&path, report, None);
+                // `iso::analyze` can FUSE-mount or ISO9660-parse a multi-GB
+                // file, which is hundreds of milliseconds. Background-thread
+                // it so the Qt event loop keeps spinning while the file is
+                // picked.
+                self.as_mut().set_busy(true);
+                self.as_mut().set_progress(0.0);
+                self.as_mut().set_phase(QString::from("Analyzing"));
+                self.as_mut()
+                    .set_iso_summary(QString::from("Analyzing source image…"));
+                self.as_mut()
+                    .set_status(QString::from("Analyzing source image…"));
+                let qt = self.qt_thread();
+                std::thread::spawn(move || {
+                    crate::runner::analyze_then_apply(qt, path_buf);
+                });
             }
             _ => {
                 self.as_mut().set_busy(true);
@@ -677,8 +690,9 @@ impl qobject::AppController {
 
     /// Apply an analyzed ISO to the UI state. When `hashes` is `Some` the
     /// digests are already known (a downloaded ISO); otherwise they are
-    /// computed off-thread.
-    fn apply_iso(
+    /// computed off-thread. Marked `pub(crate)` so [`crate::runner`] can
+    /// call this from a Qt-thread closure after off-thread analysis.
+    pub(crate) fn apply_iso(
         mut self: core::pin::Pin<&mut Self>,
         path: &str,
         report: IsoReport,
