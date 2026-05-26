@@ -401,20 +401,18 @@ fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
         shell_body.push_str("        <LogonCount>1</LogonCount>\n");
         shell_body.push_str("      </AutoLogon>\n");
     }
+    // Build the FirstLogonCommands block as a table of (description,
+    // command-line) pairs so adding a future first-logon action is a
+    // single row in this Vec instead of another copy of the eight-line
+    // SynchronousCommand template.
+    let mut first_logon: Vec<(&'static str, &str)> = Vec::new();
     if setup.disable_network_during_oobe {
-        shell_body.push_str("      <FirstLogonCommands>\n");
-        shell_body.push_str("        <SynchronousCommand wcm:action=\"add\">\n");
-        shell_body.push_str("          <Order>1</Order>\n");
-        shell_body.push_str(
-            "          <Description>Re-enable network adapters after OOBE</Description>\n",
-        );
-        shell_body.push_str(&format!(
-            "          <CommandLine>{}</CommandLine>\n",
-            escape(ENABLE_ADAPTERS_COMMAND)
+        first_logon.push((
+            "Re-enable network adapters after OOBE",
+            ENABLE_ADAPTERS_COMMAND,
         ));
-        shell_body.push_str("        </SynchronousCommand>\n");
-        shell_body.push_str("      </FirstLogonCommands>\n");
     }
+    push_first_logon_commands(&mut shell_body, &first_logon);
     if !oobe_items.is_empty() {
         shell_body.push_str("      <OOBE>\n");
         for (name, value) in &oobe_items {
@@ -498,6 +496,31 @@ fn push_component_per_arch(s: &mut String, name: &str, body: &str) {
         s.push_str(body);
         s.push_str("    </component>\n");
     }
+}
+
+/// Emit a `<FirstLogonCommands>` block from a list of `(description, cmd)`
+/// pairs. Order is assigned automatically (1-based). No block is written
+/// when the list is empty, which keeps the resulting XML free of empty
+/// elements when the user has not asked for any first-logon actions.
+fn push_first_logon_commands(s: &mut String, cmds: &[(&str, &str)]) {
+    if cmds.is_empty() {
+        return;
+    }
+    s.push_str("      <FirstLogonCommands>\n");
+    for (order, (desc, cmd)) in cmds.iter().enumerate() {
+        s.push_str("        <SynchronousCommand wcm:action=\"add\">\n");
+        s.push_str(&format!("          <Order>{}</Order>\n", order + 1));
+        s.push_str(&format!(
+            "          <Description>{}</Description>\n",
+            escape(desc)
+        ));
+        s.push_str(&format!(
+            "          <CommandLine>{}</CommandLine>\n",
+            escape(cmd)
+        ));
+        s.push_str("        </SynchronousCommand>\n");
+    }
+    s.push_str("      </FirstLogonCommands>\n");
 }
 
 /// Push a single `<RunSynchronousCommand>` entry. The optional `<Description>`
