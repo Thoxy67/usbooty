@@ -30,9 +30,43 @@ pub fn exfat(raw: &str) -> String {
     or_default(bounded(raw, 15))
 }
 
-/// An ext4 volume label: up to 16 bytes.
+/// An ext4 volume label: up to 16 bytes. Reused for ext2 and ext3, which
+/// share the e2fsprogs label limit.
 pub fn ext4(raw: &str) -> String {
     or_default(bounded(raw, 16))
+}
+
+/// A UDF volume label: up to 30 bytes of UTF-8. UDF natively supports Unicode,
+/// but we trim to the bound `mkudffs` actually accepts on the command line.
+pub fn udf(raw: &str) -> String {
+    or_default(bounded(raw, 30))
+}
+
+/// A Btrfs volume label: up to 255 bytes; we cap shorter so the label fits
+/// inside any reasonable display.
+pub fn btrfs(raw: &str) -> String {
+    or_default(bounded(raw, 64))
+}
+
+/// An XFS volume label: hard 12-byte limit (mkfs.xfs refuses anything more).
+pub fn xfs(raw: &str) -> String {
+    or_default(bounded(raw, 12))
+}
+
+/// An F2FS volume label: up to 512 bytes; we cap at the same 64 as Btrfs
+/// for consistency in the UI.
+pub fn f2fs(raw: &str) -> String {
+    or_default(bounded(raw, 64))
+}
+
+/// A JFS volume label: 16 bytes.
+pub fn jfs(raw: &str) -> String {
+    or_default(bounded(raw, 16))
+}
+
+/// A NILFS2 volume label: 80 bytes; cap at 64 for UI consistency.
+pub fn nilfs2(raw: &str) -> String {
+    or_default(bounded(raw, 64))
 }
 
 /// A GPT partition name: up to 36 UTF-16 code units (36 chars for ASCII labels,

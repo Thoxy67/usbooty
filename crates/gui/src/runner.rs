@@ -593,3 +593,114 @@ pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String) {
         ctrl.as_mut().set_hash_progress(1.0);
     });
 }
+
+/// Decompress a compressed source image on a worker thread, then hand the
+/// resulting plain image off to the regular `set_iso` path. Progress is
+/// reported on the same Qt `phase`/`progress` properties the helper drives,
+/// so the UI looks like a normal write-phase to the user.
+pub fn decompress_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
+    let display = src.display().to_string();
+    apply(
+        &qt,
+        ProgressMsg::info(format!("Decompressing {display} …")),
+    );
+
+    let qt_for_progress = qt.clone();
+    let mut meter = RateMeter::new();
+    let result = crate::decompress::decompress_to_cache(&src, move |consumed, total| {
+        let rate = meter.sample(consumed);
+        let fraction = if total > 0 {
+            consumed as f64 / total as f64
+        } else {
+            0.0
+        };
+        let speed = format_rate(rate);
+        let eta = eta_string(rate, consumed, total);
+        let _ = qt_for_progress.queue(move |mut ctrl: Pin<&mut AppController>| {
+            ctrl.as_mut().set_progress(fraction);
+            ctrl.as_mut().set_phase(QString::from("Decompressing"));
+            ctrl.as_mut().set_speed(QString::from(&speed));
+            ctrl.as_mut().set_eta(QString::from(&eta));
+        });
+    });
+
+    match result {
+        Ok(path) => {
+            apply(
+                &qt,
+                ProgressMsg::info(format!("Decompressed → {}", path.display())),
+            );
+            let path_str = path.to_string_lossy().into_owned();
+            let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
+                ctrl.as_mut().set_busy(false);
+                ctrl.as_mut().set_progress(0.0);
+                ctrl.as_mut().set_phase(QString::default());
+                ctrl.as_mut().set_speed(QString::default());
+                ctrl.as_mut().set_eta(QString::default());
+                ctrl.as_mut().set_status(QString::from("Ready"));
+                // Re-enter the analyze path with the decompressed file; it's
+                // a plain ISO now so it goes down the fast path.
+                ctrl.as_mut()
+                    .set_iso(&QString::from(&path_str));
+            });
+        }
+        Err(e) => {
+            let message = format!("Could not decompress {display}: {e:#}");
+            apply(&qt, ProgressMsg::Error { text: message.clone() });
+            let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
+                ctrl.as_mut().set_busy(false);
+                ctrl.as_mut().set_progress(0.0);
+                ctrl.as_mut().set_phase(QString::default());
+                ctrl.as_mut().set_speed(QString::default());
+                ctrl.as_mut().set_eta(QString::default());
+                ctrl.as_mut().set_iso_summary(QString::from(&message));
+                ctrl.as_mut().set_status(QString::from(&message));
+            });
+        }
+    }
+}
+
+/// Strip the 512-byte footer off a fixed VHD on a worker thread, then
+/// re-enter `set_iso` with the resulting `.img`. Dynamic / differencing
+/// VHDs surface a clear error explaining how to convert them. The progress
+/// surface is shared with the decompression path; the user sees an
+/// "Unwrapping VHD" phase while the cache file is written.
+pub fn strip_vhd_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
+    let display = src.display().to_string();
+    apply(
+        &qt,
+        ProgressMsg::info(format!("Unwrapping fixed VHD {display} …")),
+    );
+    let _ = qt.queue(|mut ctrl: Pin<&mut AppController>| {
+        ctrl.as_mut().set_phase(QString::from("Unwrapping VHD"));
+        ctrl.as_mut().set_progress(0.0);
+    });
+
+    match crate::vhd::strip_footer_to_cache(&src) {
+        Ok(path) => {
+            apply(
+                &qt,
+                ProgressMsg::info(format!("Unwrapped → {}", path.display())),
+            );
+            let path_str = path.to_string_lossy().into_owned();
+            let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
+                ctrl.as_mut().set_busy(false);
+                ctrl.as_mut().set_progress(0.0);
+                ctrl.as_mut().set_phase(QString::default());
+                ctrl.as_mut().set_status(QString::from("Ready"));
+                ctrl.as_mut().set_iso(&QString::from(&path_str));
+            });
+        }
+        Err(e) => {
+            let message = format!("Could not open VHD {display}: {e:#}");
+            apply(&qt, ProgressMsg::Error { text: message.clone() });
+            let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
+                ctrl.as_mut().set_busy(false);
+                ctrl.as_mut().set_progress(0.0);
+                ctrl.as_mut().set_phase(QString::default());
+                ctrl.as_mut().set_iso_summary(QString::from(&message));
+                ctrl.as_mut().set_status(QString::from(&message));
+            });
+        }
+    }
+}

@@ -7,25 +7,29 @@
 // Disable the console window on Windows; harmless elsewhere.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-pub mod bridge;
-mod deps;
-mod devices;
-mod iso;
-mod resources;
-mod runner;
-mod smart;
-mod timezones;
-mod translations;
-mod windisco;
-
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
+use usbooty_gui::{cli, decompress, translations};
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    match cli::parse(&args[1..]) {
+        cli::Parsed::Help => {
+            cli::print_help();
+            return;
+        }
+        cli::Parsed::Args(parsed) => cli::install(parsed),
+    }
+
     // Use the cross-platform Fusion style for a predictable desktop look,
     // rather than whatever Qt Quick Controls style the system defaults to.
     if std::env::var_os("QT_QUICK_CONTROLS_STYLE").is_none() {
         std::env::set_var("QT_QUICK_CONTROLS_STYLE", "Fusion");
     }
+
+    // Drop stale entries from the decompression cache. A user who works
+    // with the same big `.iso.xz` daily keeps it warm; a one-off pick is
+    // forgotten after 30 days so the cache doesn't grow unbounded.
+    decompress::prune_cache(30);
 
     let mut app = QGuiApplication::new();
 

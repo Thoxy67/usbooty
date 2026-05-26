@@ -121,6 +121,10 @@ pub mod qobject {
         #[qproperty(bool, force_english)]
         // Advisory warning about missing external tools (empty if all present).
         #[qproperty(QString, dep_warning)]
+        // Newline-separated labels of the filesystems whose mkfs tools are
+        // actually installed on the host — the QML combo binds to this so
+        // a user only sees variants that will succeed.
+        #[qproperty(QString, available_filesystems)]
         // Windows-download dialog: newline-separated language / option lists.
         #[qproperty(QString, win_languages)]
         #[qproperty(QString, win_options)]
@@ -217,6 +221,10 @@ pub mod qobject {
         /// (false). Live-switches via QTranslator — no restart needed.
         #[qinvokable]
         fn apply_force_english(self: Pin<&mut AppController>, force: bool);
+        /// Apply parsed CLI startup arguments (preload ISO / select device).
+        /// Called from QML once the engine has finished loading.
+        #[qinvokable]
+        fn apply_startup_args(self: Pin<&mut AppController>);
     }
 
     #[auto_cxx_name]
@@ -304,6 +312,11 @@ pub struct AppControllerRust {
     smart_warning: QString,
     force_english: bool,
     dep_warning: QString,
+    available_filesystems: QString,
+    /// Parallel to `available_filesystems`: which FileSystem each combo
+    /// index actually resolves to. Built once from `deps` detection at
+    /// startup; never changes during a session.
+    available_filesystem_kinds: Vec<FileSystem>,
     win_languages: QString,
     win_options: QString,
     /// Enumerated devices, parallel to the `devices` display strings.
@@ -381,6 +394,15 @@ impl Default for AppControllerRust {
             smart_warning: QString::default(),
             force_english: false,
             dep_warning: QString::from(&crate::deps::warning()),
+            available_filesystems: {
+                let labels = crate::deps::available_filesystems()
+                    .iter()
+                    .map(|fs| fs.label())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                QString::from(&labels)
+            },
+            available_filesystem_kinds: crate::deps::available_filesystems(),
             win_languages: QString::default(),
             win_options: QString::default(),
             device_list: Vec::new(),
@@ -461,6 +483,11 @@ impl qobject::AppController {
     }
 
     /// Set the source ISO (normalizing a `file://` URL) and analyze it.
+    ///
+    /// A compressed source (`.xz`/`.gz`/`.bz2`/`.zst`/`.lzma`/`.zip`) is
+    /// transparently decompressed to `~/.cache/usbooty/decompressed/` first;
+    /// that runs on a worker thread so the UI stays responsive while many
+    /// gigabytes stream through. The plain-ISO fast path is unchanged.
     pub fn set_iso(mut self: core::pin::Pin<&mut Self>, path: &QString) {
         let raw = path.to_string();
         let path = raw.strip_prefix("file://").unwrap_or(&raw).to_string();
@@ -473,8 +500,50 @@ impl qobject::AppController {
                 .set_iso_summary(QString::from("Cannot read that file"));
             return;
         }
-        let report = crate::iso::analyze(&path_buf);
-        self.apply_iso(&path, report, None);
+        match crate::decompress::detect(&path_buf) {
+            crate::decompress::Compression::None => {
+                // A `.vhd` file is raw data + a 512-byte footer; strip the
+                // footer to a cache file and re-enter with the plain image.
+                // Dynamic / differencing VHDs surface an error to the UI.
+                if path_buf
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .is_some_and(|e| e.eq_ignore_ascii_case("vhd"))
+                {
+                    self.as_mut().set_busy(true);
+                    self.as_mut().set_progress(0.0);
+                    self.as_mut().set_phase(QString::from("Unwrapping VHD"));
+                    self.as_mut()
+                        .set_iso_summary(QString::from("Unwrapping fixed VHD…"));
+                    self.as_mut().set_iso_sha256(QString::default());
+                    self.as_mut().set_iso_path(QString::default());
+                    self.as_mut()
+                        .set_status(QString::from("Unwrapping fixed VHD…"));
+                    let qt = self.qt_thread();
+                    std::thread::spawn(move || {
+                        crate::runner::strip_vhd_then_analyze(qt, path_buf);
+                    });
+                    return;
+                }
+                let report = crate::iso::analyze(&path_buf);
+                self.apply_iso(&path, report, None);
+            }
+            _ => {
+                self.as_mut().set_busy(true);
+                self.as_mut().set_progress(0.0);
+                self.as_mut().set_phase(QString::from("Decompressing"));
+                self.as_mut()
+                    .set_iso_summary(QString::from("Decompressing source image…"));
+                self.as_mut().set_iso_sha256(QString::default());
+                self.as_mut().set_iso_path(QString::default());
+                self.as_mut()
+                    .set_status(QString::from("Decompressing source image…"));
+                let qt = self.qt_thread();
+                std::thread::spawn(move || {
+                    crate::runner::decompress_then_analyze(qt, path_buf);
+                });
+            }
+        }
     }
 
     /// Reset every field derived from the source ISO so the slot looks
@@ -662,7 +731,7 @@ impl qobject::AppController {
             2 => Job::Format {
                 device_path: device.into(),
                 table,
-                filesystem: filesystem_from_index(*self.filesystem()),
+                filesystem: self.filesystem_kind_from_index(*self.filesystem()),
                 opts: JobOptions {
                     label,
                     full_format,
@@ -979,6 +1048,38 @@ impl qobject::AppController {
         self.as_mut().rust_mut().job = Some(handle);
     }
 
+    /// Apply CLI startup args after the QML engine has loaded.
+    ///
+    /// `--device` is matched against the freshly-enumerated device list (so a
+    /// USB stick that wasn't plugged in until just before launch still gets
+    /// found). `--iso` runs through the regular `set_iso` path, which spawns
+    /// off-thread decompression for compressed images.
+    pub fn apply_startup_args(mut self: core::pin::Pin<&mut Self>) {
+        let Some(args) = crate::cli::take() else {
+            return;
+        };
+        if let Some(device) = &args.device {
+            let want = device.to_string_lossy();
+            let index = self
+                .rust()
+                .device_list
+                .iter()
+                .position(|d| d.path == want.as_ref())
+                .map(|i| i as i32);
+            if let Some(index) = index {
+                self.as_mut().select_device(index);
+            } else {
+                self.as_mut().set_status(QString::from(&format!(
+                    "Device {want} from --device is not present"
+                )));
+            }
+        }
+        if let Some(iso) = &args.iso {
+            let path = QString::from(iso.to_string_lossy().as_ref());
+            self.set_iso(&path);
+        }
+    }
+
     /// Ask the running job to abort. Helper-driven jobs hear about it through
     /// a `cancel` line on the helper's stdin; the Windows-ISO downloader
     /// polls an atomic flag instead, so flip both.
@@ -996,6 +1097,21 @@ impl qobject::AppController {
             }
         }
         self.as_mut().set_status(QString::from("Cancelling…"));
+    }
+
+    /// Resolve a filesystem-combo index against the list of filesystems
+    /// whose mkfs tool is actually installed. Falls back to the first entry
+    /// (or FAT32) if the index is out of range — the QML side is responsible
+    /// for keeping `filesystem` in `[0, available_filesystem_kinds.len())`,
+    /// but a stale binding shouldn't crash the app.
+    fn filesystem_kind_from_index(&self, index: i32) -> FileSystem {
+        let kinds = &self.rust().available_filesystem_kinds;
+        if index >= 0 {
+            if let Some(fs) = kinds.get(index as usize) {
+                return *fs;
+            }
+        }
+        kinds.first().copied().unwrap_or(FileSystem::Fat32)
     }
 
     /// The [`DeviceInfo`] for the current `selected_device` index, if valid.
@@ -1218,15 +1334,6 @@ impl qobject::AppController {
     }
 }
 
-/// Map a GUI filesystem-combo index to a [`FileSystem`].
-fn filesystem_from_index(index: i32) -> FileSystem {
-    match index {
-        1 => FileSystem::Ntfs,
-        2 => FileSystem::ExFat,
-        3 => FileSystem::Ext4,
-        _ => FileSystem::Fat32,
-    }
-}
 
 /// `Some(trimmed)` when `s` has any non-whitespace content; `None` otherwise.
 ///

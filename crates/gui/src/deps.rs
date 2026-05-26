@@ -4,6 +4,8 @@
 //! method that needs it is used, and the privileged helper re-checks and
 //! reports a clear error of its own. This module just lets the UI warn early.
 
+use usbooty_core::FileSystem;
+
 /// An external tool, and the package that typically provides it.
 struct Tool {
     /// Executable name.
@@ -45,6 +47,22 @@ const TOOLS: &[Tool] = &[
         package: "e2fsprogs",
         critical: false,
     },
+    // mkfs.ext2 / mkfs.ext3 ship with e2fsprogs alongside mkfs.ext4, so we
+    // don't probe them separately — the e2fsprogs presence is checked once.
+    Tool {
+        bin: "mkudffs",
+        package: "udftools",
+        critical: false,
+    },
+    // The following are picked up dynamically by `available_filesystems()`
+    // for the combo box; we don't warn the user about their absence because
+    // they're niche choices most installs won't have. A user who selects
+    // one without the tool sees a clear helper error at format time.
+    Tool { bin: "mkfs.btrfs",  package: "btrfs-progs", critical: false },
+    Tool { bin: "mkfs.xfs",    package: "xfsprogs",    critical: false },
+    Tool { bin: "mkfs.f2fs",   package: "f2fs-tools",  critical: false },
+    Tool { bin: "mkfs.jfs",    package: "jfsutils",    critical: false },
+    Tool { bin: "mkfs.nilfs2", package: "nilfs-utils", critical: false },
     // Optional feature backends.
     Tool {
         bin: "ventoy",
@@ -94,6 +112,24 @@ pub fn warning() -> String {
     } else {
         format!("Optional tools are missing (some methods unavailable) — install: {list}")
     }
+}
+
+/// Return the filesystems usbooty can actually create on this host — i.e.
+/// the ones whose `mkfs` tool is installed. The GUI binds its filesystem
+/// combo to this list so a user is never offered something that would fail
+/// at format time. FAT32 always appears even if `mkfs.vfat` is missing, so
+/// the UI never collapses to an empty combo; the helper will surface a
+/// clear error if the tool is truly absent.
+pub fn available_filesystems() -> Vec<FileSystem> {
+    let mut out: Vec<FileSystem> = FileSystem::all()
+        .iter()
+        .copied()
+        .filter(|fs| on_path(fs.mkfs_tool()))
+        .collect();
+    if out.is_empty() {
+        out.push(FileSystem::Fat32);
+    }
+    out
 }
 
 /// Whether `bin` is an executable file on `PATH` or in a standard `sbin`

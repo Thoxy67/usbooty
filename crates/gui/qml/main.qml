@@ -36,7 +36,10 @@ ApplicationWindow {
 
     AppController {
         id: app
-        Component.onCompleted: app.refreshDevices()
+        Component.onCompleted: {
+            app.refreshDevices()
+            app.applyStartupArgs()
+        }
         // Reset the cancelling latch on every busy→idle transition so the
         // next job's Cancel button starts in the active state again.
         onBusyChanged: if (!app.busy) window.cancelling = false
@@ -854,9 +857,14 @@ ApplicationWindow {
                     // The filesystem is chosen automatically when writing an
                     // image; it is only user-selectable for a plain format.
                     enabled: !app.busy && app.method === 2
-                    // Filesystem names stay in their canonical form across
-                    // every language — wrapping in qsTr would be noise.
-                    model: ["FAT32", "NTFS", "exFAT", "ext4"]
+                    // Bound to the list of filesystems whose mkfs tools are
+                    // installed on this host — keeps the user from picking a
+                    // variant that would fail at format time. Filesystem
+                    // names stay in their canonical form across every
+                    // language, so no qsTr wrapping is needed.
+                    model: app.availableFilesystems.length > 0
+                        ? app.availableFilesystems.split("\n")
+                        : ["FAT32"]
                     currentIndex: app.filesystem
                     onActivated: function(index) { app.filesystem = index }
                     ToolTip.visible: hovered && !enabled
@@ -1108,6 +1116,7 @@ ApplicationWindow {
                 if (p.indexOf("format") >= 0) return "#8E44AD" // violet
                 if (p.indexOf("ventoy") >= 0) return "#16A085" // teal
                 if (p.indexOf("download") >= 0) return "#0078D4" // Windows blue
+                if (p.indexOf("decompress") >= 0) return "#9B59B6" // light violet
                 return "#3498DB"                                 // default blue
             }
             background: Rectangle {
@@ -1334,6 +1343,18 @@ ApplicationWindow {
     }
 
     // ---- Drag-and-drop overlay -----------------------------------------
+    // Predicate shared with the file dialog: accepts plain disk images and
+    // any of the compressed variants the decompressor recognises.
+    function looksLikeImage(url) {
+        var u = url.toString().toLowerCase()
+        return u.endsWith(".iso") || u.endsWith(".img") || u.endsWith(".vhd")
+            || u.endsWith(".iso.xz") || u.endsWith(".img.xz") || u.endsWith(".xz")
+            || u.endsWith(".iso.gz") || u.endsWith(".img.gz") || u.endsWith(".gz")
+            || u.endsWith(".iso.bz2") || u.endsWith(".img.bz2") || u.endsWith(".bz2")
+            || u.endsWith(".iso.zst") || u.endsWith(".img.zst") || u.endsWith(".zst")
+            || u.endsWith(".iso.lzma") || u.endsWith(".img.lzma") || u.endsWith(".lzma")
+            || u.endsWith(".iso.zip") || u.endsWith(".img.zip") || u.endsWith(".zip")
+    }
     DropArea {
         id: isoDrop
         anchors.fill: parent
@@ -1346,7 +1367,7 @@ ApplicationWindow {
                 var u = drag.urls[0].toString()
                 hoverName = u.substring(u.lastIndexOf("/") + 1)
                 var l = hoverName.toLowerCase()
-                hoverIsoLike = l.endsWith(".iso") || l.endsWith(".img")
+                hoverIsoLike = l.endsWith(".iso") || l.endsWith(".img") || l.endsWith(".vhd")
             }
         }
         onExited: { hoverName = ""; hoverIsoLike = false }
@@ -1354,8 +1375,7 @@ ApplicationWindow {
             hoverName = ""; hoverIsoLike = false
             if (app.busy || !drop.hasUrls)
                 return
-            var u = drop.urls[0].toString().toLowerCase()
-            if (u.endsWith(".iso") || u.endsWith(".img"))
+            if (looksLikeImage(drop.urls[0]))
                 app.setIso(drop.urls[0])
         }
         Rectangle {
@@ -1409,7 +1429,11 @@ ApplicationWindow {
     FileDialog {
         id: isoDialog
         title: qsTr("Select an ISO image")
-        nameFilters: [qsTr("ISO images (*.iso *.img)"), qsTr("All files (*)")]
+        nameFilters: [
+            qsTr("Disk images (*.iso *.img *.vhd *.iso.xz *.iso.gz *.iso.bz2 *.iso.zst *.iso.lzma *.iso.zip *.img.xz *.img.gz *.img.bz2 *.img.zst *.img.lzma *.img.zip)"),
+            qsTr("Compressed (*.xz *.gz *.bz2 *.zst *.lzma *.zip)"),
+            qsTr("All files (*)")
+        ]
         onAccepted: app.setIso(selectedFile)
     }
 

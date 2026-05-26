@@ -45,8 +45,18 @@ const MBR_TYPE_EFI_SYSTEM: u8 = 0xEF;
 /// The GPT partition-type GUID for a `filesystem`.
 fn gpt_type_guid(filesystem: FileSystem) -> [u8; 16] {
     match filesystem {
-        FileSystem::Ext4 => LINUX_DATA_GUID,
-        // FAT32 / NTFS / exFAT all use Microsoft Basic Data.
+        FileSystem::Ext2
+        | FileSystem::Ext3
+        | FileSystem::Ext4
+        | FileSystem::Btrfs
+        | FileSystem::Xfs
+        | FileSystem::F2fs
+        | FileSystem::Jfs
+        | FileSystem::Nilfs2 => LINUX_DATA_GUID,
+        // FAT16 / FAT32 / NTFS / exFAT / UDF all map to Microsoft Basic Data,
+        // which is the GPT type firmware looks for when probing for an FAT or
+        // NTFS partition. UDF doesn't have its own GPT GUID — Basic Data is
+        // what every BD/UDF burner ships with too.
         _ => BASIC_DATA_GUID,
     }
 }
@@ -55,8 +65,22 @@ fn gpt_type_guid(filesystem: FileSystem) -> [u8; 16] {
 fn mbr_type_byte(filesystem: FileSystem) -> u8 {
     match filesystem {
         FileSystem::Fat32 => MBR_TYPE_FAT32_LBA,
+        // FAT16 partitions ≥ 32 MiB use type 0x06 (FAT16B); we never write
+        // sub-32 MiB partitions, so the older 0x04 type is unnecessary.
+        FileSystem::Fat16 => 0x06,
         FileSystem::Ntfs | FileSystem::ExFat => MBR_TYPE_NTFS,
-        FileSystem::Ext4 => MBR_TYPE_LINUX,
+        // Linux Data covers every Linux-native filesystem at the MBR level:
+        // BIOSes and bootloaders inspect the partition's superblock, not the
+        // type byte, so we don't need a one-per-FS code here.
+        FileSystem::Ext2
+        | FileSystem::Ext3
+        | FileSystem::Ext4
+        | FileSystem::Btrfs
+        | FileSystem::Xfs
+        | FileSystem::F2fs
+        | FileSystem::Jfs
+        | FileSystem::Nilfs2
+        | FileSystem::Udf => MBR_TYPE_LINUX,
     }
 }
 

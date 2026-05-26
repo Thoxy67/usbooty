@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "Qt/QML front-end for usbooty"
 
+[lib]
+name = "usbooty_gui"
+path = "src/lib.rs"
+
 [[bin]]
 name = "usbooty"
 path = "src/main.rs"
@@ -25,6 +29,14 @@ sha2 = { workspace = true }
 blake3 = { workspace = true }
 md-5 = "0.11"
 sha1 = "0.11"
+# Transparent decompression of compressed disk images. Pure-Rust where
+# practical so no new system runtime dep is added.
+lzma-rs = "0.3"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+bzip2 = { version = "0.6", features = ["static"] }
+zstd = "0.13"
+zip = { version = "5", default-features = false, features = ["deflate"] }
+tempfile = "3"
 
 [build-dependencies]
 # The translator C++ shim (include/translator_bridge.cpp) is added to

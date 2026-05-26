@@ -37,10 +37,24 @@ const MBR_CANDIDATES: &[&str] = &[
 pub fn install_files(partition: &str, mount: &Path, filesystem: FileSystem) -> Result<()> {
     emit::phase("Installing Syslinux");
     match filesystem {
-        FileSystem::Fat32 => install_fat(partition, mount),
-        FileSystem::Ext4 => install_extlinux(mount),
-        FileSystem::Ntfs | FileSystem::ExFat => {
-            bail!("Syslinux installation is only supported on FAT32 or ext4");
+        FileSystem::Fat32 | FileSystem::Fat16 => install_fat(partition, mount),
+        FileSystem::Ext4 | FileSystem::Ext3 | FileSystem::Ext2 => install_extlinux(mount),
+        FileSystem::Ntfs
+        | FileSystem::ExFat
+        | FileSystem::Udf
+        | FileSystem::Btrfs
+        | FileSystem::Xfs
+        | FileSystem::F2fs
+        | FileSystem::Jfs
+        | FileSystem::Nilfs2 => {
+            // Syslinux only ships boot blocks for FAT and ext2/3/4. Other
+            // filesystems are bootable via GRUB or systemd-boot, but those
+            // paths aren't wired through yet.
+            bail!(
+                "Syslinux installation is only supported on FAT12/16/32 or ext2/3/4 — \
+                 {} cannot host the Syslinux boot files",
+                filesystem.label()
+            );
         }
     }
 }

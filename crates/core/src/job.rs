@@ -35,12 +35,30 @@ impl PartitionTable {
 pub enum FileSystem {
     /// FAT32 — universal, but a 4 GiB per-file limit.
     Fat32,
+    /// FAT16 — legacy, for tiny media (≤ 4 GiB).
+    Fat16,
     /// NTFS — Windows-native, no practical file-size limit.
     Ntfs,
     /// exFAT — FAT successor, no 4 GiB limit, broad support.
     ExFat,
-    /// ext4 — Linux-native.
+    /// ext4 — Linux-native, modern.
     Ext4,
+    /// ext3 — Linux, older journaled.
+    Ext3,
+    /// ext2 — Linux, non-journaled.
+    Ext2,
+    /// UDF — cross-platform, no FAT size limits, needs udftools.
+    Udf,
+    /// Btrfs — copy-on-write, snapshots; needs btrfs-progs.
+    Btrfs,
+    /// XFS — high-throughput Linux filesystem; needs xfsprogs.
+    Xfs,
+    /// F2FS — flash-friendly Linux filesystem; needs f2fs-tools.
+    F2fs,
+    /// JFS — IBM journaled FS; needs jfsutils.
+    Jfs,
+    /// NILFS2 — log-structured with continuous snapshots; needs nilfs-utils.
+    Nilfs2,
 }
 
 impl FileSystem {
@@ -48,10 +66,61 @@ impl FileSystem {
     pub fn label(self) -> &'static str {
         match self {
             FileSystem::Fat32 => "FAT32",
+            FileSystem::Fat16 => "FAT16",
             FileSystem::Ntfs => "NTFS",
             FileSystem::ExFat => "exFAT",
             FileSystem::Ext4 => "ext4",
+            FileSystem::Ext3 => "ext3",
+            FileSystem::Ext2 => "ext2",
+            FileSystem::Udf => "UDF",
+            FileSystem::Btrfs => "Btrfs",
+            FileSystem::Xfs => "XFS",
+            FileSystem::F2fs => "F2FS",
+            FileSystem::Jfs => "JFS",
+            FileSystem::Nilfs2 => "NILFS2",
         }
+    }
+
+    /// The mkfs binary needed to create this filesystem. Used by the GUI
+    /// to filter the combo box to filesystems actually supported by the
+    /// installed userland, so a user never picks a variant whose tool is
+    /// missing and gets a runtime failure mid-job.
+    pub fn mkfs_tool(self) -> &'static str {
+        match self {
+            FileSystem::Fat32 | FileSystem::Fat16 => "mkfs.vfat",
+            FileSystem::Ntfs => "mkfs.ntfs",
+            FileSystem::ExFat => "mkfs.exfat",
+            FileSystem::Ext4 => "mkfs.ext4",
+            FileSystem::Ext3 => "mkfs.ext3",
+            FileSystem::Ext2 => "mkfs.ext2",
+            FileSystem::Udf => "mkudffs",
+            FileSystem::Btrfs => "mkfs.btrfs",
+            FileSystem::Xfs => "mkfs.xfs",
+            FileSystem::F2fs => "mkfs.f2fs",
+            FileSystem::Jfs => "mkfs.jfs",
+            FileSystem::Nilfs2 => "mkfs.nilfs2",
+        }
+    }
+
+    /// Every filesystem usbooty knows how to create, in UI display order.
+    /// FAT32 first (the universal default), then size-class peers, then
+    /// the Linux-native families ordered by adoption.
+    pub fn all() -> &'static [FileSystem] {
+        &[
+            FileSystem::Fat32,
+            FileSystem::Fat16,
+            FileSystem::Ntfs,
+            FileSystem::ExFat,
+            FileSystem::Udf,
+            FileSystem::Ext4,
+            FileSystem::Ext3,
+            FileSystem::Ext2,
+            FileSystem::Btrfs,
+            FileSystem::Xfs,
+            FileSystem::F2fs,
+            FileSystem::Jfs,
+            FileSystem::Nilfs2,
+        ]
     }
 }
 

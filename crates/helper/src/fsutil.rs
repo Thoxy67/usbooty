@@ -38,6 +38,18 @@ pub fn mkfs_vfat(device: &str, label: &str) -> Result<()> {
     )
 }
 
+/// Create a FAT16 filesystem on `device`, labelled after the source image.
+/// FAT16 caps volume size at 4 GiB; the helper relies on the GUI for that
+/// check rather than re-implementing it here.
+pub fn mkfs_vfat16(device: &str, label: &str) -> Result<()> {
+    let label = crate::label::fat(label);
+    run_tool(
+        "mkfs.vfat",
+        &["-F", "16", "-n", label.as_str(), device],
+        "creating the FAT16 filesystem",
+    )
+}
+
 /// Create an NTFS filesystem on `device` (quick format), labelled after the
 /// source image (`label` is sanitized to NTFS's 32-character limit).
 pub fn mkfs_ntfs(device: &str, label: &str) -> Result<()> {
@@ -71,13 +83,106 @@ pub fn mkfs_ext4(device: &str, label: &str) -> Result<()> {
     )
 }
 
+/// Create an ext3 filesystem on `device`.
+pub fn mkfs_ext3(device: &str, label: &str) -> Result<()> {
+    let label = crate::label::ext4(label);
+    run_tool(
+        "mkfs.ext3",
+        &["-F", "-q", "-L", label.as_str(), device],
+        "creating the ext3 filesystem",
+    )
+}
+
+/// Create an ext2 filesystem on `device`.
+pub fn mkfs_ext2(device: &str, label: &str) -> Result<()> {
+    let label = crate::label::ext4(label);
+    run_tool(
+        "mkfs.ext2",
+        &["-F", "-q", "-L", label.as_str(), device],
+        "creating the ext2 filesystem",
+    )
+}
+
+/// Create a UDF filesystem on `device` via `mkudffs` (udftools package).
+///
+/// `--media-type=hd` matches the fixed-disk emulation a USB stick presents
+/// to firmware, which is what Linux/Windows/macOS expect when they probe a
+/// thumb-drive partition.
+pub fn mkfs_udf(device: &str, label: &str) -> Result<()> {
+    let label = crate::label::udf(label);
+    run_tool(
+        "mkudffs",
+        &["--media-type=hd", "--label", label.as_str(), device],
+        "creating the UDF filesystem",
+    )
+}
+
+/// Create a Btrfs filesystem on `device` via `mkfs.btrfs` (btrfs-progs).
+pub fn mkfs_btrfs(device: &str, label: &str) -> Result<()> {
+    let label = crate::label::btrfs(label);
+    run_tool(
+        "mkfs.btrfs",
+        &["-f", "-L", label.as_str(), device],
+        "creating the Btrfs filesystem",
+    )
+}
+
+/// Create an XFS filesystem on `device` via `mkfs.xfs` (xfsprogs).
+pub fn mkfs_xfs(device: &str, label: &str) -> Result<()> {
+    let label = crate::label::xfs(label);
+    run_tool(
+        "mkfs.xfs",
+        &["-f", "-L", label.as_str(), device],
+        "creating the XFS filesystem",
+    )
+}
+
+/// Create an F2FS filesystem on `device` via `mkfs.f2fs` (f2fs-tools).
+pub fn mkfs_f2fs(device: &str, label: &str) -> Result<()> {
+    let label = crate::label::f2fs(label);
+    run_tool(
+        "mkfs.f2fs",
+        &["-f", "-l", label.as_str(), device],
+        "creating the F2FS filesystem",
+    )
+}
+
+/// Create a JFS filesystem on `device` via `mkfs.jfs` (jfsutils).
+pub fn mkfs_jfs(device: &str, label: &str) -> Result<()> {
+    let label = crate::label::jfs(label);
+    run_tool(
+        "mkfs.jfs",
+        &["-q", "-L", label.as_str(), device],
+        "creating the JFS filesystem",
+    )
+}
+
+/// Create a NILFS2 filesystem on `device` via `mkfs.nilfs2` (nilfs-utils).
+pub fn mkfs_nilfs2(device: &str, label: &str) -> Result<()> {
+    let label = crate::label::nilfs2(label);
+    run_tool(
+        "mkfs.nilfs2",
+        &["-f", "-L", label.as_str(), device],
+        "creating the NILFS2 filesystem",
+    )
+}
+
 /// Create `filesystem` on `device` with the given (raw) volume label.
 pub fn mkfs(filesystem: FileSystem, device: &str, label: &str) -> Result<()> {
     match filesystem {
         FileSystem::Fat32 => mkfs_vfat(device, label),
+        FileSystem::Fat16 => mkfs_vfat16(device, label),
         FileSystem::Ntfs => mkfs_ntfs(device, label),
         FileSystem::ExFat => mkfs_exfat(device, label),
         FileSystem::Ext4 => mkfs_ext4(device, label),
+        FileSystem::Ext3 => mkfs_ext3(device, label),
+        FileSystem::Ext2 => mkfs_ext2(device, label),
+        FileSystem::Udf => mkfs_udf(device, label),
+        FileSystem::Btrfs => mkfs_btrfs(device, label),
+        FileSystem::Xfs => mkfs_xfs(device, label),
+        FileSystem::F2fs => mkfs_f2fs(device, label),
+        FileSystem::Jfs => mkfs_jfs(device, label),
+        FileSystem::Nilfs2 => mkfs_nilfs2(device, label),
     }
 }
 
@@ -148,10 +253,18 @@ impl Mount {
     /// Mount a partition holding `filesystem`, choosing the right driver.
     pub fn for_filesystem(device: &str, filesystem: FileSystem) -> Result<Self> {
         match filesystem {
-            FileSystem::Fat32 => Self::new(device, "vfat"),
+            FileSystem::Fat32 | FileSystem::Fat16 => Self::new(device, "vfat"),
             FileSystem::Ntfs => Self::new_ntfs(device),
             FileSystem::ExFat => Self::new(device, "exfat"),
             FileSystem::Ext4 => Self::new(device, "ext4"),
+            FileSystem::Ext3 => Self::new(device, "ext3"),
+            FileSystem::Ext2 => Self::new(device, "ext2"),
+            FileSystem::Udf => Self::new(device, "udf"),
+            FileSystem::Btrfs => Self::new(device, "btrfs"),
+            FileSystem::Xfs => Self::new(device, "xfs"),
+            FileSystem::F2fs => Self::new(device, "f2fs"),
+            FileSystem::Jfs => Self::new(device, "jfs"),
+            FileSystem::Nilfs2 => Self::new(device, "nilfs2"),
         }
     }
 
