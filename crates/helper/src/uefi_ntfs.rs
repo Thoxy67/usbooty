@@ -7,7 +7,7 @@
 //! boots the tiny FAT32 partition, which loads an NTFS driver and chains to
 //! the Windows installer on the NTFS partition.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::Path;

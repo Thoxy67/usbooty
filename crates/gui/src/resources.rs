@@ -5,7 +5,7 @@
 //! raw URLs and cached under `~/.cache/usbooty/resources/`, so the app always
 //! tracks the latest upstream version while still working offline once cached.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

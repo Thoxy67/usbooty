@@ -1,7 +1,7 @@
 //! The partition-and-copy method: partition the device, create a filesystem,
 //! and copy the ISO contents onto it file by file.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 

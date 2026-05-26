@@ -12,7 +12,7 @@
 //! across the whole device, read each back, and report any sectors that did
 //! not return the expected bytes.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};

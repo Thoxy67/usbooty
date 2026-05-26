@@ -1,7 +1,7 @@
 //! Low-level block-device helpers: size queries, partition-table reread, and
 //! unmounting whatever the kernel currently has mounted off the target device.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::os::fd::AsRawFd;

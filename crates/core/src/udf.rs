@@ -305,7 +305,7 @@ impl<R: Read + Seek> UdfFs<R> {
             other => {
                 return Err(std::io::Error::other(format!(
                     "unsupported allocation type {other}"
-                )))
+                )));
             }
         }
         Ok(out)

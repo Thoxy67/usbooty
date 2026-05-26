@@ -19,7 +19,7 @@
 //! existing dependency set. Both are advertised in `crates/gui/src/deps.rs`
 //! and the AUR PKGBUILD.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 

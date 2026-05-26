@@ -9,7 +9,7 @@
 //! Reference: Microsoft's `Virtual Hard Disk Image Format Specification`,
 //! section "Hard Disk Footer Format".
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};

@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{is_root, run_helper, LoopDevice};
+use common::{LoopDevice, is_root, run_helper};
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};

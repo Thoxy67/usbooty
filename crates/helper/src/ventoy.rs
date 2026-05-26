@@ -4,7 +4,7 @@
 //! Ventoy itself does all the bootloader work; the helper just orchestrates
 //! its CLI (`ventoy` / `Ventoy2Disk.sh`) and copies the ISO file afterwards.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;

@@ -9,7 +9,7 @@
 //! directly onto the destination FAT32 partition. Windows Setup loads SWM
 //! chunks natively, so no boot-config tweak is needed.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};

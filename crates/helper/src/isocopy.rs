@@ -10,7 +10,7 @@
 //! that will be copied, and large files are streamed in chunks so the progress
 //! bar — and the GUI's speed/ETA readout — keep moving even mid-file.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};

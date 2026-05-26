@@ -19,7 +19,7 @@
 //! and stable; the relevant constants are all little-endian on disk except for
 //! the BAT entries, which are big-endian sector numbers.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 

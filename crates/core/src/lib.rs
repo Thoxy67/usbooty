@@ -21,6 +21,6 @@ pub use iso_report::{DistroFamily, IsoReport, OsKind, PersistenceKind};
 pub use job::{
     CheckMode, FileSystem, Job, JobOptions, PartitionTable, Persistence, WimStrategy, WindowsSetup,
 };
-pub use plan::{auto_filesystem, FAT32_MAX_FILE};
+pub use plan::{FAT32_MAX_FILE, auto_filesystem};
 pub use progress::{LogLevel, ProgressMsg};
-pub use uefi_ntfs::{validate_uefi_ntfs, UEFI_NTFS_IMG_SIZE};
+pub use uefi_ntfs::{UEFI_NTFS_IMG_SIZE, validate_uefi_ntfs};

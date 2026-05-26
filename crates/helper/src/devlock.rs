@@ -12,7 +12,7 @@
 //! reference to the open file is closed, so even an unclean helper exit
 //! cannot leave a stale lock behind.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use nix::fcntl::{Flock, FlockArg};
 use std::fs::OpenOptions;
 use std::os::unix::fs::OpenOptionsExt;

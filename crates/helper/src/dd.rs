@@ -1,7 +1,7 @@
 //! The DD write method: a raw, byte-for-byte copy of the ISO onto the device,
 //! transparently decompressing the source if it is gzip/xz/zstd/bzip2.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;

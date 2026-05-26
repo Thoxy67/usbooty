@@ -11,7 +11,7 @@
 //! `.qm` files are loaded from `qrc:/i18n/usbooty_<locale>.qm`, embedded
 //! into the binary by `crates/gui/qrc/translations.qrc` at build time.
 
-use std::ffi::{c_char, c_void, CString};
+use std::ffi::{CString, c_char, c_void};
 use std::sync::Mutex;
 
 // The C++ side is opaque to Rust; we juggle raw pointers and let the C++

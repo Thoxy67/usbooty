@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{finished_ok, is_root, run_helper, LoopDevice};
+use common::{LoopDevice, finished_ok, is_root, run_helper};
 
 #[test]
 #[ignore = "needs root (losetup)"]

@@ -9,7 +9,7 @@
 //! writing the matching `mbr.bin` to the device's first 440 bytes fixes that
 //! cleanly without disturbing the partition table that already lives there.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
 

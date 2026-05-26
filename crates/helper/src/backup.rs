@@ -6,7 +6,7 @@
 //! bytes are written. Progress tracks the number of device bytes read, which
 //! is what the user wants to watch regardless of compression overhead.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
