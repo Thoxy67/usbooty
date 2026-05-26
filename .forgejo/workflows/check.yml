@@ -24,38 +24,50 @@ jobs:
       # `-fuse-ld=gold` somewhere in its default flags, and gold mishandles
       # cxx-qt's `--whole-archive` initialiser archives, producing undefined
       # references to `cxx_qt_init_*`. lld (and bfd) link them correctly.
-      # Rust itself now prints a deprecation warning for gold.
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+      # CI never benefits from incremental compilation: every run starts from
+      # scratch or from a fully-populated cache, and the bookkeeping cost just
+      # bloats target/ and slows the build.
+      CARGO_INCREMENTAL: "0"
+      # We never read backtraces from CI binaries. Dropping debug info is the
+      # single biggest link-time win for cxx-qt builds — debug sections in the
+      # Qt static archives are larger than the code itself.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      # Be patient with crates.io / git transients.
+      CARGO_NET_RETRY: "10"
     steps:
-      - name: Install system deps
+      - name: Install system deps + Rust (parallel)
         run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates curl git build-essential \
-            pkg-config \
-            libzstd-dev \
-            libfuse3-dev \
-            qt6-base-dev \
-            qt6-declarative-dev \
-            qt6-tools-dev \
-            qt6-l10n-tools \
-            libgl-dev
-          # crates/gui/build.rs invokes `lrelease6` (Arch name); Debian ships
-          # the same binary as `lrelease` in /usr/lib/qt6/bin. Expose both.
-          ln -sf /usr/lib/qt6/bin/lrelease /usr/local/bin/lrelease6
-          ln -sf /usr/lib/qt6/bin/lrelease /usr/local/bin/lrelease
+          set -euo pipefail
+          # Run apt and rustup in parallel: apt is I/O bound on the mirror,
+          # rustup is bound on data.forgejo.org's CDN, so they overlap cleanly.
+          (
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+              ca-certificates curl git lld \
+              build-essential pkg-config \
+              libzstd-dev libfuse3-dev libgl-dev \
+              qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-l10n-tools
+            # crates/gui/build.rs invokes `lrelease6` (Arch name); Debian ships
+            # the same binary as `lrelease` in /usr/lib/qt6/bin. Expose both.
+            ln -sf /usr/lib/qt6/bin/lrelease /usr/local/bin/lrelease6
+            ln -sf /usr/lib/qt6/bin/lrelease /usr/local/bin/lrelease
+          ) &
+          apt_pid=$!
 
-      - name: Install latest stable Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-            | sh -s -- -y --no-modify-path --default-toolchain stable \
-                       --profile minimal --component rustfmt --component clippy
+          (
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --no-modify-path --default-toolchain stable \
+                         --profile minimal --component clippy
+          ) &
+          rustup_pid=$!
+
+          wait $apt_pid
+          wait $rustup_pid
           rustc --version
           cargo --version
 
-      # Forgejo docs recommend fully qualified action URLs; data.forgejo.org
-      # is the runner's DEFAULT_ACTIONS_URL so being explicit avoids relying
-      # on per-instance configuration.
       - uses: https://data.forgejo.org/actions/checkout@v4
 
       - name: Cache cargo registry & target
@@ -65,6 +77,8 @@ jobs:
             /usr/local/cargo/registry
             /usr/local/cargo/git
             target
+          # Lock-file hash invalidates on any dep change; restore-keys lets
+          # an unrelated dep tweak reuse most of target/.
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 

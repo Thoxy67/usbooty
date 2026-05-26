@@ -25,6 +25,12 @@ step() { printf '\n\033[1;36m==>\033[0m %s\n' "$1"; }
 step "cargo clippy (denying every warning)"
 cargo clippy --workspace --all-targets --locked -- -D warnings
 
+# Real build in normal (non-test) mode. `cargo test` would catch most errors
+# but compiles every crate with cfg(test) set, so any code gated on
+# #[cfg(not(test))] is only exercised here.
+step "cargo build --workspace"
+cargo build --workspace --locked
+
 step "cargo test --workspace"
 cargo test --workspace --locked
 
