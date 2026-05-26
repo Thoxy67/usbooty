@@ -30,6 +30,68 @@ const DEBLOAT_REG: &str = include_str!("debloat.reg");
 /// `specialize`-pass `for` loop scans D..Z for this exact name.
 const DEBLOAT_REG_NAME: &str = "usbooty-debloat.reg";
 
+/// Name of the folder on the USB that holds the post-install `.bat`
+/// helpers. The `specialize`-pass `for` loop scans drive letters for
+/// `<letter>:\<DESKTOP_HELPERS_DIR>\<DESKTOP_HELPERS_SENTINEL>` to find
+/// the install media and xcopies the whole folder to the Default user's
+/// Desktop so every new account inherits it.
+const DESKTOP_HELPERS_DIR: &str = "USBooty";
+const DESKTOP_HELPERS_SENTINEL: &str = "1-Win11Debloat.bat";
+
+/// Each entry is `(filename, contents)`. The files are written verbatim
+/// into `<mount>/USBooty/` when [`WindowsSetup::desktop_helpers`] is set.
+const DESKTOP_HELPERS: &[(&str, &str)] = &[
+    (
+        "1-Win11Debloat.bat",
+        include_str!("desktop_helpers/1-Win11Debloat.bat"),
+    ),
+    (
+        "2-ChrisTitus-Winutil.bat",
+        include_str!("desktop_helpers/2-ChrisTitus-Winutil.bat"),
+    ),
+    (
+        "2.1-ChrisTitus-Winutil-Dev.bat",
+        include_str!("desktop_helpers/2.1-ChrisTitus-Winutil-Dev.bat"),
+    ),
+    (
+        "3-Massgravel-Activator.bat",
+        include_str!("desktop_helpers/3-Massgravel-Activator.bat"),
+    ),
+    (
+        "4-Remove-OneDrive.bat",
+        include_str!("desktop_helpers/4-Remove-OneDrive.bat"),
+    ),
+    (
+        "5-OfficeTool.bat",
+        include_str!("desktop_helpers/5-OfficeTool.bat"),
+    ),
+    (
+        "6-Install-Chocolatey.bat",
+        include_str!("desktop_helpers/6-Install-Chocolatey.bat"),
+    ),
+    (
+        "7-Install-Scoop.bat",
+        include_str!("desktop_helpers/7-Install-Scoop.bat"),
+    ),
+    (
+        "8-Install-Winget.bat",
+        include_str!("desktop_helpers/8-Install-Winget.bat"),
+    ),
+    (
+        "9-Remove-Windows-AI.bat",
+        include_str!("desktop_helpers/9-Remove-Windows-AI.bat"),
+    ),
+    (
+        "10-Winhance.bat",
+        include_str!("desktop_helpers/10-Winhance.bat"),
+    ),
+    (
+        "11-FR33THY-Ultimate.bat",
+        include_str!("desktop_helpers/11-FR33THY-Ultimate.bat"),
+    ),
+    ("README.txt", include_str!("desktop_helpers/README.txt")),
+];
+
 /// Supported processor architectures. Windows Setup matches `<component>` by
 /// architecture, so emitting only one would silently skip ARM and x86 hosts.
 const ARCHITECTURES: [&str; 3] = ["x86", "arm64", "amd64"];
@@ -71,6 +133,22 @@ pub fn write(mount: &Path, setup: &WindowsSetup) -> Result<()> {
         std::fs::write(&reg_path, DEBLOAT_REG)
             .with_context(|| format!("writing {}", reg_path.display()))?;
         emit::log("Wrote usbooty-debloat.reg alongside autounattend.xml");
+    }
+
+    if setup.desktop_helpers {
+        // Lay out `<mount>/USBooty/{bat,readme}`. CRLF line endings keep
+        // Notepad readable and stop cmd from choking on lone LF, which
+        // some Windows builds tokenise unpredictably in batch files.
+        let dir = mount.join(DESKTOP_HELPERS_DIR);
+        std::fs::create_dir_all(&dir)
+            .with_context(|| format!("creating {}", dir.display()))?;
+        for (name, body) in DESKTOP_HELPERS {
+            let path = dir.join(name);
+            let crlf = body.replace("\r\n", "\n").replace('\n', "\r\n");
+            std::fs::write(&path, crlf)
+                .with_context(|| format!("writing {}", path.display()))?;
+        }
+        emit::log("Wrote USBooty/ post-install helpers next to autounattend.xml");
     }
 
     emit::log("Applied Windows customization (autounattend.xml)");
@@ -222,6 +300,25 @@ fn push_specialize(s: &mut String, setup: &WindowsSetup) {
         deploy_cmds.push((
             "reg unload HKU\\DFT".to_string(),
             Some("Unmount the default user's hive"),
+        ));
+    }
+    if setup.desktop_helpers {
+        // xcopy /E (recurse) /I (treat dest as folder, no prompt) /Y
+        // (overwrite without prompting) /Q (don't echo filenames). The
+        // `for %d` scan handles the unpredictable USB drive letter at
+        // specialize time; the sentinel file guards against a match on
+        // some other drive that happens to contain a USBooty folder.
+        // Destination is Default's Desktop so every new user account
+        // created by OOBE inherits the folder on first sign-in.
+        deploy_cmds.push((
+            format!(
+                "cmd /c \"for %d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) \
+                 do if exist %d:\\{dir}\\{sentinel} \
+                 xcopy /E /I /Y /Q %d:\\{dir} \"C:\\Users\\Default\\Desktop\\{dir}\\\" \"",
+                dir = DESKTOP_HELPERS_DIR,
+                sentinel = DESKTOP_HELPERS_SENTINEL,
+            ),
+            Some("Copy USBooty post-install helpers to Default user's Desktop"),
         ));
     }
 
@@ -661,5 +758,45 @@ mod tests {
         };
         let xml = generate(&setup);
         assert!(xml.contains("<HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>"));
+    }
+
+    #[test]
+    fn desktop_helpers_xcopies_to_default_users_desktop() {
+        let setup = WindowsSetup {
+            desktop_helpers: true,
+            ..WindowsSetup::default()
+        };
+        let xml = generate(&setup);
+        assert!(xml.contains("xcopy"));
+        assert!(xml.contains("USBooty"));
+        assert!(xml.contains("C:\\Users\\Default\\Desktop\\USBooty"));
+        // Sentinel guards against false-positive matches on non-USB drives.
+        assert!(xml.contains("1-Win11Debloat.bat"));
+    }
+
+    #[test]
+    fn desktop_helpers_bundle_lists_every_shipped_script() {
+        // Sanity: any change to the bundled scripts should keep the list
+        // intact. If you add or rename a script, update both the constant
+        // and this expectation.
+        let names: Vec<&str> = DESKTOP_HELPERS.iter().map(|(n, _)| *n).collect();
+        assert_eq!(
+            names,
+            vec![
+                "1-Win11Debloat.bat",
+                "2-ChrisTitus-Winutil.bat",
+                "2.1-ChrisTitus-Winutil-Dev.bat",
+                "3-Massgravel-Activator.bat",
+                "4-Remove-OneDrive.bat",
+                "5-OfficeTool.bat",
+                "6-Install-Chocolatey.bat",
+                "7-Install-Scoop.bat",
+                "8-Install-Winget.bat",
+                "9-Remove-Windows-AI.bat",
+                "10-Winhance.bat",
+                "11-FR33THY-Ultimate.bat",
+                "README.txt",
+            ]
+        );
     }
 }

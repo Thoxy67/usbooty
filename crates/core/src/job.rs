@@ -287,6 +287,13 @@ pub struct WindowsSetup {
     /// the host; the helper falls back to a clear error if it's missing.
     #[serde(default)]
     pub windows_ca_2023: bool,
+    /// Drop a `USBooty\` folder of post-install helper `.bat` scripts onto
+    /// the first user's Desktop (Win11Debloat, ChrisTitus winutil, MAS,
+    /// OneDrive removal, OfficeTool download). The folder is copied to
+    /// `C:\Users\Default\Desktop\USBooty\` during the `specialize` pass,
+    /// so Windows clones it into every new user account at OOBE.
+    #[serde(default)]
+    pub desktop_helpers: bool,
 }
 
 impl WindowsSetup {
@@ -315,6 +322,7 @@ impl WindowsSetup {
             || self.apply_debloat
             || self.disable_bitlocker
             || self.windows_ca_2023
+            || self.desktop_helpers
     }
 }
 

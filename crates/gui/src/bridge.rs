@@ -111,6 +111,12 @@ pub mod qobject {
         // Drop `SkuSiPolicy.p7b` onto the USB so older UEFI firmware can
         // boot the Windows-CA-2023-signed Microsoft bootloader chain.
         #[qproperty(bool, windows_ca_2023)]
+        // Lay out a `USBooty\` folder of post-install .bat helpers
+        // (Win11Debloat, ChrisTitus winutil, MAS, OneDrive removal,
+        // OfficeTool) on the first user's Desktop. Specialize-pass
+        // xcopies it into `C:\Users\Default\Desktop\USBooty\` so every
+        // new account created in OOBE inherits the folder.
+        #[qproperty(bool, desktop_helpers)]
         #[qproperty(QString, local_account)]
         #[qproperty(QString, local_account_password)]
         #[qproperty(QString, computer_name)]
@@ -344,6 +350,7 @@ pub struct AppControllerRust {
     apply_debloat: bool,
     disable_bitlocker: bool,
     windows_ca_2023: bool,
+    desktop_helpers: bool,
     local_account: QString,
     local_account_password: QString,
     computer_name: QString,
@@ -433,6 +440,7 @@ impl Default for AppControllerRust {
             apply_debloat: false,
             disable_bitlocker: false,
             windows_ca_2023: false,
+            desktop_helpers: false,
             local_account: QString::default(),
             local_account_password: QString::default(),
             computer_name: QString::default(),
@@ -931,6 +939,7 @@ impl qobject::AppController {
                         apply_debloat: *self.apply_debloat(),
                         disable_bitlocker: *self.disable_bitlocker(),
                         windows_ca_2023: *self.windows_ca_2023(),
+                        desktop_helpers: *self.desktop_helpers(),
                         local_account: trimmed_opt(&self.local_account().to_string()),
                         local_account_password: non_empty_opt(
                             &self.local_account_password().to_string(),

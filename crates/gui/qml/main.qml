@@ -2083,6 +2083,59 @@ ApplicationWindow {
                     + "Windows 11-only keys (Copilot, Widgets, News &amp; Interests, Recall) "
                     + "are silently ignored on Windows 10.")
             }
+
+            // --- Post-install desktop helpers ---------------------------
+            Label {
+                text: qsTr("Post-install desktop helpers")
+                font.bold: true
+                Layout.topMargin: 6
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
+            WrapCheckBox {
+                id: desktopHelpersBox
+                text: qsTr("Drop a USBooty folder on the user's Desktop with ready-to-run scripts")
+                checked: app.desktopHelpers
+                onToggled: app.desktopHelpers = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("After install, the user finds a USBooty folder on their "
+                    + "Desktop with eleven right-click → \"Run as administrator\" .bat scripts: "
+                    + "Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft "
+                    + "Activation Scripts (Massgrave), an OneDrive remover, an OfficeTool "
+                    + "downloader, one-click installers for Chocolatey, Scoop and winget, a "
+                    + "Windows-AI stripper (Copilot / Recall / generative Paint+Notepad), "
+                    + "Winhance and FR33THY's Ultimate gaming/latency tweaks. The folder is "
+                    + "copied to the Default user profile during Windows setup, so every "
+                    + "account created at OOBE inherits it.")
+            }
+            Label {
+                visible: desktopHelpersBox.checked
+                Layout.fillWidth: true
+                Layout.leftMargin: 24
+                wrapMode: Text.Wrap
+                color: palette.placeholderText
+                font.pointSize: 9
+                textFormat: Text.RichText
+                // Backslashes in literal Windows paths confuse lupdate's
+                // QML lexer (it eats `\U` from "C:\Users\" as an escape).
+                // Use the &#x5C; HTML entity — RichText renders it as `\`.
+                text: qsTr(
+                    "Lands in <code>C:&#x5C;Users&#x5C;&lt;NewUser&gt;&#x5C;Desktop&#x5C;USBooty&#x5C;</code>:<br>"
+                    + "&nbsp;• <b>1-Win11Debloat.bat</b> — Raphire's debloat (debloat.raphi.re)<br>"
+                    + "&nbsp;• <b>2-ChrisTitus-Winutil.bat</b> — Chris Titus winutil, stable channel<br>"
+                    + "&nbsp;• <b>2.1-ChrisTitus-Winutil-Dev.bat</b> — same tool, dev channel<br>"
+                    + "&nbsp;• <b>3-Massgravel-Activator.bat</b> — Microsoft Activation Scripts (MAS)<br>"
+                    + "&nbsp;• <b>4-Remove-OneDrive.bat</b> — kill + uninstall OneDrive (x64 &amp; WoW64)<br>"
+                    + "&nbsp;• <b>5-OfficeTool.bat</b> — download OfficeTool runtime<br>"
+                    + "&nbsp;• <b>6-Install-Chocolatey.bat</b> — install Chocolatey (machine-wide, admin)<br>"
+                    + "&nbsp;• <b>7-Install-Scoop.bat</b> — install Scoop (per-user, no admin)<br>"
+                    + "&nbsp;• <b>8-Install-Winget.bat</b> — install / repair winget (asheroto)<br>"
+                    + "&nbsp;• <b>9-Remove-Windows-AI.bat</b> — strip Copilot / Recall / AI features (zoicware)<br>"
+                    + "&nbsp;• <b>10-Winhance.bat</b> — Winhance (debloat / privacy / optimise GUI)<br>"
+                    + "&nbsp;• <b>11-FR33THY-Ultimate.bat</b> — FR33THY's Ultimate gaming / latency tweaks<br>"
+                    + "<br>"
+                    + "Each script fetches code from the public internet on first run.")
+            }
             }
         }
     }
