@@ -28,6 +28,7 @@ jobs:
             ca-certificates curl git build-essential \
             pkg-config \
             libzstd-dev \
+            libfuse3-dev \
             qt6-base-dev \
             qt6-declarative-dev \
             qt6-tools-dev \

@@ -29,19 +29,37 @@ jobs:
 
       - name: Sync docs/ to wiki
         env:
-          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          # ${{ github.token }} is the auto-issued FORGEJO_TOKEN, scoped to
+          # the running workflow. Forgejo also exposes it as
+          # ${{ secrets.FORGEJO_TOKEN }} for GH-Actions compatibility; either
+          # works. Wiki push permission is not formally documented; if this
+          # fails with 403, replace with a user PAT stored as a real secret.
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
           SERVER: ${{ github.server_url }}
         run: |
           set -euo pipefail
-          git config --global user.email "wiki-bot@${REPO_OWNER}"
-          git config --global user.name  "wiki-bot"
+          git config --global user.email "${ACTOR}@users.noreply.${SERVER#https://}"
+          git config --global user.name  "${ACTOR}"
 
-          # Strip scheme so we can splice in the token, then re-add https://.
+          # Strip scheme so we can splice in basic-auth, then re-add https://.
           host="${SERVER#https://}"
           host="${host#http://}"
-          git clone "https://wiki-bot:${TOKEN}@${host}/${REPO_OWNER}/${REPO_NAME}.wiki.git" wiki
+          wiki_url="https://${ACTOR}:${TOKEN}@${host}/${REPO_OWNER}/${REPO_NAME}.wiki.git"
+
+          # Surface a clear error if the wiki repo has never been initialised
+          # (Forgejo only materialises .wiki.git after the first page is
+          # created via the web UI). Without this, git's "Could not read from
+          # remote repository" message hides the real cause.
+          if ! git ls-remote "${wiki_url}" >/dev/null 2>&1; then
+            echo "::error::Wiki repo not reachable. Open the repo's Wiki tab" \
+                 "on ${SERVER} and create any first page, then re-run." >&2
+            exit 1
+          fi
+
+          git clone "${wiki_url}" wiki
 
           # Wipe the existing top-level .md pages so deletions in docs/ propagate.
           # Leaves _Sidebar.md / _Footer.md / images/ alone if you add them later.
