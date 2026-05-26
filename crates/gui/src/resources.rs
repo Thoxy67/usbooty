@@ -234,12 +234,12 @@ static REVOCATION_DB: OnceLock<usbooty_core::revocation::RevocationDb> = OnceLoc
 pub fn prime_revocation_db() {
     let mut db = usbooty_core::revocation::RevocationDb::baked_in();
     for res in [Resource::DbxX64, Resource::DbxArm64] {
-        if let Ok(path) = ensure(res) {
-            if let Ok(bytes) = std::fs::read(&path) {
-                let extra = usbooty_core::revocation::parse_dbxupdate(&bytes);
-                if !extra.0.is_empty() {
-                    db.extend_dbx(extra);
-                }
+        if let Ok(path) = ensure(res)
+            && let Ok(bytes) = std::fs::read(&path)
+        {
+            let extra = usbooty_core::revocation::parse_dbxupdate(&bytes);
+            if !extra.0.is_empty() {
+                db.extend_dbx(extra);
             }
         }
     }
@@ -404,13 +404,13 @@ fn latest_release_zip(repo: &str) -> Result<String> {
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
-    if now().saturating_sub(meta.fetched_at) < LATEST_RELEASE_TTL.as_secs() && cache_path.is_file()
+    if now().saturating_sub(meta.fetched_at) < LATEST_RELEASE_TTL.as_secs()
+        && cache_path.is_file()
+        && let Ok(url) = std::fs::read_to_string(&cache_path)
     {
-        if let Ok(url) = std::fs::read_to_string(&cache_path) {
-            let trimmed = url.trim();
-            if !trimmed.is_empty() {
-                return Ok(trimmed.to_string());
-            }
+        let trimmed = url.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
         }
     }
 

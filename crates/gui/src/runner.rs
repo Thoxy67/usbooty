@@ -25,12 +25,11 @@ const INSTALLED_HELPER: &str = "/usr/libexec/usbooty/usbooty-helper";
 /// Locate `usbooty-helper`: next to this executable for a dev build, otherwise
 /// the installed path.
 fn helper_path() -> PathBuf {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(local) = exe.parent().map(|d| d.join("usbooty-helper")) {
-            if local.is_file() {
-                return local;
-            }
-        }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(local) = exe.parent().map(|d| d.join("usbooty-helper"))
+        && local.is_file()
+    {
+        return local;
     }
     PathBuf::from(INSTALLED_HELPER)
 }
@@ -162,23 +161,22 @@ pub fn run_job(
         boot_bin,
         ..
     } = &mut job
+        && kernel_sys.as_os_str().is_empty()
     {
-        if kernel_sys.as_os_str().is_empty() {
-            apply(
-                &qt,
-                ProgressMsg::info("Fetching the latest FreeDOS kernel + shell…"),
-            );
-            let fat32 = matches!(*filesystem, usbooty_core::FileSystem::Fat32);
-            match resources::ensure_freedos(fat32) {
-                Ok(files) => {
-                    *kernel_sys = files.kernel_sys;
-                    *command_com = files.command_com;
-                    *boot_bin = files.boot_bin;
-                }
-                Err(e) => {
-                    finish(&qt, false, format!("FreeDOS fetch failed: {e:#}"));
-                    return;
-                }
+        apply(
+            &qt,
+            ProgressMsg::info("Fetching the latest FreeDOS kernel + shell…"),
+        );
+        let fat32 = matches!(*filesystem, usbooty_core::FileSystem::Fat32);
+        match resources::ensure_freedos(fat32) {
+            Ok(files) => {
+                *kernel_sys = files.kernel_sys;
+                *command_com = files.command_com;
+                *boot_bin = files.boot_bin;
+            }
+            Err(e) => {
+                finish(&qt, false, format!("FreeDOS fetch failed: {e:#}"));
+                return;
             }
         }
     }
@@ -242,19 +240,18 @@ pub fn run_job(
     // ISO is most useful with the data partition open, so the user can drop
     // their ISOs straight onto it. Mount it (via the user's normal
     // udisksctl plumbing) and pop it open in their file manager.
-    if success {
-        if let Job::Ventoy {
+    if success
+        && let Job::Ventoy {
             iso_path: None,
             device_path,
             ..
         } = &job
-        {
-            apply(
-                &qt,
-                ProgressMsg::info("Opening the Ventoy data partition in your file manager…"),
-            );
-            open_ventoy_data_partition(device_path);
-        }
+    {
+        apply(
+            &qt,
+            ProgressMsg::info("Opening the Ventoy data partition in your file manager…"),
+        );
+        open_ventoy_data_partition(device_path);
     }
 
     finish(&qt, success, message);

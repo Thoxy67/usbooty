@@ -149,11 +149,11 @@ fn plain_copy(
         // Inline-directory persistence — currently Slax. The directory is
         // created on the main data partition and the kernel command line
         // patched so the live system picks the overlay up automatically.
-        if let Some(p) = persistence {
-            if !p.kind.needs_partition() {
-                crate::persistence::setup_inline(mount.path(), p.kind)?;
-                crate::persistence::patch_boot_config(mount.path(), p.kind)?;
-            }
+        if let Some(p) = persistence
+            && !p.kind.needs_partition()
+        {
+            crate::persistence::setup_inline(mount.path(), p.kind)?;
+            crate::persistence::patch_boot_config(mount.path(), p.kind)?;
         }
         // Per-distro post-copy quirk fixes (Arch GRUB redirect, Knoppix
         // safe-VGA flags, …). Best-effort: failures are logged inside the

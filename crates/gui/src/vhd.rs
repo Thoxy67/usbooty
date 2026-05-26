@@ -99,13 +99,12 @@ pub fn strip_footer_to_cache(src: &Path) -> Result<PathBuf> {
     let dir = cache_dir()?;
     let key = key_for(src, meta.len(), source_mtime);
     let out_path = dir.join(format!("{key}.img"));
-    if out_path.is_file() {
-        if let Ok(m) = fs::metadata(&out_path) {
-            if m.len() == data_size {
-                let _ = fs::OpenOptions::new().write(true).open(&out_path);
-                return Ok(out_path);
-            }
-        }
+    if out_path.is_file()
+        && let Ok(m) = fs::metadata(&out_path)
+        && m.len() == data_size
+    {
+        let _ = fs::OpenOptions::new().write(true).open(&out_path);
+        return Ok(out_path);
     }
 
     // Stream the payload into a sibling tempfile, then atomically rename.

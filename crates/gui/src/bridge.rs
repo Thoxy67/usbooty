@@ -1264,12 +1264,12 @@ impl qobject::AppController {
     /// polls an atomic flag instead, so flip both.
     pub fn cancel(mut self: core::pin::Pin<&mut Self>) {
         if let Some(job) = &self.rust().job {
-            if let Ok(mut guard) = job.stdin.lock() {
-                if let Some(stdin) = guard.as_mut() {
-                    use std::io::Write;
-                    let _ = writeln!(stdin, "cancel");
-                    let _ = stdin.flush();
-                }
+            if let Ok(mut guard) = job.stdin.lock()
+                && let Some(stdin) = guard.as_mut()
+            {
+                use std::io::Write;
+                let _ = writeln!(stdin, "cancel");
+                let _ = stdin.flush();
             }
             if let Some(abort) = &job.download_abort {
                 abort.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -1285,10 +1285,10 @@ impl qobject::AppController {
     /// but a stale binding shouldn't crash the app.
     fn filesystem_kind_from_index(&self, index: i32) -> FileSystem {
         let kinds = &self.rust().available_filesystem_kinds;
-        if index >= 0 {
-            if let Some(fs) = kinds.get(index as usize) {
-                return *fs;
-            }
+        if index >= 0
+            && let Some(fs) = kinds.get(index as usize)
+        {
+            return *fs;
         }
         kinds.first().copied().unwrap_or(FileSystem::Fat32)
     }

@@ -117,14 +117,14 @@ pub fn parse_sbat_section(text: &str) -> Vec<SbatEntry> {
 pub fn evaluate_sbat(entries: &[SbatEntry], db: &SbatLevel) -> Vec<String> {
     let mut warnings = Vec::new();
     for entry in entries {
-        if let Some(&min) = db.products.get(&entry.component) {
-            if entry.generation < min {
-                warnings.push(format!(
-                    "{} SBAT generation {} is below the required {}; \
-                     firmware with current revocations will refuse to boot it",
-                    entry.component, entry.generation, min
-                ));
-            }
+        if let Some(&min) = db.products.get(&entry.component)
+            && entry.generation < min
+        {
+            warnings.push(format!(
+                "{} SBAT generation {} is below the required {}; \
+                 firmware with current revocations will refuse to boot it",
+                entry.component, entry.generation, min
+            ));
         }
     }
     warnings

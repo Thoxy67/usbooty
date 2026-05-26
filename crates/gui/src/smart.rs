@@ -51,32 +51,31 @@ pub fn probe(device_path: &str) -> Option<String> {
         .get("smart_status")
         .and_then(|v| v.get("passed"))
         .and_then(Value::as_bool)
+        && !passed
     {
-        if !passed {
-            warnings.push("SMART overall health = FAILING".to_string());
-        }
+        warnings.push("SMART overall health = FAILING".to_string());
     }
 
     // 2. Reallocated sectors (Attribute 5).
-    if let Some(reallocated) = attribute_raw(&json, 5) {
-        if reallocated > 0 {
-            warnings.push(format!("{reallocated} reallocated sector(s)"));
-        }
+    if let Some(reallocated) = attribute_raw(&json, 5)
+        && reallocated > 0
+    {
+        warnings.push(format!("{reallocated} reallocated sector(s)"));
     }
 
     // 3. Current pending sectors (Attribute 197) — sectors the disk is about
     //    to reallocate. Treat any non-zero count as a warning.
-    if let Some(pending) = attribute_raw(&json, 197) {
-        if pending > 0 {
-            warnings.push(format!("{pending} pending bad sector(s)"));
-        }
+    if let Some(pending) = attribute_raw(&json, 197)
+        && pending > 0
+    {
+        warnings.push(format!("{pending} pending bad sector(s)"));
     }
 
     // 4. Uncorrectable sectors (Attribute 198).
-    if let Some(uncorrectable) = attribute_raw(&json, 198) {
-        if uncorrectable > 0 {
-            warnings.push(format!("{uncorrectable} uncorrectable sector(s)"));
-        }
+    if let Some(uncorrectable) = attribute_raw(&json, 198)
+        && uncorrectable > 0
+    {
+        warnings.push(format!("{uncorrectable} uncorrectable sector(s)"));
     }
 
     // 5. Temperature warning (smartctl exposes a normalised `temperature`
@@ -86,10 +85,9 @@ pub fn probe(device_path: &str) -> Option<String> {
         .get("temperature")
         .and_then(|v| v.get("current"))
         .and_then(Value::as_i64)
+        && temp >= 60
     {
-        if temp >= 60 {
-            warnings.push(format!("temperature {temp} °C"));
-        }
+        warnings.push(format!("temperature {temp} °C"));
     }
 
     if warnings.is_empty() {

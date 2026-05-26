@@ -21,16 +21,21 @@ ApplicationWindow {
                      + 24  // RowLayout top + bottom margins
                      + (menuBar ? menuBar.height : 0))
     Behavior on height {
-        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+        // No animation during a job: progress phases and banners would
+        // trigger window resizes every few seconds, producing a visible
+        // wobble. Idle resizes (toggling the log, switching method) keep
+        // the eased transition.
+        enabled: !app.busy
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
     }
     // Title reflects the job state so progress is visible even when the
     // window is in the background / minimized to the taskbar.
     title: {
         if (app.busy && app.progress > 0)
-            return "USBooty — " + qsTr(app.phase) + " "
+            return "USBooty — " + window.trPhase(app.phase) + " "
                  + Math.round(app.progress * 100) + " %"
         if (app.busy)
-            return "USBooty — " + (app.phase !== "" ? qsTr(app.phase) : qsTr("Working")) + "…"
+            return "USBooty — " + window.trPhase(app.phase !== "" ? app.phase : "Working") + "…"
         return qsTr("USBooty — Bootable USB Creator")
     }
 
@@ -91,6 +96,43 @@ ApplicationWindow {
             if (app.busy)
                 window.elapsedSecs = 0
         }
+    }
+
+    // Translate one of the runtime phase strings emitted by the helper /
+    // runner / bridge. The phases come from Rust as fixed English
+    // identifiers, so we map them to static qsTr() literals here. That
+    // lets lupdate extract them and the QTranslator actually find a
+    // translation at runtime — `qsTr(app.phase)` would never match,
+    // because lupdate only sees the dynamic argument as a variable.
+    function trPhase(p) {
+        switch (p) {
+        case "Starting":                     return qsTr("Starting")
+        case "Analyzing":                    return qsTr("Analyzing")
+        case "Decompressing":                return qsTr("Decompressing")
+        case "Unwrapping VHD":               return qsTr("Unwrapping VHD")
+        case "Partitioning":                 return qsTr("Partitioning")
+        case "Formatting":                   return qsTr("Formatting")
+        case "Erasing":                      return qsTr("Erasing")
+        case "Writing":                      return qsTr("Writing")
+        case "Reading":                      return qsTr("Reading")
+        case "Copying":                      return qsTr("Copying")
+        case "Copying ISO":                  return qsTr("Copying ISO")
+        case "Copying FreeDOS files":        return qsTr("Copying FreeDOS files")
+        case "Installing Syslinux":          return qsTr("Installing Syslinux")
+        case "Installing FreeDOS boot sector": return qsTr("Installing FreeDOS boot sector")
+        case "Applying distro fixes":        return qsTr("Applying distro fixes")
+        case "Persistence":                  return qsTr("Persistence")
+        case "Splitting install.wim":        return qsTr("Splitting install.wim")
+        case "Verifying":                    return qsTr("Verifying")
+        case "Writing samples":              return qsTr("Writing samples")
+        case "Reading samples back":         return qsTr("Reading samples back")
+        case "Flushing":                     return qsTr("Flushing")
+        case "Downloading Windows ISO":      return qsTr("Downloading Windows ISO")
+        case "Finished":                     return qsTr("Finished")
+        case "Failed":                       return qsTr("Failed")
+        case "Working":                      return qsTr("Working")
+        }
+        return p
     }
 
     // Format a second count as "1h 04m", "2m 12s" or "38s".
@@ -841,22 +883,23 @@ ApplicationWindow {
                     // Two-line rows: hardware name above, capacity / bus /
                     // node below, with internal disks flagged in red.
                     delegate: ItemDelegate {
+                        id: deviceDelegate
                         width: deviceBox.width
                         highlighted: deviceBox.highlightedIndex === index
+                        // Split once per delegate, not per Label binding.
+                        readonly property var deviceParts: modelData.split(" — ")
                         contentItem: ColumnLayout {
                             spacing: 1
                             Label {
-                                text: modelData.split(" — ")[0]
+                                text: deviceDelegate.deviceParts[0]
                                 font.bold: true
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
                             }
                             Label {
-                                text: {
-                                    var parts = modelData.split(" — ")
-                                    return parts.length > 1
-                                        ? parts.slice(1).join(" — ") : ""
-                                }
+                                text: deviceDelegate.deviceParts.length > 1
+                                    ? deviceDelegate.deviceParts.slice(1).join(" — ")
+                                    : ""
                                 font.pointSize: 9
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
@@ -1324,14 +1367,13 @@ ApplicationWindow {
                     // mkfs, syslinux install, ext4 persistence creation):
                     // switch to the indeterminate animation while we're in
                     // them so the bar doesn't sit frozen for minutes.
-                    indeterminate: app.busy && (function() {
-                        var p = app.phase.toLowerCase()
-                        return p.indexOf("splitting") >= 0
-                            || p.indexOf("syslinux") >= 0
-                            || p.indexOf("extlinux") >= 0
-                            || p.indexOf("persistence") >= 0
-                            || p.indexOf("formatting") >= 0
-                    })()
+                    readonly property string phaseLower: app.phase.toLowerCase()
+                    indeterminate: app.busy
+                        && (phaseLower.indexOf("splitting") >= 0
+                            || phaseLower.indexOf("syslinux") >= 0
+                            || phaseLower.indexOf("extlinux") >= 0
+                            || phaseLower.indexOf("persistence") >= 0
+                            || phaseLower.indexOf("formatting") >= 0)
                     // Re-tint the fill bar to match the phase. The Qt default
                     // contentItem is a Rectangle, so we override it cleanly.
                     contentItem: Item {
@@ -1387,7 +1429,7 @@ ApplicationWindow {
                     spacing: 8
                     Pill {
                         visible: app.phase !== ""
-                        label: qsTr(app.phase)
+                        label: window.trPhase(app.phase)
                         tint: progressFrame.phaseColor
                     }
                     Label {
@@ -1446,7 +1488,12 @@ ApplicationWindow {
                 color: palette.base
                 border.color: palette.mid
             }
-            contentItem: ColumnLayout {
+            // The TextArea uses RichText and binds to a potentially large
+            // `app.logText`. Don't build it until the panel is actually
+            // shown; when the user collapses the log we unload it again.
+            contentItem: Loader {
+                active: window.logVisible
+                sourceComponent: ColumnLayout {
                 spacing: 6
                 RowLayout {
                     Layout.fillWidth: true
@@ -1545,6 +1592,7 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
                 }
             }
         }
@@ -1749,7 +1797,13 @@ ApplicationWindow {
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: confirmDialog.open()
-        contentItem: ScrollView {
+        // The Windows-setup ScrollView contains ~25 checkboxes + text
+        // fields and is only opened when the user starts a Windows ISO
+        // job. Defer everything until visible — the biggest single win
+        // in this file.
+        contentItem: Loader {
+            active: windowsSetupDialog.visible
+            sourceComponent: ScrollView {
             id: setupScroll
             clip: true
             ScrollBar.vertical.policy: ScrollBar.AsNeeded
@@ -2138,6 +2192,7 @@ ApplicationWindow {
             }
             }
         }
+        }
     }
 
     // Final go/no-go before the helper touches the device. Styled in the
@@ -2154,9 +2209,14 @@ ApplicationWindow {
         bottomPadding: 14
         leftPadding: 18
         rightPadding: 18
-        property bool internalDisk: false
-        property string busLabel: ""
-        property string serialLabel: ""
+        // The Rust invokables don't emit change signals, so a plain
+        // binding to `app.selectedX()` would never refresh. Gating on
+        // `visible` re-evaluates the binding every time the dialog
+        // opens — same effect as the imperative onOpened we used to run,
+        // but free of an extra signal handler.
+        property bool internalDisk: confirmDialog.visible && app.selectedIsInternal()
+        property string busLabel: confirmDialog.visible ? app.selectedBus() : ""
+        property string serialLabel: confirmDialog.visible ? app.selectedSerial() : ""
         header: DialogHeader {
             tint: "#C0392B"
             iconGlyph: "⚠"
@@ -2165,18 +2225,13 @@ ApplicationWindow {
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: app.start()
-        // Push device fields in fresh every time. The Rust invokables don't
-        // emit change signals, so QML bindings on them only run once at
-        // component creation — by which point selectedDevice was still -1.
-        onOpened: {
-            confirmModel.text = app.selectedModel()
-            confirmSize.text = app.selectedSizeText()
-            confirmPath.text = app.selectedPath()
-            confirmDialog.internalDisk = app.selectedIsInternal()
-            confirmDialog.busLabel = app.selectedBus()
-            confirmDialog.serialLabel = app.selectedSerial()
-        }
-        contentItem: ColumnLayout {
+        // The card + the three labels carry no state at startup. Only
+        // build them when the dialog opens — the Loader re-instantiates
+        // on each open so the text bindings to invokables re-evaluate
+        // with the current selection.
+        contentItem: Loader {
+            active: confirmDialog.visible
+            sourceComponent: ColumnLayout {
             spacing: 12
             // Target device card.
             Rectangle {
@@ -2196,7 +2251,9 @@ ApplicationWindow {
                     anchors.margins: 12
                     spacing: 2
                     Label {
-                        id: confirmModel
+                        // Each open re-instantiates the Loader, so the
+                        // invokable is re-called with a fresh selection.
+                        text: app.selectedModel()
                         font.bold: true
                         font.pointSize: 13
                         elide: Text.ElideRight
@@ -2206,7 +2263,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         spacing: 10
                         Label {
-                            id: confirmSize
+                            text: app.selectedSizeText()
                             color: palette.windowText
                             font.pointSize: 11
                         }
@@ -2218,7 +2275,7 @@ ApplicationWindow {
                         }
                         Item { Layout.fillWidth: true }
                         Label {
-                            id: confirmPath
+                            text: app.selectedPath()
                             color: palette.placeholderText
                             font.family: "monospace"
                             font.pointSize: 10
@@ -2283,6 +2340,7 @@ ApplicationWindow {
                 text: qsTr("This cannot be undone.")
                 font.bold: true
             }
+            }
         }
     }
 
@@ -2306,7 +2364,11 @@ ApplicationWindow {
             subtitle: qsTr("Read-only — lsblk + udevadm output for the chosen device")
         }
         standardButtons: Dialog.Close
-        contentItem: ScrollView {
+        // The monospace TextArea only matters when the user has opened
+        // the inspect panel; until then it doesn't need to exist.
+        contentItem: Loader {
+            active: inspectDialog.visible
+            sourceComponent: ScrollView {
             id: inspectScroll
             clip: true
             ScrollBar.vertical.policy: ScrollBar.AsNeeded
@@ -2321,6 +2383,7 @@ ApplicationWindow {
                 // Worker output lands here via the qproperty. The body of
                 // the bind shows the placeholder while the children run.
                 text: app.inspectText
+            }
             }
         }
     }
@@ -2394,7 +2457,12 @@ ApplicationWindow {
             subtitle: qsTr("Bootable USB Creator · Version %1").arg(app.appVersion)
         }
         standardButtons: Dialog.Ok
-        contentItem: ColumnLayout {
+        // The 64 px SVG logo, the GridLayout, the link-handling Labels and
+        // the three external-launch Buttons cost nothing at startup if
+        // they don't exist yet.
+        contentItem: Loader {
+            active: aboutDialog.visible
+            sourceComponent: ColumnLayout {
             spacing: 12
 
             // Centred logo + one-line tagline; small enough to keep the
@@ -2470,7 +2538,7 @@ ApplicationWindow {
                         : AbstractButton.TextOnly
                     flat: true
                     onClicked: Qt.openUrlExternally(
-                        "https://git.thoxy.xyz/thoxy/usbooty/src/branch/main/docs/index.md")
+                        "https://git.thoxy.xyz/thoxy/usbooty/wiki")
                 }
                 Button {
                     text: qsTr("Source code")
@@ -2491,6 +2559,7 @@ ApplicationWindow {
                     onClicked: Qt.openUrlExternally("https://git.thoxy.xyz/thoxy/usbooty/issues")
                 }
                 Item { Layout.fillWidth: true }
+            }
             }
         }
     }
@@ -2513,7 +2582,12 @@ ApplicationWindow {
             subtitle: qsTr("Pull an official image directly from Microsoft")
         }
         standardButtons: Dialog.Close
-        contentItem: ColumnLayout {
+        // Only build the three combo boxes + the Microsoft-fetch buttons
+        // when the dialog actually opens. Nothing inside this contentItem
+        // is needed at startup.
+        contentItem: Loader {
+            active: winDialog.visible
+            sourceComponent: ColumnLayout {
             spacing: 10
             Label {
                 text: qsTr("Fetch an official ISO from Microsoft. Each step queries "
@@ -2593,6 +2667,7 @@ ApplicationWindow {
                 text: qsTr("Open Microsoft download page")
                 Layout.fillWidth: true
                 onClicked: app.openMicrosoftPage(winVersion.currentIndex)
+            }
             }
         }
     }

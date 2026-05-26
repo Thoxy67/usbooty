@@ -123,10 +123,12 @@ fn load_and_install(locale: &str) -> bool {
 /// does internally, but without needing a QLocale binding.
 fn system_locale() -> String {
     for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
-        if let Ok(value) = std::env::var(var) {
-            if !value.is_empty() && value != "C" && value != "POSIX" {
-                return value.split(['.', '@']).next().unwrap_or(&value).to_string();
-            }
+        if let Ok(value) = std::env::var(var)
+            && !value.is_empty()
+            && value != "C"
+            && value != "POSIX"
+        {
+            return value.split(['.', '@']).next().unwrap_or(&value).to_string();
         }
     }
     "en_US".to_string()

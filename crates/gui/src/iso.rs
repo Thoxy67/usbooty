@@ -116,20 +116,19 @@ pub fn analyze(path: &Path) -> IsoReport {
     if report.has_efi_boot_dir {
         report.revocation_warnings = scan_efi_revocations(&iso);
         // ISO9660 pass missed the EFI dir on a UDF image — try UDF for SBAT.
-        if report.revocation_warnings.is_empty() {
-            if let Ok(file) = File::open(path) {
-                if let Some(mut udf) = usbooty_core::udf::UdfFs::open(file) {
-                    report.revocation_warnings = scan_efi_revocations_udf(&mut udf);
-                }
-            }
+        if report.revocation_warnings.is_empty()
+            && let Ok(file) = File::open(path)
+            && let Some(mut udf) = usbooty_core::udf::UdfFs::open(file)
+        {
+            report.revocation_warnings = scan_efi_revocations_udf(&mut udf);
         }
     } else if let Ok(file) = File::open(path) {
         // ISO9660 pass said no EFI dir, but it might be UDF-only. Try UDF.
-        if let Some(mut udf) = usbooty_core::udf::UdfFs::open(file) {
-            if udf.list(&["efi", "boot"]).is_some() {
-                report.has_efi_boot_dir = true;
-                report.revocation_warnings = scan_efi_revocations_udf(&mut udf);
-            }
+        if let Some(mut udf) = usbooty_core::udf::UdfFs::open(file)
+            && udf.list(&["efi", "boot"]).is_some()
+        {
+            report.has_efi_boot_dir = true;
+            report.revocation_warnings = scan_efi_revocations_udf(&mut udf);
         }
     }
 

@@ -178,21 +178,19 @@ pub fn decompress_to_cache(
     let meta_path = dir.join(format!("{key}.meta.json"));
 
     // If a previous run cached this exact source-file fingerprint, reuse it.
-    if out_path.is_file() && meta_path.is_file() {
-        if let Ok(text) = fs::read_to_string(&meta_path) {
-            if let Ok(prev) = serde_json::from_str::<Meta>(&text) {
-                if prev.source_size == source_size
-                    && prev.source_mtime == source_mtime
-                    && prev.algorithm == algo.name()
-                {
-                    // Treat the touch as a "reuse" event so prune_cache sees it
-                    // as recently-used.
-                    let _ = fs::OpenOptions::new().write(true).open(&out_path);
-                    progress(source_size, source_size);
-                    return Ok(out_path);
-                }
-            }
-        }
+    if out_path.is_file()
+        && meta_path.is_file()
+        && let Ok(text) = fs::read_to_string(&meta_path)
+        && let Ok(prev) = serde_json::from_str::<Meta>(&text)
+        && prev.source_size == source_size
+        && prev.source_mtime == source_mtime
+        && prev.algorithm == algo.name()
+    {
+        // Treat the touch as a "reuse" event so prune_cache sees it
+        // as recently-used.
+        let _ = fs::OpenOptions::new().write(true).open(&out_path);
+        progress(source_size, source_size);
+        return Ok(out_path);
     }
 
     // Stage the decompressed output to a sibling tempfile and atomically
