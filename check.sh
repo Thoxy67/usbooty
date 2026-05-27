@@ -48,9 +48,13 @@ if ! lrelease6 "$ts" >/dev/null 2>&1; then
 fi
 
 step "docs contain no em-dash characters"
-if grep -rn $'\xe2\x80\x94' docs/ >/dev/null 2>&1; then
+# -I skips binary files; without it, the U+2014 UTF-8 byte sequence (e2 80
+# 94) appears by chance inside screenshots / PDFs and trips the rule for
+# bogus reasons. Binary assets cannot meaningfully "contain" prose, so
+# excluding them keeps the check on text-only docs where it belongs.
+if grep -rnI $'\xe2\x80\x94' docs/ >/dev/null 2>&1; then
     echo "ERROR: em-dash character found in docs/ (rule: no em-dashes)." >&2
-    grep -rn $'\xe2\x80\x94' docs/ >&2
+    grep -rnI $'\xe2\x80\x94' docs/ >&2
     exit 1
 fi
 

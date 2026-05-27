@@ -1,8 +1,10 @@
 # usbooty
 
-Create bootable USB drives from ISO images on Linux. Rust with a Qt 6 / QML
-front end, and the bootable-media logic ported from
-[Rufus](https://github.com/pbatard/rufus).
+<p align="center">
+  <img src="docs/screenshots/main-window.png" alt="usbooty main window with a Windows 11 ISO selected and a USB target ready to write">
+</p>
+
+<p align="center">Create bootable USB drives from ISO images on Linux. Rust with a Qt 6 / QML front end, and the bootable-media logic ported from <a href="https://github.com/pbatard/rufus">Rufus</a>.</p>
 
 ## What it does
 
