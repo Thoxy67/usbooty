@@ -74,6 +74,30 @@ pub(super) const DESKTOP_HELPERS: &[(&str, &str)] = &[
         "11-FR33THY-Ultimate.bat",
         include_str!("../desktop_helpers/11-FR33THY-Ultimate.bat"),
     ),
+    (
+        "12-Install-PowerToys.bat",
+        include_str!("../desktop_helpers/12-Install-PowerToys.bat"),
+    ),
+    (
+        "13-Disable-FastStartup.bat",
+        include_str!("../desktop_helpers/13-Disable-FastStartup.bat"),
+    ),
+    (
+        "14-Enable-LongPaths.bat",
+        include_str!("../desktop_helpers/14-Enable-LongPaths.bat"),
+    ),
+    (
+        "15-Install-VCRedist.bat",
+        include_str!("../desktop_helpers/15-Install-VCRedist.bat"),
+    ),
+    (
+        "16-Install-DirectX.bat",
+        include_str!("../desktop_helpers/16-Install-DirectX.bat"),
+    ),
+    (
+        "17-Install-Browser.bat",
+        include_str!("../desktop_helpers/17-Install-Browser.bat"),
+    ),
     ("README.txt", include_str!("../desktop_helpers/README.txt")),
 ];
 
@@ -105,3 +129,26 @@ pub(super) const ENABLE_ADAPTERS_COMMAND: &str = concat!(
     r#"powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass "#,
     r#"-Command "Get-NetAdapter | Enable-NetAdapter -Confirm:$false""#,
 );
+
+/// `sources/ei.cfg` payload, written when
+/// [`usbooty_core::WindowsSetup::force_edition_picker`] is set.
+///
+/// The mere presence of the file disables Windows Setup's auto-use of the
+/// firmware MSDM/SLIC OEM key (the mechanism that silently installs Home
+/// on a Family-licensed OEM machine), so the user lands on Setup's
+/// built-in edition picker after the "I don't have a product key" link
+/// on the activation prompt.
+///
+/// `Channel = _Default` is the documented "let Setup decide" value
+/// (versus `Retail` / `OEM` / `Volume` which would assert one of those
+/// channels). `VL = 0` keeps Setup off the Volume-Licensing code path.
+/// Omitting `[EditionID]` entirely is sufficient to defer the choice to
+/// the picker, so we don't write a blank section for it.
+pub(super) const EI_CFG: &str = "[Channel]\n_Default\n[VL]\n0\n";
+
+/// Filename for the file written from [`EI_CFG`], under the USB's `sources/`
+/// directory at the root of the install media.
+pub(super) const EI_CFG_NAME: &str = "ei.cfg";
+
+/// Subdirectory on the USB where Windows Setup looks for `ei.cfg`.
+pub(super) const EI_CFG_DIR: &str = "Sources";

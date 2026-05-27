@@ -294,6 +294,16 @@ pub struct WindowsSetup {
     /// so Windows clones it into every new user account at OOBE.
     #[serde(default)]
     pub desktop_helpers: bool,
+    /// Write `sources/ei.cfg` onto the USB so Windows Setup ignores any
+    /// firmware-embedded OEM MSDM/SLIC key and presents its edition picker
+    /// on boot. Without this flag, an OEM PC pre-baked with a Home key in
+    /// firmware silently installs Home regardless of what the user picked
+    /// in usbooty. `EditionID` in the written `ei.cfg` is intentionally
+    /// empty so Setup asks the user via the picker rather than pinning a
+    /// specific edition; combine with an empty `product_key` to skip the
+    /// activation-key prompt as well.
+    #[serde(default)]
+    pub force_edition_picker: bool,
 }
 
 impl WindowsSetup {
@@ -323,6 +333,7 @@ impl WindowsSetup {
             || self.disable_bitlocker
             || self.windows_ca_2023
             || self.desktop_helpers
+            || self.force_edition_picker
     }
 }
 

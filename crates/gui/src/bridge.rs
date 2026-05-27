@@ -117,6 +117,10 @@ pub mod qobject {
         // xcopies it into `C:\Users\Default\Desktop\USBooty\` so every
         // new account created in OOBE inherits the folder.
         #[qproperty(bool, desktop_helpers)]
+        // Drop `sources/ei.cfg` so Setup ignores the firmware OEM key
+        // (MSDM/SLIC) and presents its edition picker on boot. Useful
+        // for installing Pro/Enterprise on a PC pre-baked Home Familiale.
+        #[qproperty(bool, force_edition_picker)]
         #[qproperty(QString, local_account)]
         #[qproperty(QString, local_account_password)]
         #[qproperty(QString, computer_name)]
@@ -358,6 +362,7 @@ pub struct AppControllerRust {
     disable_bitlocker: bool,
     windows_ca_2023: bool,
     desktop_helpers: bool,
+    force_edition_picker: bool,
     local_account: QString,
     local_account_password: QString,
     computer_name: QString,
@@ -460,6 +465,7 @@ impl Default for AppControllerRust {
             disable_bitlocker: false,
             windows_ca_2023: false,
             desktop_helpers: false,
+            force_edition_picker: false,
             local_account: QString::default(),
             local_account_password: QString::default(),
             computer_name: QString::default(),
@@ -979,6 +985,7 @@ impl qobject::AppController {
                         disable_bitlocker: *self.disable_bitlocker(),
                         windows_ca_2023: *self.windows_ca_2023(),
                         desktop_helpers: *self.desktop_helpers(),
+                        force_edition_picker: *self.force_edition_picker(),
                         local_account: trimmed_opt(&self.local_account().to_string()),
                         local_account_password: non_empty_opt(
                             &self.local_account_password().to_string(),

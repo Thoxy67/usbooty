@@ -26,3 +26,9 @@
 # lupdate sometimes leaves backup files around.
 /data/translations/*.ts.bak
 /data/translations/*.ts~
+
+# qmlls (QML Language Server) per-developer config — usually carries an
+# absolute `buildDir` path under target/, so it can't be shared across
+# machines. Editors that use qmlls (VS Code QML extension, Qt Creator)
+# write it locally and read it for autocomplete / type-checking.
+.qmlls.ini

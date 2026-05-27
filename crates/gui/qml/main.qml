@@ -7,7 +7,7 @@ import com.usbooty
 ApplicationWindow {
     id: window
     visible: true
-    width: 700
+    width: 600
     // Height is content-driven (see binding below). Keep a generous floor
     // so a freshly-launched window doesn't snap to a sliver while QML is
     // still computing its first layout pass.
@@ -1776,10 +1776,13 @@ ApplicationWindow {
     Dialog {
         id: windowsSetupDialog
         anchors.centerIn: parent
-        width: Math.min(600, window.width - 40)
-        // Cap the dialog height to the window minus chrome so the content
-        // scrolls instead of overflowing on smaller displays.
-        height: Math.min(window.height - 80, 760)
+        width: window.width - 60
+        // Match the window height (minus ~80px of chrome for the dialog
+        // header, footer, and outer margin). The inner ScrollView keeps
+        // overflowing content scrollable, so on small displays the dialog
+        // shrinks gracefully, and on tall displays it grows to show more
+        // checkboxes at once instead of being capped at a fixed value.
+        height: window.height - 80
         modal: true
         // Inset the contentItem from the dialog frame on every side; the
         // header and footer carry their own spacing.
@@ -1877,6 +1880,22 @@ ApplicationWindow {
                     text: app.productKey
                     onTextEdited: app.productKey = text
                 }
+            }
+            WrapCheckBox {
+                text: qsTr("Force the edition picker at boot (OEM PCs)")
+                checked: app.forceEditionPicker
+                onToggled: app.forceEditionPicker = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("On an OEM PC with a firmware MSDM/SLIC key (typical of "
+                    + "laptops sold with Windows Home Familiale pre-installed), Setup "
+                    + "normally reads that key on boot and silently installs the matching "
+                    + "edition. This option drops a sources/ei.cfg on the USB that tells "
+                    + "Setup to ignore the firmware key, so you can pick a different "
+                    + "edition (Pro, Enterprise, …) from Setup's built-in edition picker. "
+                    + "Activation is a separate step — install in the chosen edition first, "
+                    + "then activate from inside Windows (e.g. with Microsoft Activation "
+                    + "Scripts). Leave Product key empty above to get straight to the picker.")
             }
 
             // --- OOBE (first-boot) skips --------------------------------
@@ -1999,6 +2018,30 @@ ApplicationWindow {
                     placeholderText: qsTr("Optional — up to 15 characters, no whitespace")
                     text: app.computerName
                     onTextEdited: app.computerName = text
+                }
+                Button {
+                    icon.name: "view-refresh"
+                    display: icon.name
+                        ? AbstractButton.IconOnly
+                        : AbstractButton.TextOnly
+                    text: qsTr("Random name")
+                    onClicked: {
+                        // PC- + 6 uppercase alphanumerics: 9 chars total,
+                        // comfortably under the 15-char NETBIOS hostname
+                        // limit and visually distinct from the Windows
+                        // DESKTOP-* default.
+                        var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                        var s = ""
+                        for (var i = 0; i < 6; i++) {
+                            s += alphabet.charAt(Math.floor(Math.random() * alphabet.length))
+                        }
+                        app.computerName = "PC-" + s
+                    }
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Generate a random PC-XXXXXX name. "
+                        + "Useful when you don't care what the host is "
+                        + "called and just want something unique.")
                 }
             }
             RowLayout {
@@ -2153,14 +2196,18 @@ ApplicationWindow {
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("After install, the user finds a USBooty folder on their "
-                    + "Desktop with eleven right-click → \"Run as administrator\" .bat scripts: "
+                    + "Desktop with right-click → \"Run as administrator\" .bat scripts: "
                     + "Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft "
                     + "Activation Scripts (Massgrave), an OneDrive remover, an OfficeTool "
                     + "downloader, one-click installers for Chocolatey, Scoop and winget, a "
                     + "Windows-AI stripper (Copilot / Recall / generative Paint+Notepad), "
-                    + "Winhance and FR33THY's Ultimate gaming/latency tweaks. The folder is "
-                    + "copied to the Default user profile during Windows setup, so every "
-                    + "account created at OOBE inherits it.")
+                    + "Winhance, FR33THY's Ultimate gaming/latency tweaks, PowerToys, system "
+                    + "tweaks (Fast Startup off, long paths on), VC++ Redistributables 2015-"
+                    + "2022 and DirectX legacy runtimes, plus an interactive browser-installer "
+                    + "menu (Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, "
+                    + "Opera GX, Vivaldi, Arc). The folder is copied to the Default user "
+                    + "profile during Windows setup, so every account created at OOBE inherits "
+                    + "it.")
             }
             Label {
                 visible: desktopHelpersBox.checked
@@ -2187,6 +2234,12 @@ ApplicationWindow {
                     + "&nbsp;• <b>9-Remove-Windows-AI.bat</b> — strip Copilot / Recall / AI features (zoicware)<br>"
                     + "&nbsp;• <b>10-Winhance.bat</b> — Winhance (debloat / privacy / optimise GUI)<br>"
                     + "&nbsp;• <b>11-FR33THY-Ultimate.bat</b> — FR33THY's Ultimate gaming / latency tweaks<br>"
+                    + "&nbsp;• <b>12-Install-PowerToys.bat</b> — Microsoft PowerToys via winget<br>"
+                    + "&nbsp;• <b>13-Disable-FastStartup.bat</b> — clear HiberbootEnabled (dual-boot fix)<br>"
+                    + "&nbsp;• <b>14-Enable-LongPaths.bat</b> — set LongPathsEnabled=1 (developer)<br>"
+                    + "&nbsp;• <b>15-Install-VCRedist.bat</b> — VC++ Redistributable 2015-2022, x64 + x86<br>"
+                    + "&nbsp;• <b>16-Install-DirectX.bat</b> — legacy DirectX runtime (older games)<br>"
+                    + "&nbsp;• <b>17-Install-Browser.bat</b> — menu: Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc<br>"
                     + "<br>"
                     + "Each script fetches code from the public internet on first run.")
             }

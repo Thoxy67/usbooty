@@ -14,8 +14,28 @@
 //!
 //! Components are emitted once per supported processor architecture so the
 //! same unattend file works on amd64, arm64, and x86 Windows installs.
+//!
+//! ## Module layout
+//!
+//! The three setup passes map to three sibling modules so each "what gets
+//! emitted at this stage" question has one file:
+//!
+//! * [`windows_pe`] — installer-time settings (Win 11 bypasses, product key,
+//!   Setup-UI locale).
+//! * [`specialize`] — post-image, pre-OOBE settings (BypassNRO, .NET 3.5,
+//!   computer name, time zone, debloat / desktop-helpers imports).
+//! * [`oobe`] — first-boot user-facing settings (OOBE hide flags, auto-logon,
+//!   FirstLogonCommands, local-account creation, user-facing locale).
+//!
+//! [`assets`] holds the embedded data those passes reference (the debloat
+//! `.reg`, the desktop-helpers `.bat` bundle, the architecture list, and the
+//! PowerShell one-liners). The remaining helpers in this file are XML-shape
+//! primitives shared between all three pass modules.
 
 mod assets;
+mod oobe;
+mod specialize;
+mod windows_pe;
 
 use anyhow::{Context, Result};
 use std::path::Path;
@@ -25,8 +45,8 @@ use usbooty_core::WindowsSetup;
 use crate::emit;
 
 use assets::{
-    ARCHITECTURES, DEBLOAT_REG, DEBLOAT_REG_NAME, DESKTOP_HELPERS, DESKTOP_HELPERS_DIR,
-    DESKTOP_HELPERS_SENTINEL, DISABLE_ADAPTERS_COMMAND, DOTNET35_COMMAND, ENABLE_ADAPTERS_COMMAND,
+    ARCHITECTURES, DEBLOAT_REG, DEBLOAT_REG_NAME, DESKTOP_HELPERS, DESKTOP_HELPERS_DIR, EI_CFG,
+    EI_CFG_DIR, EI_CFG_NAME,
 };
 
 /// Write the autounattend (and, if requested, the debloat policy) into the
@@ -57,6 +77,18 @@ pub fn write(mount: &Path, setup: &WindowsSetup) -> Result<()> {
         emit::log("Wrote USBooty/ post-install helpers next to autounattend.xml");
     }
 
+    if setup.force_edition_picker {
+        // `sources/` already exists on a Windows install USB (it's where
+        // `install.wim` lives). On the off-chance the partition layout is
+        // unusual or the directory is missing, `create_dir_all` is a no-op
+        // when it already exists.
+        let dir = mount.join(EI_CFG_DIR);
+        std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+        let path = dir.join(EI_CFG_NAME);
+        std::fs::write(&path, EI_CFG).with_context(|| format!("writing {}", path.display()))?;
+        emit::log("Wrote sources/ei.cfg to force Setup's edition picker on boot");
+    }
+
     emit::log("Applied Windows customization (autounattend.xml)");
     Ok(())
 }
@@ -69,331 +101,23 @@ pub fn generate(setup: &WindowsSetup) -> String {
         "<unattend xmlns=\"urn:schemas-microsoft-com:unattend\" \
          xmlns:wcm=\"http://schemas.microsoft.com/WMIConfig/2002/State\">\n",
     );
-    push_windows_pe(&mut s, setup);
-    push_specialize(&mut s, setup);
-    push_oobe_system(&mut s, setup);
+    windows_pe::push_windows_pe(&mut s, setup);
+    specialize::push_specialize(&mut s, setup);
+    oobe::push_oobe_system(&mut s, setup);
     s.push_str("</unattend>\n");
     s
 }
 
-/// `windowsPE` pass — Setup-time settings: the Win 11 LabConfig bypasses, the
-/// product key and EULA accept, and the Setup-UI / system locale.
-fn push_windows_pe(s: &mut String, setup: &WindowsSetup) {
-    let bypasses: Vec<&str> = [
-        setup.bypass_tpm.then_some("BypassTPMCheck"),
-        setup.bypass_secureboot.then_some("BypassSecureBootCheck"),
-        setup.bypass_storage.then_some("BypassStorageCheck"),
-        setup.bypass_cpu.then_some("BypassCPUCheck"),
-        setup.bypass_ram.then_some("BypassRAMCheck"),
-        setup.bypass_disk.then_some("BypassDiskCheck"),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    let product_key = setup.product_key.as_deref().filter(|k| !k.is_empty());
-    let has_user_data = setup.accept_eula || product_key.is_some();
-    let has_setup_component = has_user_data || !bypasses.is_empty();
-    let setup_locale = setup.locale.as_deref().filter(|l| !l.is_empty());
-
-    if !has_setup_component && setup_locale.is_none() {
-        return;
-    }
-
-    let mut setup_body = String::new();
-    if has_user_data {
-        setup_body.push_str("      <UserData>\n");
-        if let Some(key) = product_key {
-            setup_body.push_str("        <ProductKey>\n");
-            setup_body.push_str(&format!("          <Key>{}</Key>\n", escape(key)));
-            setup_body.push_str("        </ProductKey>\n");
-        }
-        if setup.accept_eula {
-            setup_body.push_str("        <AcceptEula>true</AcceptEula>\n");
-        }
-        setup_body.push_str("      </UserData>\n");
-    }
-    if !bypasses.is_empty() {
-        setup_body.push_str("      <RunSynchronous>\n");
-        for (i, name) in bypasses.iter().enumerate() {
-            let cmd = format!(
-                "reg.exe add \"HKLM\\SYSTEM\\Setup\\LabConfig\" \
-                 /v {name} /t REG_DWORD /d 1 /f"
-            );
-            let desc = (i == 0).then_some("Skip Windows 11 hardware-requirement checks");
-            push_run_command(&mut setup_body, i + 1, &cmd, desc);
-        }
-        setup_body.push_str("      </RunSynchronous>\n");
-    }
-
-    let mut intl_body = String::new();
-    if let Some(loc) = setup_locale {
-        let loc = escape(loc);
-        intl_body.push_str("      <SetupUILanguage>\n");
-        intl_body.push_str(&format!("        <UILanguage>{loc}</UILanguage>\n"));
-        intl_body.push_str("      </SetupUILanguage>\n");
-        intl_body.push_str(&format!("      <InputLocale>{loc}</InputLocale>\n"));
-        intl_body.push_str(&format!("      <SystemLocale>{loc}</SystemLocale>\n"));
-        intl_body.push_str(&format!("      <UILanguage>{loc}</UILanguage>\n"));
-    }
-
-    s.push_str("  <settings pass=\"windowsPE\">\n");
-    if !setup_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-Setup", &setup_body);
-    }
-    if !intl_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-International-Core-WinPE", &intl_body);
-    }
-    s.push_str("  </settings>\n");
-}
-
-/// `specialize` pass — post-image, pre-OOBE machine settings: the BypassNRO
-/// fallback, the no-network-during-OOBE trick, the .NET 3.5 enabler, the
-/// computer name, the time zone, and the debloat-policy import.
-fn push_specialize(s: &mut String, setup: &WindowsSetup) {
-    let mut deploy_cmds: Vec<(String, Option<&'static str>)> = Vec::new();
-    if setup.skip_msaccount {
-        // Win 10 + Win 11 pre-24H2 fallback; oobeSystem's
-        // `HideOnlineAccountScreens` covers Win 11 24H2+.
-        deploy_cmds.push((
-            "reg.exe add \"HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\OOBE\" \
-             /v BypassNRO /t REG_DWORD /d 1 /f"
-                .to_string(),
-            Some("Allow local-account creation during OOBE (Win 10 / pre-24H2)"),
-        ));
-    }
-    if setup.disable_network_during_oobe {
-        // With every adapter offline, OOBE has no internet so it falls back to
-        // local-account creation even on builds where the registry / OOBE flags
-        // above are ignored. The FirstLogonCommands block re-enables adapters.
-        deploy_cmds.push((
-            DISABLE_ADAPTERS_COMMAND.to_string(),
-            Some("Disable network adapters so OOBE skips Microsoft-account creation"),
-        ));
-    }
-    if setup.enable_dotnet35 {
-        deploy_cmds.push((
-            DOTNET35_COMMAND.to_string(),
-            Some("Enable .NET Framework 3.5 from the install media's sources\\sxs"),
-        ));
-    }
-    if setup.disable_bitlocker {
-        // Set the registry guard *before* Windows reaches the OOBE phase
-        // where 24H2's automatic device encryption decision happens. The
-        // value is also valid (and harmless) on older versions that never
-        // auto-encrypt, so we don't need a Win-11-only gate.
-        deploy_cmds.push((
-            "reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\BitLocker \
-             /v PreventDeviceEncryption /t REG_DWORD /d 1 /f"
-                .to_string(),
-            Some("Disable Windows automatic BitLocker device encryption"),
-        ));
-    }
-    if setup.apply_debloat {
-        deploy_cmds.push((
-            "reg load HKU\\DFT C:\\Users\\Default\\NTUSER.DAT".to_string(),
-            Some("Mount the default user's hive for per-user debloat policies"),
-        ));
-        // The USB drive letter is unpredictable on a freshly-installing system,
-        // so scan D..Z for the .reg next to autounattend.xml.
-        deploy_cmds.push((
-            format!(
-                "cmd /c \"for %d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) \
-                 do if exist %d:\\{name} reg import %d:\\{name}\"",
-                name = DEBLOAT_REG_NAME,
-            ),
-            Some("Import usbooty-debloat.reg from the USB"),
-        ));
-        deploy_cmds.push((
-            "reg unload HKU\\DFT".to_string(),
-            Some("Unmount the default user's hive"),
-        ));
-    }
-    if setup.desktop_helpers {
-        // xcopy /E (recurse) /I (treat dest as folder, no prompt) /Y
-        // (overwrite without prompting) /Q (don't echo filenames). The
-        // `for %d` scan handles the unpredictable USB drive letter at
-        // specialize time; the sentinel file guards against a match on
-        // some other drive that happens to contain a USBooty folder.
-        // Destination is Default's Desktop so every new user account
-        // created by OOBE inherits the folder on first sign-in.
-        deploy_cmds.push((
-            format!(
-                "cmd /c \"for %d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) \
-                 do if exist %d:\\{dir}\\{sentinel} \
-                 xcopy /E /I /Y /Q %d:\\{dir} \"C:\\Users\\Default\\Desktop\\{dir}\\\" \"",
-                dir = DESKTOP_HELPERS_DIR,
-                sentinel = DESKTOP_HELPERS_SENTINEL,
-            ),
-            Some("Copy USBooty post-install helpers to Default user's Desktop"),
-        ));
-    }
-
-    let computer_name = setup
-        .computer_name
-        .as_deref()
-        .map(sanitize_computer_name)
-        .filter(|n| !n.is_empty());
-    let timezone = setup.timezone.as_deref().filter(|t| !t.is_empty());
-
-    if deploy_cmds.is_empty() && computer_name.is_none() && timezone.is_none() {
-        return;
-    }
-
-    let mut deploy_body = String::new();
-    if !deploy_cmds.is_empty() {
-        deploy_body.push_str("      <RunSynchronous>\n");
-        for (i, (cmd, desc)) in deploy_cmds.iter().enumerate() {
-            push_run_command(&mut deploy_body, i + 1, cmd, *desc);
-        }
-        deploy_body.push_str("      </RunSynchronous>\n");
-    }
-
-    let mut shell_body = String::new();
-    if let Some(name) = computer_name {
-        shell_body.push_str(&format!(
-            "      <ComputerName>{}</ComputerName>\n",
-            escape(&name)
-        ));
-    }
-    if let Some(tz) = timezone {
-        shell_body.push_str(&format!("      <TimeZone>{}</TimeZone>\n", escape(tz)));
-    }
-
-    s.push_str("  <settings pass=\"specialize\">\n");
-    if !deploy_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-Deployment", &deploy_body);
-    }
-    if !shell_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-Shell-Setup", &shell_body);
-    }
-    s.push_str("  </settings>\n");
-}
-
-/// `oobeSystem` pass — first-boot user-facing settings: which OOBE prompts to
-/// hide, the auto-logon + local account, FirstLogonCommands that re-enable
-/// the network, and the user-facing locale.
-fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
-    let oobe_items = build_oobe_items(setup);
-    let account = setup
-        .local_account
-        .as_deref()
-        .map(str::trim)
-        .filter(|n| !n.is_empty());
-    let password = setup
-        .local_account_password
-        .as_deref()
-        .filter(|p| !p.is_empty());
-    let has_autologon = account.is_some() && password.is_some();
-    let oobe_locale = setup.locale.as_deref().filter(|l| !l.is_empty());
-
-    let has_shell = !oobe_items.is_empty()
-        || has_autologon
-        || account.is_some()
-        || setup.disable_network_during_oobe;
-    if !has_shell && oobe_locale.is_none() {
-        return;
-    }
-
-    let mut shell_body = String::new();
-    // Shell-Setup schema order: AutoLogon → FirstLogonCommands → OOBE → UserAccounts.
-    if let (Some(name), Some(pass)) = (account, password) {
-        shell_body.push_str("      <AutoLogon>\n");
-        shell_body.push_str(&format!("        <Username>{}</Username>\n", escape(name)));
-        shell_body.push_str("        <Password>\n");
-        shell_body.push_str(&format!("          <Value>{}</Value>\n", escape(pass)));
-        shell_body.push_str("          <PlainText>true</PlainText>\n");
-        shell_body.push_str("        </Password>\n");
-        shell_body.push_str("        <Enabled>true</Enabled>\n");
-        shell_body.push_str("        <LogonCount>1</LogonCount>\n");
-        shell_body.push_str("      </AutoLogon>\n");
-    }
-    // Build the FirstLogonCommands block as a table of (description,
-    // command-line) pairs so adding a future first-logon action is a
-    // single row in this Vec instead of another copy of the eight-line
-    // SynchronousCommand template.
-    let mut first_logon: Vec<(&'static str, &str)> = Vec::new();
-    if setup.disable_network_during_oobe {
-        first_logon.push((
-            "Re-enable network adapters after OOBE",
-            ENABLE_ADAPTERS_COMMAND,
-        ));
-    }
-    push_first_logon_commands(&mut shell_body, &first_logon);
-    if !oobe_items.is_empty() {
-        shell_body.push_str("      <OOBE>\n");
-        for (name, value) in &oobe_items {
-            shell_body.push_str(&format!("        <{name}>{value}</{name}>\n"));
-        }
-        shell_body.push_str("      </OOBE>\n");
-    }
-    if let Some(name) = account {
-        shell_body.push_str("      <UserAccounts>\n        <LocalAccounts>\n");
-        shell_body.push_str("          <LocalAccount wcm:action=\"add\">\n");
-        if let Some(pass) = password {
-            shell_body.push_str("            <Password>\n");
-            shell_body.push_str(&format!("              <Value>{}</Value>\n", escape(pass)));
-            shell_body.push_str("              <PlainText>true</PlainText>\n");
-            shell_body.push_str("            </Password>\n");
-        }
-        shell_body.push_str(&format!("            <Name>{}</Name>\n", escape(name)));
-        shell_body.push_str(&format!(
-            "            <DisplayName>{}</DisplayName>\n",
-            escape(name)
-        ));
-        shell_body.push_str("            <Group>Administrators</Group>\n");
-        shell_body.push_str("          </LocalAccount>\n");
-        shell_body.push_str("        </LocalAccounts>\n      </UserAccounts>\n");
-    }
-
-    let mut intl_body = String::new();
-    if let Some(loc) = oobe_locale {
-        let loc = escape(loc);
-        intl_body.push_str(&format!("      <InputLocale>{loc}</InputLocale>\n"));
-        intl_body.push_str(&format!("      <SystemLocale>{loc}</SystemLocale>\n"));
-        intl_body.push_str(&format!("      <UILanguage>{loc}</UILanguage>\n"));
-        intl_body.push_str(&format!("      <UserLocale>{loc}</UserLocale>\n"));
-    }
-
-    s.push_str("  <settings pass=\"oobeSystem\">\n");
-    if !shell_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-Shell-Setup", &shell_body);
-    }
-    if !intl_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-International-Core", &intl_body);
-    }
-    s.push_str("  </settings>\n");
-}
-
-/// Collect every requested `<OOBE>` child element, in roughly alphabetical
-/// (schema) order. Each entry is `(element_name, text_value)`.
-fn build_oobe_items(setup: &WindowsSetup) -> Vec<(&'static str, &'static str)> {
-    let mut items = Vec::new();
-    if setup.disable_telemetry {
-        items.push(("HideEULAPage", "true"));
-    }
-    if setup.hide_oem_registration {
-        items.push(("HideOEMRegistrationScreen", "true"));
-    }
-    if setup.skip_msaccount {
-        // The supported Win 11 24H2+ way to bypass forced MS-account creation;
-        // older Windows ignore the element.
-        items.push(("HideOnlineAccountScreens", "true"));
-    }
-    if setup.hide_wireless_setup {
-        items.push(("HideWirelessSetupInOOBE", "true"));
-    }
-    if setup.network_location_work {
-        items.push(("NetworkLocation", "Work"));
-    }
-    if setup.disable_telemetry {
-        items.push(("ProtectYourPC", "3"));
-    }
-    items
-}
+// ---- XML primitives ------------------------------------------------------
+//
+// Shared by the three pass modules. Kept here rather than in a dedicated
+// `xml.rs` because the only callers are the sibling pass modules, and the
+// surface is small enough that another file would be more navigation than
+// it saves.
 
 /// Emit a `<component>` block once per supported processor architecture with
 /// identical body content.
-fn push_component_per_arch(s: &mut String, name: &str, body: &str) {
+pub(super) fn push_component_per_arch(s: &mut String, name: &str, body: &str) {
     for arch in ARCHITECTURES {
         s.push_str(&format!(
             "    <component name=\"{name}\" processorArchitecture=\"{arch}\" \
@@ -408,7 +132,7 @@ fn push_component_per_arch(s: &mut String, name: &str, body: &str) {
 /// pairs. Order is assigned automatically (1-based). No block is written
 /// when the list is empty, which keeps the resulting XML free of empty
 /// elements when the user has not asked for any first-logon actions.
-fn push_first_logon_commands(s: &mut String, cmds: &[(&str, &str)]) {
+pub(super) fn push_first_logon_commands(s: &mut String, cmds: &[(&str, &str)]) {
     if cmds.is_empty() {
         return;
     }
@@ -431,7 +155,7 @@ fn push_first_logon_commands(s: &mut String, cmds: &[(&str, &str)]) {
 
 /// Push a single `<RunSynchronousCommand>` entry. The optional `<Description>`
 /// lands in Setup's log, making post-install diagnostics readable.
-fn push_run_command(s: &mut String, order: usize, cmd: &str, description: Option<&str>) {
+pub(super) fn push_run_command(s: &mut String, order: usize, cmd: &str, description: Option<&str>) {
     s.push_str("        <RunSynchronousCommand wcm:action=\"add\">\n");
     s.push_str(&format!("          <Order>{order}</Order>\n"));
     if let Some(d) = description {
@@ -445,7 +169,7 @@ fn push_run_command(s: &mut String, order: usize, cmd: &str, description: Option
 }
 
 /// Trim, drop characters Windows forbids in a hostname, and cap at 15 chars.
-fn sanitize_computer_name(name: &str) -> String {
+pub(super) fn sanitize_computer_name(name: &str) -> String {
     name.trim()
         .chars()
         .filter(|c| {
@@ -456,7 +180,7 @@ fn sanitize_computer_name(name: &str) -> String {
 }
 
 /// Escape the five XML metacharacters in element text.
-fn escape(text: &str) -> String {
+pub(super) fn escape(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -704,6 +428,40 @@ mod tests {
     }
 
     #[test]
+    fn force_edition_picker_writes_sources_ei_cfg() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let setup = WindowsSetup {
+            force_edition_picker: true,
+            ..WindowsSetup::default()
+        };
+        write(dir.path(), &setup).expect("write");
+        // Path joining uses the assets-module constants so any rename of
+        // the directory or filename is caught here automatically.
+        let path = dir
+            .path()
+            .join(assets::EI_CFG_DIR)
+            .join(assets::EI_CFG_NAME);
+        let cfg = std::fs::read_to_string(&path).expect("ei.cfg");
+        // No `[EditionID]` block at all: Setup falls through to its
+        // built-in picker rather than silently picking Home from the
+        // firmware MSDM key.
+        assert!(!cfg.contains("[EditionID]"));
+        assert!(cfg.contains("[Channel]\n_Default"));
+        assert!(cfg.contains("[VL]\n0"));
+    }
+
+    #[test]
+    fn force_edition_picker_unset_leaves_no_ei_cfg() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), &WindowsSetup::default()).expect("write");
+        let path = dir
+            .path()
+            .join(assets::EI_CFG_DIR)
+            .join(assets::EI_CFG_NAME);
+        assert!(!path.exists());
+    }
+
+    #[test]
     fn desktop_helpers_bundle_lists_every_shipped_script() {
         // Sanity: any change to the bundled scripts should keep the list
         // intact. If you add or rename a script, update both the constant
@@ -724,6 +482,12 @@ mod tests {
                 "9-Remove-Windows-AI.bat",
                 "10-Winhance.bat",
                 "11-FR33THY-Ultimate.bat",
+                "12-Install-PowerToys.bat",
+                "13-Disable-FastStartup.bat",
+                "14-Enable-LongPaths.bat",
+                "15-Install-VCRedist.bat",
+                "16-Install-DirectX.bat",
+                "17-Install-Browser.bat",
                 "README.txt",
             ]
         );

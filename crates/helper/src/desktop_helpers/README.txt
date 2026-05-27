@@ -43,10 +43,14 @@ Scripts
     OneDrive from Settings" UI block.
 
 5-OfficeTool.bat
-    Downloads the OfficeTool runtime ZIP from https://otp.landian.vip/
-    into your Downloads folder. OfficeTool is a GUI front-end to the
-    Microsoft Office Deployment Tool (ODT) for installing / configuring
-    Microsoft Office without using the Microsoft Store.
+    Self-elevates, downloads OfficeTool Plus (the "with-runtime" bundle
+    from https://otp.landian.vip/), extracts it to an "OfficeTool"
+    folder on your Desktop, unblocks every file, and opens that folder
+    in Explorer so you can launch "Office Tool Plus.exe" yourself.
+    The .zip is removed from %TEMP% afterwards. OfficeTool Plus is a
+    GUI front-end to the Microsoft Office Deployment Tool (ODT) for
+    installing / configuring Microsoft Office without using the
+    Microsoft Store.
 
 6-Install-Chocolatey.bat
     Installs the Chocolatey package manager (source:
@@ -85,6 +89,44 @@ Scripts
     services trim, and a long list of registry tweaks aimed at
     minimising input latency and frame-time spikes. AGGRESSIVE - read
     the upstream README before running. Admin required.
+
+12-Install-PowerToys.bat
+    Installs Microsoft PowerToys via winget
+    (source: github.com/microsoft/PowerToys). FancyZones (window
+    snapping), PowerRename (batch rename), Color Picker, PowerToys Run
+    launcher, Always-On-Top, Keyboard Manager, Mouse Highlighter, and
+    more. Needs winget — run 8-Install-Winget.bat first if missing.
+
+13-Disable-FastStartup.bat
+    Clears the Windows Fast Startup flag (HiberbootEnabled=0). Fast
+    Startup hibernates the kernel on shutdown, which leaves the NTFS
+    journal dirty and makes the partition mount read-only (or risks
+    corruption) on Linux dual-boot. Hibernate itself stays available.
+    Admin required.
+
+14-Enable-LongPaths.bat
+    Sets LongPathsEnabled=1 so Win32 paths can exceed the historic
+    260-character MAX_PATH limit. Modern Git, Node.js, Python, Rust,
+    .NET 6+ and PowerShell all opt in. A handful of older line-of-
+    business apps may misbehave. Admin required; reboot recommended.
+
+15-Install-VCRedist.bat
+    Installs the Microsoft Visual C++ Redistributable 2015-2022
+    (unified package), both x64 and x86, via winget. Required by a
+    large fraction of third-party software and games. Needs winget.
+
+16-Install-DirectX.bat
+    Installs the DirectX legacy runtime (D3DX, D3DCompiler, XAudio2)
+    via winget (Microsoft.DirectX). Windows 10/11 already ship modern
+    DirectX 11/12; this package covers the legacy libraries that
+    many older games still link against. Needs winget.
+
+17-Install-Browser.bat
+    Interactive menu to install one of: Chrome (direct Google
+    installer), Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox,
+    Opera, Opera GX, Vivaldi, Arc. Every option except Chrome uses
+    winget; the Chrome path downloads the official installer from
+    dl.google.com and runs it /silent /install.
 
 Each of these scripts fetches code over the public internet and runs it.
 Open the .bat in Notepad first if you want to see the exact URL it hits.
