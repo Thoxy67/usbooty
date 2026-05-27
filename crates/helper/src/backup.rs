@@ -15,11 +15,8 @@ use std::time::{Duration, Instant};
 
 use usbooty_core::JobOptions;
 
-use crate::{blockdev, emit};
+use crate::{blockdev, emit, fsutil};
 
-// Match dd.rs: 8 MiB reads on the backup path so dumping a large drive to
-// an image doesn't double the syscall count vs. the write path.
-const BUF_SIZE: usize = 8 * 1024 * 1024;
 const REPORT_EVERY: Duration = Duration::from_millis(100);
 
 /// Read `device_path` start-to-end into `image_path`.
@@ -56,7 +53,7 @@ pub fn run(
     emit::log(format!("Output: {} {compressing}", image_path.display()));
 
     emit::phase("Reading");
-    let mut buf = vec![0u8; BUF_SIZE];
+    let mut buf = vec![0u8; fsutil::COPY_BUF];
     let mut done = 0u64;
     let mut last = Instant::now();
     let mut hasher = blake3::Hasher::new();
@@ -126,7 +123,7 @@ fn verify(
     //    payload-out matches the payload-in.
     let mut img = crate::image::open(image)?;
     let mut hasher = blake3::Hasher::new();
-    let mut buf = vec![0u8; BUF_SIZE];
+    let mut buf = vec![0u8; fsutil::COPY_BUF];
     let mut done = 0u64;
     let mut last = Instant::now();
     while done < total {

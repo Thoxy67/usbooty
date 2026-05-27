@@ -10,6 +10,14 @@ use usbooty_core::FileSystem;
 
 use crate::emit;
 
+/// Default chunk size for streaming file / device copies.
+///
+/// 8 MiB is comfortable for modern USB 3+ devices and matches the read-back
+/// buffer in `dd::verify` and `backup`, so paired read+write paths share the
+/// same syscall cadence regardless of which job is running. The progress
+/// throttle (every 100 ms) keeps the GUI feed smooth at this size.
+pub const COPY_BUF: usize = 8 * 1024 * 1024;
+
 /// Wait until `path` appears as a block device after a partition-table change.
 /// `udev` creates these nodes asynchronously, so a short poll is required.
 pub fn wait_for_node(path: &str) -> Result<()> {
@@ -290,5 +298,125 @@ impl Drop for Mount {
         }
         let _ = std::fs::remove_dir(&self.mountpoint);
         emit::log(format!("Unmounted {}", self.what));
+    }
+}
+
+/// A read-only loopback mount of a source ISO, unmounted on drop.
+///
+/// Tries UDF first (modern Windows ISOs are UDF), then ISO9660 (Linux ISOs
+/// and older media). Goes through `mount(8)` rather than the `mount(2)`
+/// syscall directly so the kernel's loop-device allocation is handled for
+/// us; modern util-linux sets `LO_FLAGS_AUTOCLEAR` so the loop device frees
+/// itself when this struct's `Drop` releases the mount.
+pub struct LoopMount {
+    mountpoint: PathBuf,
+    iso: PathBuf,
+}
+
+impl LoopMount {
+    /// Loop-mount `iso` read-only. `tag` distinguishes concurrent mountpoints
+    /// inside the same helper process so e.g. an isocopy mount and a
+    /// wimsplit mount cannot collide.
+    pub fn open_iso(iso: &Path, tag: &str) -> Result<Self> {
+        let mountpoint = PathBuf::from(format!("/run/usbooty-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&mountpoint)
+            .with_context(|| format!("creating mountpoint {}", mountpoint.display()))?;
+
+        let mut last_err = String::new();
+        for fstype in ["udf", "iso9660"] {
+            let output = Command::new("mount")
+                .args(["-t", fstype, "-o", "loop,ro"])
+                .arg(iso)
+                .arg(&mountpoint)
+                .output()
+                .context("running mount — is util-linux installed?")?;
+            if output.status.success() {
+                emit::log(format!("Mounted source ISO ({fstype})"));
+                return Ok(LoopMount {
+                    mountpoint,
+                    iso: iso.to_path_buf(),
+                });
+            }
+            last_err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        }
+        let _ = std::fs::remove_dir(&mountpoint);
+        bail!("could not mount the source ISO: {last_err}");
+    }
+
+    /// The directory where the ISO is mounted.
+    pub fn path(&self) -> &Path {
+        &self.mountpoint
+    }
+}
+
+impl Drop for LoopMount {
+    fn drop(&mut self) {
+        // Loop-device auto-clear (set by mount(8) for `-o loop`) detaches the
+        // backing file once the mount is released; fall back to a lazy detach
+        // if writeback is still in flight.
+        if nix::mount::umount(&self.mountpoint).is_err() {
+            let _ = nix::mount::umount2(&self.mountpoint, nix::mount::MntFlags::MNT_DETACH);
+        }
+        let _ = std::fs::remove_dir(&self.mountpoint);
+        emit::log(format!("Unmounted source ISO {}", self.iso.display()));
+    }
+}
+
+/// True when the `wimlib-imagex` binary is on the helper's PATH.
+///
+/// Used to gate flows that need to read or split a Windows `install.wim`
+/// (the `Split` strategy and the Windows CA 2023 policy drop-in).
+pub fn wimlib_available() -> bool {
+    Command::new("wimlib-imagex")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Resolve a `/`-segment path under `root`, matching each segment ignoring
+/// case (ISO9660 may upper-case names; UDF preserves them).
+pub fn ci_path(root: &Path, segments: &[&str]) -> Result<PathBuf> {
+    let mut current = root.to_path_buf();
+    for seg in segments {
+        let mut found = None;
+        for entry in
+            std::fs::read_dir(&current).with_context(|| format!("reading {}", current.display()))?
+        {
+            let entry = entry.context("reading a directory entry")?;
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(seg)
+            {
+                found = Some(entry.path());
+                break;
+            }
+        }
+        current = found.with_context(|| format!("{seg} not found in {}", current.display()))?;
+    }
+    Ok(current)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ci_path_matches_segments_ignoring_case() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let nested = dir.path().join("Sources").join("Install.WIM");
+        std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
+        std::fs::write(&nested, b"x").unwrap();
+
+        let resolved = ci_path(dir.path(), &["sources", "install.wim"]).expect("ci_path");
+        assert_eq!(resolved, nested);
+    }
+
+    #[test]
+    fn ci_path_errors_when_segment_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = ci_path(dir.path(), &["sources", "install.wim"]).unwrap_err();
+        assert!(format!("{err:#}").contains("not found"));
     }
 }

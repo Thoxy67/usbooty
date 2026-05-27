@@ -12,13 +12,13 @@
 use anyhow::{Context, Result, bail};
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use crate::emit;
+use crate::{emit, fsutil};
 
 /// How often to poll `abort` while wimlib-imagex runs.
 const POLL_EVERY: Duration = Duration::from_millis(250);
@@ -34,15 +34,16 @@ const CHUNK_MIB: u32 = 4094;
 /// (it would not have fit during the file-by-file copy, which is why this
 /// path runs at all).
 pub fn split_install_wim(src_iso: &Path, dest_mount: &Path, abort: &AtomicBool) -> Result<()> {
-    if !wimlib_available() {
+    if !fsutil::wimlib_available() {
         bail!(
             "wimlib-imagex is required for the Split strategy — install the \
              `wimtools` / `wimlib` package and try again, or use UEFI:NTFS instead"
         );
     }
 
-    let src_mount = mount_source_iso(src_iso)?;
-    let src_wim = resolve_install_wim(src_mount.path())?;
+    let src_mount = fsutil::LoopMount::open_iso(src_iso, "wim")?;
+    let src_wim = fsutil::ci_path(src_mount.path(), &["sources", "install.wim"])
+        .context("the ISO has no `sources/install.wim` to split")?;
 
     let dest_sources = dest_mount.join("sources");
     fs::create_dir_all(&dest_sources)
@@ -89,74 +90,4 @@ pub fn split_install_wim(src_iso: &Path, dest_mount: &Path, abort: &AtomicBool) 
     }
     emit::log("install.wim split into install.swm chunks");
     Ok(())
-}
-
-/// True when the `wimlib-imagex` binary is on the helper's PATH.
-pub fn wimlib_available() -> bool {
-    Command::new("wimlib-imagex")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-/// Loop-mount the source ISO read-only into a temporary directory, unmounted
-/// on drop. Tries UDF first (modern Windows ISOs are UDF), then ISO9660.
-struct SourceMount {
-    mountpoint: PathBuf,
-}
-
-impl SourceMount {
-    fn path(&self) -> &Path {
-        &self.mountpoint
-    }
-}
-
-impl Drop for SourceMount {
-    fn drop(&mut self) {
-        let _ = Command::new("umount").arg(&self.mountpoint).status();
-        let _ = fs::remove_dir(&self.mountpoint);
-    }
-}
-
-fn mount_source_iso(iso: &Path) -> Result<SourceMount> {
-    let mountpoint = PathBuf::from(format!("/run/usbooty-wim-{}", std::process::id()));
-    fs::create_dir_all(&mountpoint)
-        .with_context(|| format!("creating mountpoint {}", mountpoint.display()))?;
-    let mut last_err = String::new();
-    for fstype in ["udf", "iso9660"] {
-        let output = Command::new("mount")
-            .args(["-t", fstype, "-o", "loop,ro"])
-            .arg(iso)
-            .arg(&mountpoint)
-            .output()
-            .context("running mount")?;
-        if output.status.success() {
-            return Ok(SourceMount { mountpoint });
-        }
-        last_err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    }
-    let _ = fs::remove_dir(&mountpoint);
-    bail!("could not mount the source ISO for wim split: {last_err}");
-}
-
-/// Locate `sources/install.wim` under `root` case-insensitively (UDF
-/// preserves case, ISO9660 may upper-case).
-fn resolve_install_wim(root: &Path) -> Result<PathBuf> {
-    let sources = ci_child(root, "sources").context("the ISO has no `sources` directory")?;
-    ci_child(&sources, "install.wim").context("the ISO has no `sources/install.wim` to split")
-}
-
-fn ci_child(dir: &Path, name: &str) -> Result<PathBuf> {
-    for entry in fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))? {
-        let entry = entry.context("reading a directory entry")?;
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .eq_ignore_ascii_case(name)
-        {
-            return Ok(entry.path());
-        }
-    }
-    bail!("{name} not found in {}", dir.display());
 }

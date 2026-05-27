@@ -27,7 +27,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::emit;
+use crate::{emit, fsutil};
 
 /// Path of the policy file inside `install.wim`. Windows itself reads from
 /// `\Windows\System32\SecureBootUpdates\` so the layout matches.
@@ -40,7 +40,7 @@ const DEST_RELATIVE: &str = "EFI/Microsoft/Boot/SkuSiPolicy.p7b";
 /// at `<dest_mount>/EFI/Microsoft/Boot/SkuSiPolicy.p7b`. Returns `Ok(())`
 /// on either a successful copy or a soft skip (with a log line).
 pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
-    if !wimlib_available() {
+    if !fsutil::wimlib_available() {
         emit::log(
             "wimlib-imagex not installed — skipping Windows CA 2023 \
              policy install. Install `wimtools` / `wimlib` to enable it.",
@@ -48,8 +48,8 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
         return Ok(());
     }
 
-    let iso_mount = mount_iso_ro(src_iso)?;
-    let install_wim = ci_path(iso_mount.path(), &["sources", "install.wim"])?;
+    let iso_mount = fsutil::LoopMount::open_iso(src_iso, "winca-iso")?;
+    let install_wim = fsutil::ci_path(iso_mount.path(), &["sources", "install.wim"])?;
 
     let staging = PathBuf::from(format!("/run/usbooty-winca-{}", std::process::id()));
     fs::create_dir_all(&staging).with_context(|| format!("creating {}", staging.display()))?;
@@ -114,103 +114,4 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
         dest.display()
     ));
     Ok(())
-}
-
-fn wimlib_available() -> bool {
-    Command::new("wimlib-imagex")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-/// Resolve a case-insensitive path under `root`. Returns the resolved path.
-fn ci_path(root: &Path, segments: &[&str]) -> Result<PathBuf> {
-    let mut current = root.to_path_buf();
-    for seg in segments {
-        let mut found = None;
-        for entry in
-            fs::read_dir(&current).with_context(|| format!("reading {}", current.display()))?
-        {
-            let entry = entry.context("reading a directory entry")?;
-            if entry
-                .file_name()
-                .to_string_lossy()
-                .eq_ignore_ascii_case(seg)
-            {
-                found = Some(entry.path());
-                break;
-            }
-        }
-        current = found.with_context(|| format!("{seg} not found in {}", current.display()))?;
-    }
-    Ok(current)
-}
-
-/// Loop-mount the source ISO read-only, unmounted on drop.
-struct IsoMount {
-    mountpoint: PathBuf,
-}
-
-impl IsoMount {
-    fn path(&self) -> &Path {
-        &self.mountpoint
-    }
-}
-
-impl Drop for IsoMount {
-    fn drop(&mut self) {
-        let _ = Command::new("umount").arg(&self.mountpoint).status();
-        let _ = fs::remove_dir(&self.mountpoint);
-    }
-}
-
-fn mount_iso_ro(iso: &Path) -> Result<IsoMount> {
-    let mountpoint = PathBuf::from(format!("/run/usbooty-winca-iso-{}", std::process::id()));
-    fs::create_dir_all(&mountpoint)
-        .with_context(|| format!("creating mountpoint {}", mountpoint.display()))?;
-    let mut last_err = String::new();
-    for fstype in ["udf", "iso9660"] {
-        let output = Command::new("mount")
-            .args(["-t", fstype, "-o", "loop,ro"])
-            .arg(iso)
-            .arg(&mountpoint)
-            .output()
-            .context("running mount")?;
-        if output.status.success() {
-            return Ok(IsoMount { mountpoint });
-        }
-        last_err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    }
-    let _ = fs::remove_dir(&mountpoint);
-    anyhow::bail!("could not mount the source ISO for SkuSiPolicy extract: {last_err}")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ci_path_matches_case_insensitively() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let nested = dir.path().join("Sources").join("Install.WIM");
-        fs::create_dir_all(nested.parent().unwrap()).unwrap();
-        fs::write(&nested, b"x").unwrap();
-
-        // Lookup with the upstream Windows casing (lowercase) should find the
-        // PascalCase entry on disk.
-        let resolved = ci_path(dir.path(), &["sources", "install.wim"]).expect("ci_path");
-        assert_eq!(resolved, nested);
-    }
-
-    #[test]
-    fn ci_path_returns_error_when_segment_missing() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let err = ci_path(dir.path(), &["sources", "install.wim"]).unwrap_err();
-        let msg = format!("{err:#}");
-        assert!(
-            msg.contains("not found"),
-            "expected 'not found' in error, got: {msg}"
-        );
-    }
 }

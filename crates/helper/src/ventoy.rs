@@ -16,9 +16,6 @@ use usbooty_core::PartitionTable;
 
 use crate::{blockdev, emit, fsutil};
 
-/// Copy chunk size for seeding the data partition.
-const BUF_SIZE: usize = 4 * 1024 * 1024;
-
 /// Install or update Ventoy on `device`, then seed it with `iso_path` if given.
 pub fn run(
     device: &Path,
@@ -124,7 +121,7 @@ fn seed_iso(device: &Path, iso: &Path, abort: &AtomicBool) -> Result<()> {
         usbooty_core::device::format_size(total)
     ));
 
-    let mut buf = vec![0u8; BUF_SIZE];
+    let mut buf = vec![0u8; fsutil::COPY_BUF];
     let mut done = 0u64;
     let mut last = Instant::now();
     loop {

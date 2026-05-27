@@ -10,13 +10,8 @@ use std::time::{Duration, Instant};
 
 use usbooty_core::JobOptions;
 
-use crate::{blockdev, emit, image};
+use crate::{blockdev, emit, fsutil, image};
 
-/// Copy chunk size. 8 MiB is comfortable for modern USB 3+ devices; the
-/// emit::progress throttle (0.1 % deduplication) keeps the GUI feed clean
-/// regardless, so the coarser chunks roughly halve read/write syscall
-/// count without any UI penalty.
-const BUF_SIZE: usize = 8 * 1024 * 1024;
 /// Minimum interval between `Progress` messages, to avoid flooding the GUI.
 const REPORT_EVERY: Duration = Duration::from_millis(100);
 
@@ -66,7 +61,7 @@ pub fn run(
     }
 
     emit::phase("Writing");
-    let mut buf = vec![0u8; BUF_SIZE];
+    let mut buf = vec![0u8; fsutil::COPY_BUF];
     let mut decompressed: u64 = 0;
     let mut last = Instant::now();
     // Hash the decompressed stream as it passes by, for the optional verify.
@@ -125,7 +120,7 @@ fn verify(device: &Path, total: u64, expected: blake3::Hash, abort: &AtomicBool)
     dev.seek(SeekFrom::Start(0)).context("seeking the device")?;
 
     let mut hash = blake3::Hasher::new();
-    let mut buf = vec![0u8; BUF_SIZE];
+    let mut buf = vec![0u8; fsutil::COPY_BUF];
     let mut done = 0u64;
     let mut last = Instant::now();
     while done < total {

@@ -795,6 +795,22 @@ impl qobject::AppController {
         }
     }
 
+    /// Reset every UI readout that a long-running job will start fresh: enter
+    /// the busy state, zero the progress bar, clear the previous run's log,
+    /// speed and ETA, and show the caller's `status` banner. Callers vary the
+    /// `status` string ("Running…", "Backing up…", …); the rest of the reset
+    /// is identical across job kinds, so this helper keeps the four start_*
+    /// invokables from drifting apart.
+    fn init_job_ui(mut self: core::pin::Pin<&mut Self>, status: &str) {
+        self.as_mut().set_busy(true);
+        self.as_mut().set_progress(0.0);
+        self.as_mut().set_phase(QString::from("Starting"));
+        self.as_mut().set_log_text(QString::default());
+        self.as_mut().set_speed(QString::default());
+        self.as_mut().set_eta(QString::default());
+        self.as_mut().set_status(QString::from(status));
+    }
+
     /// Validate inputs, build a [`Job`], and spawn the privileged helper.
     pub fn start(mut self: core::pin::Pin<&mut Self>) {
         if !self.can_start() {
@@ -1013,13 +1029,7 @@ impl qobject::AppController {
             }
         };
 
-        self.as_mut().set_busy(true);
-        self.as_mut().set_progress(0.0);
-        self.as_mut().set_phase(QString::from("Starting"));
-        self.as_mut().set_log_text(QString::default());
-        self.as_mut().set_speed(QString::default());
-        self.as_mut().set_eta(QString::default());
-        self.as_mut().set_status(QString::from("Running…"));
+        self.as_mut().init_job_ui("Running…");
 
         let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
         let handle = JobHandle {
@@ -1083,14 +1093,7 @@ impl qobject::AppController {
             return;
         };
         let url = option.url.clone();
-        self.as_mut().set_busy(true);
-        self.as_mut().set_progress(0.0);
-        self.as_mut().set_log_text(QString::default());
-        self.as_mut().set_phase(QString::from("Starting"));
-        self.as_mut().set_speed(QString::default());
-        self.as_mut().set_eta(QString::default());
-        self.as_mut()
-            .set_status(QString::from("Downloading Windows ISO…"));
+        self.as_mut().init_job_ui("Downloading Windows ISO…");
 
         let qt = self.qt_thread();
         let abort = Arc::new(AtomicBool::new(false));
@@ -1159,13 +1162,7 @@ impl qobject::AppController {
             mode,
         };
 
-        self.as_mut().set_busy(true);
-        self.as_mut().set_progress(0.0);
-        self.as_mut().set_phase(QString::from("Starting"));
-        self.as_mut().set_log_text(QString::default());
-        self.as_mut().set_speed(QString::default());
-        self.as_mut().set_eta(QString::default());
-        self.as_mut().set_status(QString::from("Checking device…"));
+        self.as_mut().init_job_ui("Checking device…");
 
         let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
         let handle = JobHandle {
@@ -1207,13 +1204,7 @@ impl qobject::AppController {
             },
         };
 
-        self.as_mut().set_busy(true);
-        self.as_mut().set_progress(0.0);
-        self.as_mut().set_phase(QString::from("Starting"));
-        self.as_mut().set_log_text(QString::default());
-        self.as_mut().set_speed(QString::default());
-        self.as_mut().set_eta(QString::default());
-        self.as_mut().set_status(QString::from("Backing up…"));
+        self.as_mut().init_job_ui("Backing up…");
 
         let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
         let handle = JobHandle {

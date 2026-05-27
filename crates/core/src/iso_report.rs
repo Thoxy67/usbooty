@@ -124,7 +124,9 @@ impl DistroFamily {
             return DistroFamily::Knoppix;
         }
 
-        // Label-based detection — most specific first.
+        // Label-based detection — most specific first. Needles are pre-lowered
+        // so each iteration is just a substring scan over the already-lowered
+        // label, with no per-needle allocation.
         for (needle, family) in [
             ("bazzite", DistroFamily::Bazzite),
             ("nobara", DistroFamily::Nobara),
@@ -143,13 +145,12 @@ impl DistroFamily {
             ("fedora", DistroFamily::Fedora),
             ("fed_", DistroFamily::Fedora),
             ("opensuse", DistroFamily::OpenSuse),
-            ("openSUSE", DistroFamily::OpenSuse),
             ("suse-", DistroFamily::OpenSuse),
             ("archlinux", DistroFamily::Arch),
             ("arch_", DistroFamily::Arch),
             ("arch-", DistroFamily::Arch),
         ] {
-            if label_low.contains(&needle.to_ascii_lowercase()) {
+            if label_low.contains(needle) {
                 return family;
             }
         }

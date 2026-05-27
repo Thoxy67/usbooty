@@ -296,11 +296,12 @@ impl<R: Read + Seek> UdfFs<R> {
             }
             0 => {
                 // Short_ad entries: each is 8 bytes: u32 length, u32 position.
-                self.read_extents_short(&buf[ad_offset..ad_end], information_length, &mut out)?;
+                self.read_extents(&buf[ad_offset..ad_end], 8, information_length, &mut out)?;
             }
             1 => {
-                // Long_ad entries: each is 16 bytes.
-                self.read_extents_long(&buf[ad_offset..ad_end], information_length, &mut out)?;
+                // Long_ad entries: each is 16 bytes (length, position, then a
+                // partition reference + implementation-use field we ignore).
+                self.read_extents(&buf[ad_offset..ad_end], 16, information_length, &mut out)?;
             }
             other => {
                 return Err(std::io::Error::other(format!(
@@ -311,14 +312,20 @@ impl<R: Read + Seek> UdfFs<R> {
         Ok(out)
     }
 
-    fn read_extents_short(
+    /// Walk a buffer of allocation descriptors with the given `stride`
+    /// (8 bytes per short_ad, 16 bytes per long_ad — the trailing partition
+    /// reference and implementation-use bytes of a long_ad are not used by
+    /// this reader, so the parse only cares about the leading length + block
+    /// position fields, which match in both layouts).
+    fn read_extents(
         &mut self,
         descriptors: &[u8],
+        stride: usize,
         info_len: u64,
         out: &mut Vec<u8>,
     ) -> IoResult<()> {
         let mut remaining = info_len as usize;
-        for ad in descriptors.chunks_exact(8) {
+        for ad in descriptors.chunks_exact(stride) {
             if remaining == 0 {
                 break;
             }
@@ -339,37 +346,6 @@ impl<R: Read + Seek> UdfFs<R> {
                 out.resize(out.len() + take, 0);
             } else {
                 break; // unsupported AD-chain
-            }
-            remaining -= take;
-        }
-        Ok(())
-    }
-
-    fn read_extents_long(
-        &mut self,
-        descriptors: &[u8],
-        info_len: u64,
-        out: &mut Vec<u8>,
-    ) -> IoResult<()> {
-        let mut remaining = info_len as usize;
-        for ad in descriptors.chunks_exact(16) {
-            if remaining == 0 {
-                break;
-            }
-            let raw_len = u32::from_le_bytes(ad[0..4].try_into().unwrap());
-            let pos = u32::from_le_bytes(ad[4..8].try_into().unwrap());
-            let kind = raw_len >> 30;
-            let length = (raw_len & 0x3FFF_FFFF) as usize;
-            if length == 0 {
-                break;
-            }
-            let take = length.min(remaining);
-            if kind == 0 {
-                self.read_extent_into(self.partition_start as u64 + pos as u64, take, out)?;
-            } else if kind == 1 || kind == 2 {
-                out.resize(out.len() + take, 0);
-            } else {
-                break;
             }
             remaining -= take;
         }
