@@ -481,7 +481,7 @@ fn extract_named(zip_path: &Path, candidates: &[&str], dest: &Path) -> Result<()
         }
     }
     anyhow::bail!(
-        "none of {:?} found inside {} — upstream FreeDOS layout may have moved",
+        "none of {:?} found inside {}; upstream FreeDOS layout may have moved",
         candidates,
         zip_path.display()
     )

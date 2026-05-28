@@ -111,7 +111,7 @@ pub fn fetch_languages(edition_id: u32) -> Result<Catalog> {
         .get("Skus")
         .and_then(|v| v.as_array())
         .filter(|s| !s.is_empty())
-        .context("Microsoft returned no languages — the API may have changed")?;
+        .context("Microsoft returned no languages; the API may have changed")?;
 
     let mut languages = Vec::new();
     for sku in skus {
@@ -288,7 +288,7 @@ fn check_errors(json: &serde_json::Value) -> Result<()> {
     if first.get("Type").and_then(|v| v.as_i64()) == Some(9) {
         bail!(
             "Microsoft's anti-bot system rejected the request. This is common on \
-             VPNs, datacenter connections, or some ISPs — use the \"Open Microsoft \
+             VPNs, datacenter connections, or some ISPs. Use the \"Open Microsoft \
              download page\" button below to download the ISO in your browser."
         );
     }

@@ -206,7 +206,7 @@ applies live, no restart needed. The preference is saved in
 
 ## A post-install Windows desktop script does nothing or errors out
 
-The eleven `.bat` scripts dropped by **Drop a USBooty folder on the
+The eighteen `.bat` scripts dropped by **Drop a USBooty folder on the
 user's Desktop** are thin wrappers around well-known upstream
 PowerShell snippets. They all download code from the public
 internet on first run, so:

@@ -837,8 +837,8 @@ impl qobject::AppController {
         let current = crate::devices::enumerate(*self.show_fixed_disks());
         if !current.contains(&selected) {
             self.as_mut().set_status(QString::from(
-                "The selected device changed since it was chosen — \
-                 the device list has been refreshed; check the target and start again.",
+                "The selected device changed since it was chosen. \
+                 The device list has been refreshed; check the target and start again.",
             ));
             self.as_mut().refresh_devices();
             return;
@@ -860,7 +860,7 @@ impl qobject::AppController {
         }
         if !std::path::Path::new(&selected.path).exists() {
             self.as_mut().set_status(QString::from(&format!(
-                "{} no longer exists — was the drive removed?",
+                "{} no longer exists. Was the drive removed?",
                 selected.path,
             )));
             return;

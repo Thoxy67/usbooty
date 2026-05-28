@@ -69,7 +69,7 @@ pub fn parse(args: &[String]) -> Parsed {
 /// Print usage to stdout in the style most CLIs use.
 pub fn print_help() {
     println!(
-        "usbooty — Bootable USB Creator\n\n\
+        "usbooty: Bootable USB Creator\n\n\
          USAGE:\n  \
              usbooty [OPTIONS]\n\n\
          OPTIONS:\n  \

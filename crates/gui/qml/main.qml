@@ -32,11 +32,11 @@ ApplicationWindow {
     // window is in the background / minimized to the taskbar.
     title: {
         if (app.busy && app.progress > 0)
-            return "USBooty — " + window.trPhase(app.phase) + " "
+            return "USBooty: " + window.trPhase(app.phase) + " "
                  + Math.round(app.progress * 100) + " %"
         if (app.busy)
-            return "USBooty — " + window.trPhase(app.phase !== "" ? app.phase : "Working") + "…"
-        return qsTr("USBooty — Bootable USB Creator")
+            return "USBooty: " + window.trPhase(app.phase !== "" ? app.phase : "Working") + "…"
+        return qsTr("USBooty: Bootable USB Creator")
     }
 
     AppController {
@@ -619,7 +619,7 @@ ApplicationWindow {
             ToolTip.text: qsTr("USBooty scanned this ISO's signed EFI binaries against the "
                 + "Secure Boot revocation database (SBAT generations + the live UEFI Forum "
                 + "DBX update). One or more bootloaders are flagged as obsolete. UEFI firmware "
-                + "with current revocations will refuse to load them — try a newer ISO, or "
+                + "with current revocations will refuse to load them. Try a newer ISO, or "
                 + "boot in legacy / non-Secure-Boot mode.")
             // `hovered` is a Banner-level alias for the Label's MouseArea.
             property bool hovered: bannerHoverArea.containsMouse
@@ -635,7 +635,7 @@ ApplicationWindow {
             // asynchronously after select_device.
             severity: "error"
             message: app.smartWarning
-                ? "SMART: " + app.smartWarning + " — consider replacing this drive."
+                ? "SMART: " + app.smartWarning + ". Consider replacing this drive."
                 : ""
         }
 
@@ -661,8 +661,8 @@ ApplicationWindow {
                     readOnly: true
                     placeholderText:
                         app.method === 2 ? qsTr("Not used for a plain format")
-                      : app.method === 4 ? qsTr("Not used — FreeDOS files are downloaded from upstream")
-                      : app.method === 3 ? qsTr("Optional — Ventoy lets you drop ISOs onto the data partition later")
+                      : app.method === 4 ? qsTr("Not used: FreeDOS files are downloaded from upstream")
+                      : app.method === 3 ? qsTr("Optional: Ventoy lets you drop ISOs onto the data partition later")
                       : qsTr("Choose an ISO image, or drag one onto the window…")
                     text: app.isoPath
                     ToolTip.delay: 500
@@ -766,7 +766,7 @@ ApplicationWindow {
                         value: app.hashProgress
                     }
                     Label {
-                        text: qsTr("Checksums skipped — click to compute every digest.")
+                        text: qsTr("Checksums skipped. Click to compute every digest.")
                         visible: !parent.parent.computing
                         color: palette.placeholderText
                         font.pointSize: 9
@@ -887,7 +887,7 @@ ApplicationWindow {
                         width: deviceBox.width
                         highlighted: deviceBox.highlightedIndex === index
                         // Split once per delegate, not per Label binding.
-                        readonly property var deviceParts: modelData.split(" — ")
+                        readonly property var deviceParts: modelData.split(" · ")
                         contentItem: ColumnLayout {
                             spacing: 1
                             Label {
@@ -898,7 +898,7 @@ ApplicationWindow {
                             }
                             Label {
                                 text: deviceDelegate.deviceParts.length > 1
-                                    ? deviceDelegate.deviceParts.slice(1).join(" — ")
+                                    ? deviceDelegate.deviceParts.slice(1).join(" · ")
                                     : ""
                                 font.pointSize: 9
                                 elide: Text.ElideRight
@@ -939,7 +939,7 @@ ApplicationWindow {
                 }
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Off by default — internal SATA/NVMe disks are filtered out "
+                ToolTip.text: qsTr("Off by default. Internal SATA/NVMe disks are filtered out "
                     + "so they cannot be picked by mistake. Enable only when you really want "
                     + "to target a fixed disk (lab, dual-boot stick, image dump).")
             }
@@ -971,15 +971,15 @@ ApplicationWindow {
                     ToolTip.delay: 500
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr(
-                        "DD — bit-for-bit copy of the ISO, no partitioning. Works for any "
+                        "DD: bit-for-bit copy of the ISO, no partitioning. Works for any "
                         + "isohybrid (most Linux ISOs).\n\n"
-                        + "Partition & copy — USBooty creates a fresh partition table, formats it, "
+                        + "Partition & copy: USBooty creates a fresh partition table, formats it, "
                         + "and copies the ISO files. Required for Windows install media and for "
                         + "anything that needs persistence.\n\n"
-                        + "Format only — wipe + new partition table, no ISO involved.\n\n"
-                        + "Ventoy — install Ventoy so you can drop multiple ISOs on the data partition "
+                        + "Format only: wipe + new partition table, no ISO involved.\n\n"
+                        + "Ventoy: install Ventoy so you can drop multiple ISOs on the data partition "
                         + "and pick one at boot.\n\n"
-                        + "FreeDOS — download the latest FreeDOS kernel + shell from upstream and "
+                        + "FreeDOS: download the latest FreeDOS kernel + shell from upstream and "
                         + "build a self-contained bootable DOS stick (no ISO needed). Useful for "
                         + "BIOS flashing utilities and legacy DOS tools.")
                 }
@@ -1026,14 +1026,14 @@ ApplicationWindow {
                     ToolTip.text: !enabled
                         ? qsTr("The DD method preserves the ISO's own partition table.")
                         : qsTr("How the disk is laid out for the firmware that boots it.\n\n"
-                             + "• GPT (UEFI) — modern default. Boots only on UEFI firmware. Required "
+                             + "• GPT (UEFI): modern default. Boots only on UEFI firmware. Required "
                              + "for disks larger than 2 TiB and for more than 4 partitions.\n\n"
-                             + "• MBR (BIOS) — legacy 1980s table. Boots only on BIOS / CSM. Pick this "
+                             + "• MBR (BIOS): legacy 1980s table. Boots only on BIOS / CSM. Pick this "
                              + "when the target PC's firmware truly is BIOS-only.\n\n"
-                             + "• MBR (BIOS+UEFI) — same on-disk layout as MBR, plus a bootable FAT "
+                             + "• MBR (BIOS+UEFI): same on-disk layout as MBR, plus a bootable FAT "
                              + "partition with /EFI/BOOT/BOOTx64.EFI so UEFI firmware finds it via the "
                              + "fallback path. Simplest dual-firmware stick.\n\n"
-                             + "• Hybrid MBR+GPT (BIOS+UEFI) — real GPT + a synthesised MBR mirror "
+                             + "• Hybrid MBR+GPT (BIOS+UEFI): real GPT + a synthesised MBR mirror "
                              + "of the data partition (Apple-style). Maximum compatibility, but some "
                              + "buggy firmwares dislike hybrid MBRs entirely. Use only if MBR(BIOS+UEFI) "
                              + "doesn't boot on a specific machine.")
@@ -1063,7 +1063,7 @@ ApplicationWindow {
                             return qsTr("The label is sanitized to each filesystem's limits.")
                         var sanitized = app.sanitizedLabel()
                         if (sanitized === app.label)
-                            return qsTr("Will be written as “%1” — fits the chosen filesystem.")
+                            return qsTr("Will be written as “%1” (fits the chosen filesystem).")
                                        .arg(sanitized)
                         return qsTr("Will be written as “%1” (trimmed for the chosen filesystem)")
                                        .arg(sanitized)
@@ -1072,7 +1072,7 @@ ApplicationWindow {
             }
 
             WrapCheckBox {
-                text: qsTr("Full format — erase the whole device first (slow)")
+                text: qsTr("Full format: erase the whole device first (slow)")
                 // DD overwrites every sector anyway, and Ventoy does its own
                 // partitioning and formatting.
                 enabled: !app.busy && (app.method === 1 || app.method === 2)
@@ -1092,7 +1092,7 @@ ApplicationWindow {
                 // this asks USBooty to split install.wim into <4 GiB chunks
                 // via wimlib-imagex and keep a single FAT32 partition.
                 visible: app.windowsIso && app.method === 1
-                text: qsTr("Split install.wim onto FAT32 (needs wimlib-imagex) — broader firmware support than UEFI:NTFS")
+                text: qsTr("Split install.wim onto FAT32 (needs wimlib-imagex): broader firmware support than UEFI:NTFS")
                 enabled: !app.busy
                 checked: app.splitWim
                 onToggled: app.splitWim = checked
@@ -1106,7 +1106,7 @@ ApplicationWindow {
             }
 
             WrapCheckBox {
-                text: qsTr("Verify after writing — read the data back and check it")
+                text: qsTr("Verify after writing: read the data back and check it")
                 // A plain format / Ventoy install writes no verifiable payload.
                 enabled: !app.busy && app.method < 2
                 checked: app.verify
@@ -1212,7 +1212,7 @@ ApplicationWindow {
                         onClicked: app.persistenceSize = app.persistenceMaxMib
                         ToolTip.delay: 500
                         ToolTip.visible: hovered
-                        ToolTip.text: qsTr("Set the overlay to fill the device — uses every byte "
+                        ToolTip.text: qsTr("Set the overlay to fill the device: uses every byte "
                             + "the chosen drive has left after the ISO and a small partition-table margin.")
                     }
                 }
@@ -1230,12 +1230,12 @@ ApplicationWindow {
                     ToolTip.text: qsTr("Creates /slax/changes/ on the data partition and patches the "
                         + "kernel command line with `perch`, so Slax saves your edits straight back "
                         + "into the changes folder on shutdown. No separate persistence partition is "
-                        + "made — Slax just writes into the data partition until it fills.")
+                        + "made. Slax just writes into the data partition until it fills.")
                 }
                 Label {
                     text: app.persistenceInline
-                        ? qsTr("Slax writes changes directly into a folder on the data partition — "
-                             + "no separate overlay partition is created.")
+                        ? qsTr("Slax writes changes directly into a folder on the data partition. "
+                             + "No separate overlay partition is created.")
                         : qsTr("Keeps your files and settings across reboots of this live USB.")
                     color: palette.placeholderText
                     font.pointSize: 8
@@ -1299,8 +1299,8 @@ ApplicationWindow {
             ToolTip.visible: hovered
             ToolTip.text: app.busy
                 ? qsTr("Ask the running helper to stop. The current sector finishes writing, then "
-                     + "the partition table is left in whatever state the helper had got to — "
-                     + "expect a partially-written drive.")
+                     + "the partition table is left in whatever state the helper had got to. "
+                     + "Expect a partially-written drive.")
                 : (app.windowsIso && app.method === 1
                     ? qsTr("Opens the Windows-setup dialog first (TPM/Secure-Boot/RAM bypasses, "
                          + "local account, debloat, …); the actual write begins after you click OK there.")
@@ -1521,7 +1521,7 @@ ApplicationWindow {
                         ToolTip.delay: 500
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Write the current activity log to a text file. Useful "
-                            + "for bug reports — attach the file instead of pasting in the panel.")
+                            + "for bug reports. Attach the file instead of pasting in the panel.")
                     }
                     Button {
                         text: qsTr("Clear")
@@ -1748,8 +1748,8 @@ ApplicationWindow {
                 ? qsTr("Full bad-blocks scan?")
                 : qsTr("Quick fake-drive check?")
             subtitle: checkConfirm.mode === 1
-                ? qsTr("Writes two patterns across every sector — slow and exhaustive")
-                : qsTr("Writes a fingerprint at ~256 sample positions — finishes in seconds")
+                ? qsTr("Writes two patterns across every sector, slow and exhaustive")
+                : qsTr("Writes a fingerprint at ~256 sample positions, finishes in seconds")
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: app.startCheck(checkConfirm.mode)
@@ -1796,7 +1796,7 @@ ApplicationWindow {
             tint: "#0078D4"
             iconComponent: WindowsLogo { size: 24; tint: "white" }
             title: qsTr("Windows setup")
-            subtitle: qsTr("Optional install tweaks — written to autounattend.xml")
+            subtitle: qsTr("Optional install tweaks (written to autounattend.xml)")
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: confirmDialog.open()
@@ -1817,8 +1817,8 @@ ApplicationWindow {
                 width: setupScroll.availableWidth - 14
                 spacing: 10
             Label {
-                text: qsTr("Customize the installation below, or just press OK to skip — "
-                         + "every option is optional.")
+                text: qsTr("Customize the installation below, or just press OK to skip. "
+                         + "Every option is optional.")
                 color: palette.placeholderText
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -1828,7 +1828,7 @@ ApplicationWindow {
             Label { text: qsTr("Setup"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             WrapCheckBox {
-                text: qsTr("Bypass Windows 11 hardware checks — TPM, Secure Boot, RAM, Storage, CPU, Disk")
+                text: qsTr("Bypass Windows 11 hardware checks: TPM, Secure Boot, RAM, Storage, CPU, Disk")
                 checked: app.bypassTpm
                 onToggled: {
                     app.bypassTpm = checked
@@ -1876,7 +1876,7 @@ ApplicationWindow {
                     // and a long translated placeholder pushes the parent
                     // RowLayout past the dialog width.
                     Layout.minimumWidth: 0
-                    placeholderText: qsTr("Optional — e.g. VK7JG-NPHTM-C97JM-9MPGT-3V66T (Win 11 Pro)")
+                    placeholderText: qsTr("Optional, e.g. VK7JG-NPHTM-C97JM-9MPGT-3V66T (Win 11 Pro)")
                     text: app.productKey
                     onTextEdited: app.productKey = text
                 }
@@ -1893,7 +1893,7 @@ ApplicationWindow {
                     + "edition. This option drops a sources/ei.cfg on the USB that tells "
                     + "Setup to ignore the firmware key, so you can pick a different "
                     + "edition (Pro, Enterprise, …) from Setup's built-in edition picker. "
-                    + "Activation is a separate step — install in the chosen edition first, "
+                    + "Activation is a separate step. Install in the chosen edition first, "
                     + "then activate from inside Windows (e.g. with Microsoft Activation "
                     + "Scripts). Leave Product key empty above to get straight to the picker.")
             }
@@ -1909,11 +1909,11 @@ ApplicationWindow {
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Lets you create a *local* Windows account during first-boot setup, "
                     + "instead of being forced to sign in with (or create) a Microsoft account. Works on "
-                    + "every supported Windows version — Win 10, Win 11 pre-24H2, and Win 11 24H2+ all use "
+                    + "every supported Windows version: Win 10, Win 11 pre-24H2, and Win 11 24H2+ all use "
                     + "different mechanisms, this option applies whichever one is needed.")
             }
             WrapCheckBox {
-                text: qsTr("Disable network during OOBE — force local account on Win 11 24H2+")
+                text: qsTr("Disable network during OOBE: force local account on Win 11 24H2+")
                 checked: app.disableNetworkDuringOobe
                 onToggled: app.disableNetworkDuringOobe = checked
                 ToolTip.delay: 500
@@ -1942,7 +1942,7 @@ ApplicationWindow {
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Skips the OEM-registration / product-activation pages that appear "
                     + "during first boot on factory-restore images (Dell, HP, Lenovo). Has no effect on "
-                    + "clean Microsoft ISOs — there's no OEM page to hide.")
+                    + "clean Microsoft ISOs. There's no OEM page to hide.")
             }
             WrapCheckBox {
                 text: qsTr("Pre-answer the network-type prompt as \"Work\" (private/trusted)")
@@ -1951,7 +1951,7 @@ ApplicationWindow {
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Tells Windows the network you connect to during setup is "
-                    + "private / trusted — no 'Is this a home, work or public network?' prompt. The result "
+                    + "private / trusted, no 'Is this a home, work or public network?' prompt. The result "
                     + "is the same firewall profile a home or office LAN gets: file sharing and network "
                     + "discovery enabled. Pick this on a LAN you control; skip it on cafés / hotels.")
             }
@@ -1980,7 +1980,7 @@ ApplicationWindow {
                     // and a long translated placeholder pushes the parent
                     // RowLayout past the dialog width.
                     Layout.minimumWidth: 0
-                    placeholderText: qsTr("Optional — leave empty to keep the OOBE prompt")
+                    placeholderText: qsTr("Optional, leave empty to keep the OOBE prompt")
                     text: app.localAccount
                     onTextEdited: app.localAccount = text
                 }
@@ -1995,7 +1995,7 @@ ApplicationWindow {
                     // and a long translated placeholder pushes the parent
                     // RowLayout past the dialog width.
                     Layout.minimumWidth: 0
-                    placeholderText: qsTr("Optional — sets a password and enables one-shot auto-logon")
+                    placeholderText: qsTr("Optional, sets a password and enables one-shot auto-logon")
                     echoMode: TextInput.Password
                     text: app.localAccountPassword
                     onTextEdited: app.localAccountPassword = text
@@ -2015,7 +2015,7 @@ ApplicationWindow {
                     // and a long translated placeholder pushes the parent
                     // RowLayout past the dialog width.
                     Layout.minimumWidth: 0
-                    placeholderText: qsTr("Optional — up to 15 characters, no whitespace")
+                    placeholderText: qsTr("Optional, up to 15 characters, no whitespace")
                     text: app.computerName
                     onTextEdited: app.computerName = text
                 }
@@ -2054,7 +2054,7 @@ ApplicationWindow {
                     // and a long translated placeholder pushes the parent
                     // RowLayout past the dialog width.
                     Layout.minimumWidth: 0
-                    placeholderText: qsTr("Optional — e.g. en-US, fr-FR, de-DE")
+                    placeholderText: qsTr("Optional, e.g. en-US, fr-FR, de-DE")
                     text: app.locale
                     onTextEdited: app.locale = text
                 }
@@ -2109,7 +2109,7 @@ ApplicationWindow {
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Stops Windows 11 24H2+ from silently encrypting the system "
                     + "drive on first sign-in. Without this, recent installs auto-turn-on BitLocker "
-                    + "and the user is never asked — leaving anyone who later mounts the disk from "
+                    + "and the user is never asked, leaving anyone who later mounts the disk from "
                     + "Linux or another Windows install staring at an unreadable partition. "
                     + "Recommended for dual-boot, lab, and IT-imaged systems.")
             }
@@ -2153,12 +2153,12 @@ ApplicationWindow {
                 text: qsTr(
                     "<b>Applied machine-wide (HKLM Group Policy):</b><br>"
                     + "&nbsp;• News &amp; Interests feed (taskbar widget)<br>"
-                    + "&nbsp;• Consumer-feature ads — suggested Store apps, OEM-style inserts<br>"
+                    + "&nbsp;• Consumer-feature ads: suggested Store apps, OEM-style inserts<br>"
                     + "&nbsp;• Activity History sync to Microsoft<br>"
                     + "&nbsp;• Cortana in Search<br>"
                     + "&nbsp;• Windows Copilot service<br>"
-                    + "&nbsp;• Windows Recall — the rolling-screenshot AI history (Win 11 24H2+)<br>"
-                    + "&nbsp;• Diagnostic data — set to Required only<br>"
+                    + "&nbsp;• Windows Recall: the rolling-screenshot AI history (Win 11 24H2+)<br>"
+                    + "&nbsp;• Diagnostic data: set to Required only<br>"
                     + "<br>"
                     + "<b>Applied to the default user profile (inherited by every new account):</b><br>"
                     + "&nbsp;• Bing / web suggestions in Start &amp; Search<br>"
@@ -2222,24 +2222,24 @@ ApplicationWindow {
                 // Use the &#x5C; HTML entity — RichText renders it as `\`.
                 text: qsTr(
                     "Lands in <code>C:&#x5C;Users&#x5C;&lt;NewUser&gt;&#x5C;Desktop&#x5C;USBooty&#x5C;</code>:<br>"
-                    + "&nbsp;• <b>1-Win11Debloat.bat</b> — Raphire's debloat (debloat.raphi.re)<br>"
-                    + "&nbsp;• <b>2-ChrisTitus-Winutil.bat</b> — Chris Titus winutil, stable channel<br>"
-                    + "&nbsp;• <b>2.1-ChrisTitus-Winutil-Dev.bat</b> — same tool, dev channel<br>"
-                    + "&nbsp;• <b>3-Massgravel-Activator.bat</b> — Microsoft Activation Scripts (MAS)<br>"
-                    + "&nbsp;• <b>4-Remove-OneDrive.bat</b> — kill + uninstall OneDrive (x64 &amp; WoW64)<br>"
-                    + "&nbsp;• <b>5-OfficeTool.bat</b> — download OfficeTool runtime<br>"
-                    + "&nbsp;• <b>6-Install-Chocolatey.bat</b> — install Chocolatey (machine-wide, admin)<br>"
-                    + "&nbsp;• <b>7-Install-Scoop.bat</b> — install Scoop (per-user, no admin)<br>"
-                    + "&nbsp;• <b>8-Install-Winget.bat</b> — install / repair winget (asheroto)<br>"
-                    + "&nbsp;• <b>9-Remove-Windows-AI.bat</b> — strip Copilot / Recall / AI features (zoicware)<br>"
-                    + "&nbsp;• <b>10-Winhance.bat</b> — Winhance (debloat / privacy / optimise GUI)<br>"
-                    + "&nbsp;• <b>11-FR33THY-Ultimate.bat</b> — FR33THY's Ultimate gaming / latency tweaks<br>"
-                    + "&nbsp;• <b>12-Install-PowerToys.bat</b> — Microsoft PowerToys via winget<br>"
-                    + "&nbsp;• <b>13-Disable-FastStartup.bat</b> — clear HiberbootEnabled (dual-boot fix)<br>"
-                    + "&nbsp;• <b>14-Enable-LongPaths.bat</b> — set LongPathsEnabled=1 (developer)<br>"
-                    + "&nbsp;• <b>15-Install-VCRedist.bat</b> — VC++ Redistributable 2015-2022, x64 + x86<br>"
-                    + "&nbsp;• <b>16-Install-DirectX.bat</b> — legacy DirectX runtime (older games)<br>"
-                    + "&nbsp;• <b>17-Install-Browser.bat</b> — menu: Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc<br>"
+                    + "&nbsp;• <b>1-Win11Debloat.bat</b>: Raphire's debloat (debloat.raphi.re)<br>"
+                    + "&nbsp;• <b>2-ChrisTitus-Winutil.bat</b>: Chris Titus winutil, stable channel<br>"
+                    + "&nbsp;• <b>2.1-ChrisTitus-Winutil-Dev.bat</b>: same tool, dev channel<br>"
+                    + "&nbsp;• <b>3-Massgravel-Activator.bat</b>: Microsoft Activation Scripts (MAS)<br>"
+                    + "&nbsp;• <b>4-Remove-OneDrive.bat</b>: kill + uninstall OneDrive (x64 &amp; WoW64)<br>"
+                    + "&nbsp;• <b>5-OfficeTool.bat</b>: download OfficeTool runtime<br>"
+                    + "&nbsp;• <b>6-Install-Chocolatey.bat</b>: install Chocolatey (machine-wide, admin)<br>"
+                    + "&nbsp;• <b>7-Install-Scoop.bat</b>: install Scoop (per-user, no admin)<br>"
+                    + "&nbsp;• <b>8-Install-Winget.bat</b>: install / repair winget (asheroto)<br>"
+                    + "&nbsp;• <b>9-Remove-Windows-AI.bat</b>: strip Copilot / Recall / AI features (zoicware)<br>"
+                    + "&nbsp;• <b>10-Winhance.bat</b>: Winhance (debloat / privacy / optimise GUI)<br>"
+                    + "&nbsp;• <b>11-FR33THY-Ultimate.bat</b>: FR33THY's Ultimate gaming / latency tweaks<br>"
+                    + "&nbsp;• <b>12-Install-PowerToys.bat</b>: Microsoft PowerToys via winget<br>"
+                    + "&nbsp;• <b>13-Disable-FastStartup.bat</b>: clear HiberbootEnabled (dual-boot fix)<br>"
+                    + "&nbsp;• <b>14-Enable-LongPaths.bat</b>: set LongPathsEnabled=1 (developer)<br>"
+                    + "&nbsp;• <b>15-Install-VCRedist.bat</b>: VC++ Redistributable 2015-2022, x64 + x86<br>"
+                    + "&nbsp;• <b>16-Install-DirectX.bat</b>: legacy DirectX runtime (older games)<br>"
+                    + "&nbsp;• <b>17-Install-Browser.bat</b>: menu: Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc<br>"
                     + "<br>"
                     + "Each script fetches code from the public internet on first run.")
             }
@@ -2384,7 +2384,7 @@ ApplicationWindow {
             }
             Label {
                 text: app.method === 3 && app.ventoyUpdate
-                    ? qsTr("Ventoy will be updated — your existing ISOs on the data partition are kept.")
+                    ? qsTr("Ventoy will be updated. Your existing ISOs on the data partition are kept.")
                     : qsTr("All data on this device will be permanently erased.")
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2414,7 +2414,7 @@ ApplicationWindow {
             tint: palette.highlight
             iconGlyph: "ⓘ"
             title: qsTr("Device details")
-            subtitle: qsTr("Read-only — lsblk + udevadm output for the chosen device")
+            subtitle: qsTr("Read-only: lsblk + udevadm output for the chosen device")
         }
         standardButtons: Dialog.Close
         // The monospace TextArea only matters when the user has opened
@@ -2459,7 +2459,7 @@ ApplicationWindow {
             title: resultDialog.success ? qsTr("Finished") : qsTr("Failed")
             subtitle: resultDialog.success
                 ? qsTr("The device is ready to use.")
-                : qsTr("The job did not complete — see details below.")
+                : qsTr("The job did not complete. See details below.")
         }
         // Custom footer so the success case can offer an "Eject" action
         // alongside Close, without the standard-button reordering trickery.

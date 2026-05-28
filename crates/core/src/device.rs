@@ -29,13 +29,13 @@ pub struct DeviceInfo {
 
 impl DeviceInfo {
     /// A label for the device picker, e.g.
-    /// `SanDisk Ultra — 30.8 GB · USB 3.0 · /dev/sdb`.
+    /// `SanDisk Ultra · 30.8 GB · USB 3.0 · /dev/sdb`.
     ///
-    /// The em-dash separates a primary part (the model) from a detail part
-    /// (capacity, bus, node); the QML delegate splits on it to render the
-    /// two on separate rows.
+    /// A middle dot separates each field; the QML delegate splits on it and
+    /// renders the first part (the model) and the remaining detail
+    /// (capacity, bus, node) on separate rows.
     pub fn display(&self) -> String {
-        format!("{} — {}", self.model_name(), self.detail())
+        format!("{} · {}", self.model_name(), self.detail())
     }
 
     /// The model name, falling back to a placeholder when the kernel reports none.

@@ -109,7 +109,7 @@ fn compile_translations(dir: &Path) {
         })
         .unwrap_or_else(|| {
             panic!(
-                "lrelease6 not found on PATH or /usr/lib/qt6/bin — install \
+                "lrelease6 not found on PATH or /usr/lib/qt6/bin; install \
                  qt6-tools (Arch) / qttools-dev-tools (Debian/Ubuntu) to \
                  compile the translation .ts files into .qm before the qrc \
                  step embeds them."

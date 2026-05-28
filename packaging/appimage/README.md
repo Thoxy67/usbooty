@@ -40,7 +40,7 @@ on the host.
 A USB writer's whole job is to talk to the kernel about block devices,
 which means it has to run the host's `mkfs.*`, `udevadm`, `lsblk`,
 `pkexec`, etc. Bundling those inside the AppImage would mean shipping a
-full chroot — at which point a container is the right shape. The split
+full chroot, at which point a container is the right shape. The split
 usbooty actually uses is:
 
 * **Bundled**: the Qt runtime, the QML modules, the usbooty binaries.
@@ -50,7 +50,7 @@ usbooty actually uses is:
 
 * `pkexec` integration depends on the **host's** polkit reading the policy
   file. The AppImage installs it at first launch via the freedesktop
-  AppImage launch protocol on supported file managers — otherwise the
+  AppImage launch protocol on supported file managers; otherwise the
   policy is loaded ephemerally and the user gets one prompt per session
   instead of one persistent allow-rule.
 * SMART probes need either a setuid `smartctl` on the host or running

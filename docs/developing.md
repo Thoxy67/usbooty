@@ -24,8 +24,8 @@ into the binary at compile time via `include_str!`:
 ```
 crates/helper/src/
   debloat.reg              The Group-Policy + Default-user debloat
-                           profile imported by `unattend.rs`.
-  desktop_helpers/         The eleven `.bat` post-install helpers
+                           profile imported by the `unattend` module.
+  desktop_helpers/         The eighteen `.bat` post-install helpers
                            plus a README, dropped on the new user's
                            Desktop when the matching checkbox is on.
 ```

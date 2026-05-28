@@ -9,10 +9,10 @@ usbooty ships in two packaging formats:
 
 ## Which one should I use?
 
-* **AUR** — best experience on Arch / CachyOS / Manjaro: the polkit policy
+* **AUR**: best on Arch / CachyOS / Manjaro. The polkit policy
   is installed system-wide, optdepends pull in the formatters automatically
   on demand, and `pkexec` integration is native. `paru -S usbooty-git`.
-* **AppImage** — best for "I just want to try it" without installing
+* **AppImage**: best for "I just want to try it" without installing
   anything system-wide, or on distros that ship outdated Qt (Debian stable,
   RHEL). Single file, double-click to run. The host still needs the
   filesystem tools installed.

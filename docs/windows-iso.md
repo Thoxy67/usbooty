@@ -198,7 +198,7 @@ unplugged before first logon without breaking it.
 
 Each script is a right-click "Run as administrator" launcher with a
 `pause` at the end so the user sees the result. The bundle ships
-eleven scripts plus a README that explains each one in plain
+eighteen scripts plus a README that explains each one in plain
 English.
 
 | File                                 | What it does                                                         |
@@ -215,6 +215,12 @@ English.
 | `9-Remove-Windows-AI.bat`            | Strips Copilot, Recall, generative Paint / Notepad / Photos, AI Search and Cortana hooks via `zoicware/RemoveWindowsAI`. |
 | `10-Winhance.bat`                    | Winhance GUI for debloat / privacy / optimisation (`get.winhance.net`). |
 | `11-FR33THY-Ultimate.bat`            | FR33THY's Ultimate gaming / latency tweaks. Aggressive. Read upstream README first. |
+| `12-Install-PowerToys.bat`           | Microsoft PowerToys via winget (FancyZones, PowerRename, Run, etc.). Needs winget. |
+| `13-Disable-FastStartup.bat`         | Clears `HiberbootEnabled` so a dual-boot Linux can mount NTFS cleanly. Admin required. |
+| `14-Enable-LongPaths.bat`            | Sets `LongPathsEnabled=1` to lift the 260-character `MAX_PATH` limit. Admin; reboot recommended. |
+| `15-Install-VCRedist.bat`            | Visual C++ Redistributable 2015-2022, x64 and x86, via winget. |
+| `16-Install-DirectX.bat`             | Legacy DirectX runtime (D3DX, D3DCompiler, XAudio2) via winget. |
+| `17-Install-Browser.bat`             | Interactive menu: Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc. |
 
 Notes:
 

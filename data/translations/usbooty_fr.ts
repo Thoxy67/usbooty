@@ -10,10 +10,6 @@
         <translation>Travail en cours</translation>
     </message>
     <message>
-        <source>usbooty — Bootable USB Creator</source>
-        <translation type="vanished">usbooty — Créateur de clé USB amorçable</translation>
-    </message>
-    <message>
         <location filename="../../crates/gui/qml/main.qml" line="532"/>
         <source>Device</source>
         <translation>Périphérique</translation>
@@ -39,10 +35,6 @@
         <translation>?</translation>
     </message>
     <message>
-        <source>About usbooty</source>
-        <translation type="vanished">À propos d&apos;usbooty</translation>
-    </message>
-    <message>
         <location filename="../../crates/gui/qml/main.qml" line="556"/>
         <source>Force English</source>
         <translation>Forcer l&apos;anglais</translation>
@@ -54,8 +46,8 @@
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="619"/>
-        <source>USBooty scanned this ISO&apos;s signed EFI binaries against the Secure Boot revocation database (SBAT generations + the live UEFI Forum DBX update). One or more bootloaders are flagged as obsolete. UEFI firmware with current revocations will refuse to load them — try a newer ISO, or boot in legacy / non-Secure-Boot mode.</source>
-        <translation>USBooty a comparé les binaires EFI signés de cette ISO à la base de révocation Secure Boot (générations SBAT + la mise à jour DBX du UEFI Forum). Un ou plusieurs chargeurs d&apos;amorçage sont marqués comme obsolètes. Un micrologiciel UEFI à jour refusera de les charger — essayez une ISO plus récente, ou démarrez en mode hérité / sans Secure Boot.</translation>
+        <source>USBooty scanned this ISO&apos;s signed EFI binaries against the Secure Boot revocation database (SBAT generations + the live UEFI Forum DBX update). One or more bootloaders are flagged as obsolete. UEFI firmware with current revocations will refuse to load them. Try a newer ISO, or boot in legacy / non-Secure-Boot mode.</source>
+        <translation>USBooty a comparé les binaires EFI signés de cette ISO à la base de révocation Secure Boot (générations SBAT + la mise à jour DBX du UEFI Forum). Un ou plusieurs chargeurs d&apos;amorçage sont marqués comme obsolètes. Un micrologiciel UEFI à jour refusera de les charger. Essayez une ISO plus récente, ou démarrez en mode hérité / sans Secure Boot.</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="649"/>
@@ -79,8 +71,8 @@
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="665"/>
-        <source>Optional — Ventoy lets you drop ISOs onto the data partition later</source>
-        <translation>Facultative — Ventoy permet de déposer des ISO sur la partition de données plus tard</translation>
+        <source>Optional: Ventoy lets you drop ISOs onto the data partition later</source>
+        <translation>Facultative : Ventoy permet de déposer des ISO sur la partition de données plus tard</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="666"/>
@@ -129,8 +121,8 @@
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="769"/>
-        <source>Checksums skipped — click to compute every digest.</source>
-        <translation>Sommes ignorées — cliquez pour les calculer.</translation>
+        <source>Checksums skipped. Click to compute every digest.</source>
+        <translation>Sommes ignorées. Cliquez pour les calculer.</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="868"/>
@@ -159,8 +151,8 @@
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="942"/>
-        <source>Off by default — internal SATA/NVMe disks are filtered out so they cannot be picked by mistake. Enable only when you really want to target a fixed disk (lab, dual-boot stick, image dump).</source>
-        <translation>Désactivé par défaut — les disques SATA/NVMe internes sont filtrés pour éviter une sélection accidentelle. À activer uniquement si vous voulez vraiment cibler un disque fixe (labo, clé dual-boot, dump d&apos;image).</translation>
+        <source>Off by default. Internal SATA/NVMe disks are filtered out so they cannot be picked by mistake. Enable only when you really want to target a fixed disk (lab, dual-boot stick, image dump).</source>
+        <translation>Désactivé par défaut. Les disques SATA/NVMe internes sont filtrés pour éviter une sélection accidentelle. À activer uniquement si vous voulez vraiment cibler un disque fixe (labo, clé dual-boot, dump d&apos;image).</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="951"/>
@@ -194,24 +186,24 @@
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="973"/>
-        <source>DD — bit-for-bit copy of the ISO, no partitioning. Works for any isohybrid (most Linux ISOs).
+        <source>DD: bit-for-bit copy of the ISO, no partitioning. Works for any isohybrid (most Linux ISOs).
 
-Partition &amp; copy — USBooty creates a fresh partition table, formats it, and copies the ISO files. Required for Windows install media and for anything that needs persistence.
+Partition &amp; copy: USBooty creates a fresh partition table, formats it, and copies the ISO files. Required for Windows install media and for anything that needs persistence.
 
-Format only — wipe + new partition table, no ISO involved.
+Format only: wipe + new partition table, no ISO involved.
 
-Ventoy — install Ventoy so you can drop multiple ISOs on the data partition and pick one at boot.
+Ventoy: install Ventoy so you can drop multiple ISOs on the data partition and pick one at boot.
 
-FreeDOS — download the latest FreeDOS kernel + shell from upstream and build a self-contained bootable DOS stick (no ISO needed). Useful for BIOS flashing utilities and legacy DOS tools.</source>
-        <translation>DD — copie bit-à-bit de l&apos;ISO, sans partitionnement. Fonctionne pour tout isohybride (la plupart des ISO Linux).
+FreeDOS: download the latest FreeDOS kernel + shell from upstream and build a self-contained bootable DOS stick (no ISO needed). Useful for BIOS flashing utilities and legacy DOS tools.</source>
+        <translation>DD : copie bit-à-bit de l&apos;ISO, sans partitionnement. Fonctionne pour tout isohybride (la plupart des ISO Linux).
 
-Partitionner et copier — USBooty crée une nouvelle table de partitions, la formate et copie les fichiers de l&apos;ISO. Requis pour les médias d&apos;installation Windows et tout ce qui nécessite de la persistance.
+Partitionner et copier : USBooty crée une nouvelle table de partitions, la formate et copie les fichiers de l&apos;ISO. Requis pour les médias d&apos;installation Windows et tout ce qui nécessite de la persistance.
 
-Formater uniquement — effacement + nouvelle table de partitions, sans ISO.
+Formater uniquement : effacement + nouvelle table de partitions, sans ISO.
 
-Ventoy — installe Ventoy pour pouvoir déposer plusieurs ISO sur la partition de données et en choisir une au démarrage.
+Ventoy : installe Ventoy pour pouvoir déposer plusieurs ISO sur la partition de données et en choisir une au démarrage.
 
-FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et construit une clé USB DOS amorçable autonome (sans ISO). Utile pour les utilitaires de flashage de BIOS et les anciens outils DOS.</translation>
+FreeDOS : télécharge la dernière version du noyau et du shell FreeDOS et construit une clé USB DOS amorçable autonome (sans ISO). Utile pour les utilitaires de flashage de BIOS et les anciens outils DOS.</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="987"/>
@@ -255,8 +247,8 @@ FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et co
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1066"/>
-        <source>Will be written as “%1” — fits the chosen filesystem.</source>
-        <translation>Sera écrite comme « %1 » — compatible avec le système de fichiers choisi.</translation>
+        <source>Will be written as “%1” (fits the chosen filesystem).</source>
+        <translation>Sera écrite comme « %1 » (compatible avec le système de fichiers choisi).</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1068"/>
@@ -265,8 +257,8 @@ FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et co
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1075"/>
-        <source>Full format — erase the whole device first (slow)</source>
-        <translation>Formatage complet — efface tout le périphérique (lent)</translation>
+        <source>Full format: erase the whole device first (slow)</source>
+        <translation>Formatage complet : efface tout le périphérique (lent)</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1083"/>
@@ -275,8 +267,8 @@ FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et co
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1095"/>
-        <source>Split install.wim onto FAT32 (needs wimlib-imagex) — broader firmware support than UEFI:NTFS</source>
-        <translation>Découper install.wim sur FAT32 (nécessite wimlib-imagex) — meilleur support firmware que UEFI:NTFS</translation>
+        <source>Split install.wim onto FAT32 (needs wimlib-imagex): broader firmware support than UEFI:NTFS</source>
+        <translation>Découper install.wim sur FAT32 (nécessite wimlib-imagex) : meilleur support firmware que UEFI:NTFS</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1101"/>
@@ -285,8 +277,8 @@ FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et co
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1109"/>
-        <source>Verify after writing — read the data back and check it</source>
-        <translation>Vérifier après l&apos;écriture — relire et contrôler les données</translation>
+        <source>Verify after writing: read the data back and check it</source>
+        <translation>Vérifier après l&apos;écriture : relire et contrôler les données</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1116"/>
@@ -355,8 +347,8 @@ FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et co
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1215"/>
-        <source>Set the overlay to fill the device — uses every byte the chosen drive has left after the ISO and a small partition-table margin.</source>
-        <translation>Étend l&apos;overlay pour remplir le périphérique — utilise chaque octet restant après l&apos;ISO et une petite marge de table de partitions.</translation>
+        <source>Set the overlay to fill the device: uses every byte the chosen drive has left after the ISO and a small partition-table margin.</source>
+        <translation>Étend l&apos;overlay pour remplir le périphérique : utilise chaque octet restant après l&apos;ISO et une petite marge de table de partitions.</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1225"/>
@@ -365,8 +357,8 @@ FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et co
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1237"/>
-        <source>Slax writes changes directly into a folder on the data partition — no separate overlay partition is created.</source>
-        <translation>Slax écrit les modifications directement dans un dossier de la partition de données — aucune partition de superposition séparée n&apos;est créée.</translation>
+        <source>Slax writes changes directly into a folder on the data partition. No separate overlay partition is created.</source>
+        <translation>Slax écrit les modifications directement dans un dossier de la partition de données. Aucune partition de superposition séparée n&apos;est créée.</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1239"/>
@@ -444,153 +436,117 @@ FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et co
         <translation>Compressé (*.xz *.gz *.bz2 *.zst *.lzma *.zip *.Z)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1840"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1843"/>
         <source>Lets Windows 11 install on hardware that fails its requirements check: no TPM 2.0, Secure Boot disabled, less than 8 GB RAM, system drive smaller than 64 GB, an older / non-allowlisted CPU, or unusual disk geometry. Sets the six LabConfig registry flags during Setup. Has no effect on Windows 10 (which doesn&apos;t check any of these).</source>
         <translation>Permet d&apos;installer Windows 11 sur un matériel qui échoue le contrôle des prérequis : pas de TPM 2.0, Secure Boot désactivé, moins de 8 Go de RAM, disque système inférieur à 64 Go, CPU ancien / hors liste, ou géométrie de disque atypique. Écrit les six clés LabConfig pendant Setup. Sans effet sur Windows 10 (qui ne contrôle rien de tout cela).</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1851"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1854"/>
         <source>Pre-clicks &apos;Accept&apos; on the licence-agreement page that appears near the start of Windows Setup, so the install proceeds without waiting for the user to scroll and tick the box.</source>
         <translation>Pré-clique « Accepter » sur la page de licence affichée au début de Windows Setup, pour que l&apos;installation continue sans attendre que l&apos;utilisateur déroule et coche la case.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1861"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1864"/>
         <source>Installs the legacy .NET Framework 3.5 runtime alongside the modern .NET 4.x that Windows ships with by default. Many older desktop apps (games, accounting software, in-house tools from the 2000s) refuse to run without it. The files are pulled from the install media itself, so no internet is needed.</source>
         <translation>Installe le runtime hérité .NET Framework 3.5 à côté du .NET 4.x moderne que Windows fournit par défaut. Beaucoup d&apos;applications anciennes (jeux, logiciels de comptabilité, outils internes des années 2000) refusent de tourner sans. Les fichiers sont pris sur le média d&apos;installation lui-même, aucune connexion nécessaire.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1882"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1885"/>
         <source>Force the edition picker at boot (OEM PCs)</source>
         <translation>Forcer le sélecteur d&apos;édition au démarrage (PC OEM)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1887"/>
-        <source>On an OEM PC with a firmware MSDM/SLIC key (typical of laptops sold with Windows Home Familiale pre-installed), Setup normally reads that key on boot and silently installs the matching edition. This option drops a sources/ei.cfg on the USB that tells Setup to ignore the firmware key, so you can pick a different edition (Pro, Enterprise, …) from Setup&apos;s built-in edition picker. Activation is a separate step — install in the chosen edition first, then activate from inside Windows (e.g. with Microsoft Activation Scripts). Leave Product key empty above to get straight to the picker.</source>
+        <location filename="../../crates/gui/qml/main.qml" line="1890"/>
+        <source>On an OEM PC with a firmware MSDM/SLIC key (typical of laptops sold with Windows Home Familiale pre-installed), Setup normally reads that key on boot and silently installs the matching edition. This option drops a sources/ei.cfg on the USB that tells Setup to ignore the firmware key, so you can pick a different edition (Pro, Enterprise, …) from Setup&apos;s built-in edition picker. Activation is a separate step. Install in the chosen edition first, then activate from inside Windows (e.g. with Microsoft Activation Scripts). Leave Product key empty above to get straight to the picker.</source>
         <translation>Sur un PC OEM avec une clé firmware MSDM/SLIC (typique des portables vendus avec Windows Home Familiale pré-installé), Setup lit normalement cette clé au démarrage et installe silencieusement l&apos;édition correspondante. Cette option dépose un fichier sources/ei.cfg sur la clé USB qui demande à Setup d&apos;ignorer la clé firmware, ce qui permet de choisir une autre édition (Pro, Enterprise, …) via le sélecteur intégré à Setup. L&apos;activation est une étape distincte : installer l&apos;édition choisie d&apos;abord, puis activer depuis Windows (par exemple avec Microsoft Activation Scripts). Laissez la clé produit vide ci-dessus pour aller directement au sélecteur.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1907"/>
-        <source>Lets you create a *local* Windows account during first-boot setup, instead of being forced to sign in with (or create) a Microsoft account. Works on every supported Windows version — Win 10, Win 11 pre-24H2, and Win 11 24H2+ all use different mechanisms, this option applies whichever one is needed.</source>
-        <translation>Permet de créer un compte Windows *local* lors de la configuration au premier démarrage, plutôt que d&apos;être forcé de se connecter à (ou créer) un compte Microsoft. Fonctionne sur toutes les versions supportées — Win 10, Win 11 pré-24H2, et Win 11 24H2+ utilisent des mécanismes différents ; cette option applique celui qui convient.</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="1910"/>
+        <source>Lets you create a *local* Windows account during first-boot setup, instead of being forced to sign in with (or create) a Microsoft account. Works on every supported Windows version: Win 10, Win 11 pre-24H2, and Win 11 24H2+ all use different mechanisms, this option applies whichever one is needed.</source>
+        <translation>Permet de créer un compte Windows *local* lors de la configuration au premier démarrage, plutôt que d&apos;être forcé de se connecter à (ou créer) un compte Microsoft. Fonctionne sur toutes les versions supportées : Win 10, Win 11 pré-24H2, et Win 11 24H2+ utilisent des mécanismes différents ; cette option applique celui qui convient.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1918"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1921"/>
         <source>Hard-disables every network adapter for the duration of first-boot setup, so Windows physically can&apos;t reach Microsoft&apos;s servers to force online sign-in. Network is re-enabled automatically after the first sign-in. The most reliable local-account workaround on recent Win 11 builds where the regular &apos;skip Microsoft account&apos; flags are silently ignored.</source>
         <translation>Désactive de force toutes les cartes réseau pendant la configuration au premier démarrage, pour que Windows ne puisse physiquement pas atteindre les serveurs Microsoft et imposer une connexion en ligne. Le réseau est réactivé automatiquement après la première connexion. La solution de contournement la plus fiable pour un compte local sur les builds Win 11 récents où les options « ignorer le compte Microsoft » sont ignorées en silence.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1930"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1933"/>
         <source>Skips the &apos;Let&apos;s connect you to a network&apos; page during first boot. Useful if the machine already has wired Ethernet (no Wi-Fi password to enter), or if you&apos;d rather finish OOBE first and configure Wi-Fi inside Windows after.</source>
         <translation>Saute la page « Connectons-vous à un réseau » lors du premier démarrage. Utile si la machine a déjà l&apos;Ethernet filaire (pas de mot de passe Wi-Fi à saisir), ou si vous préférez finir l&apos;OOBE d&apos;abord et configurer le Wi-Fi dans Windows ensuite.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1940"/>
-        <source>Skips the OEM-registration / product-activation pages that appear during first boot on factory-restore images (Dell, HP, Lenovo). Has no effect on clean Microsoft ISOs — there&apos;s no OEM page to hide.</source>
-        <translation>Saute les pages d&apos;enregistrement OEM / activation produit qui apparaissent au premier démarrage sur les images de restauration usine (Dell, HP, Lenovo). Sans effet sur les ISO Microsoft propres — il n&apos;y a aucune page OEM à cacher.</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="1943"/>
+        <source>Skips the OEM-registration / product-activation pages that appear during first boot on factory-restore images (Dell, HP, Lenovo). Has no effect on clean Microsoft ISOs. There&apos;s no OEM page to hide.</source>
+        <translation>Saute les pages d&apos;enregistrement OEM / activation produit qui apparaissent au premier démarrage sur les images de restauration usine (Dell, HP, Lenovo). Sans effet sur les ISO Microsoft propres. Il n&apos;y a aucune page OEM à cacher.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1950"/>
-        <source>Tells Windows the network you connect to during setup is private / trusted — no &apos;Is this a home, work or public network?&apos; prompt. The result is the same firewall profile a home or office LAN gets: file sharing and network discovery enabled. Pick this on a LAN you control; skip it on cafés / hotels.</source>
-        <translation>Indique à Windows que le réseau utilisé pendant la configuration est privé / de confiance — pas d&apos;invite « Est-ce un réseau domestique, professionnel ou public ? ». Résultat : le même profil pare-feu qu&apos;un LAN domestique ou de bureau (partage de fichiers et découverte réseau activés). À choisir sur un LAN que vous maîtrisez ; à éviter sur café / hôtel.</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="1953"/>
+        <source>Tells Windows the network you connect to during setup is private / trusted, no &apos;Is this a home, work or public network?&apos; prompt. The result is the same firewall profile a home or office LAN gets: file sharing and network discovery enabled. Pick this on a LAN you control; skip it on cafés / hotels.</source>
+        <translation>Indique à Windows que le réseau utilisé pendant la configuration est privé / de confiance, pas d&apos;invite « Est-ce un réseau domestique, professionnel ou public ? ». Résultat : le même profil pare-feu qu&apos;un LAN domestique ou de bureau (partage de fichiers et découverte réseau activés). À choisir sur un LAN que vous maîtrisez ; à éviter sur café / hôtel.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1961"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1964"/>
         <source>Pre-selects the most privacy-conscious answers on the OOBE &apos;Choose privacy settings for your device&apos; screen: minimum required diagnostic data, no inking &amp; typing telemetry, no advertising ID, no tailored experiences, no Find-my-device. Equivalent to clicking &apos;No&apos; on every toggle and submitting.</source>
         <translation>Pré-sélectionne les réponses les plus respectueuses de la vie privée sur la page OOBE « Choisissez les paramètres de confidentialité » : données de diagnostic au minimum requis, pas de télémétrie d&apos;écriture / frappe, pas d&apos;identifiant publicitaire, pas d&apos;expériences personnalisées, pas de Localiser mon appareil. Équivalent à cliquer « Non » sur chaque commutateur puis valider.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2024"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2027"/>
         <source>Random name</source>
         <translation>Nom aléatoire</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2039"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2042"/>
         <source>Generate a random PC-XXXXXX name. Useful when you don&apos;t care what the host is called and just want something unique.</source>
         <translation>Générer un nom aléatoire au format PC-XXXXXX. Pratique quand le nom de la machine vous est égal et qu&apos;il vous faut juste quelque chose d&apos;unique.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2107"/>
-        <source>Stops Windows 11 24H2+ from silently encrypting the system drive on first sign-in. Without this, recent installs auto-turn-on BitLocker and the user is never asked — leaving anyone who later mounts the disk from Linux or another Windows install staring at an unreadable partition. Recommended for dual-boot, lab, and IT-imaged systems.</source>
-        <translation>Empêche Windows 11 24H2+ de chiffrer silencieusement le disque système à la première connexion. Sans ce réglage, les installations récentes activent BitLocker automatiquement sans demander à l&apos;utilisateur — laissant ensuite quiconque monte le disque depuis Linux ou un autre Windows face à une partition illisible. Recommandé pour dual-boot, laboratoire et systèmes imagés par l&apos;IT.</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="2110"/>
+        <source>Stops Windows 11 24H2+ from silently encrypting the system drive on first sign-in. Without this, recent installs auto-turn-on BitLocker and the user is never asked, leaving anyone who later mounts the disk from Linux or another Windows install staring at an unreadable partition. Recommended for dual-boot, lab, and IT-imaged systems.</source>
+        <translation>Empêche Windows 11 24H2+ de chiffrer silencieusement le disque système à la première connexion. Sans ce réglage, les installations récentes activent BitLocker automatiquement sans demander à l&apos;utilisateur, laissant ensuite quiconque monte le disque depuis Linux ou un autre Windows face à une partition illisible. Recommandé pour dual-boot, laboratoire et systèmes imagés par l&apos;IT.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2119"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2122"/>
         <source>Lets older UEFI firmware boot recent Windows installers that are signed by Microsoft&apos;s new &apos;Windows UEFI CA 2023&apos; chain. If your motherboard hasn&apos;t received the new CA via Windows Update yet (common on workstations / servers that don&apos;t run Windows), Secure-Boot will otherwise refuse the install. Needs wimlib-imagex on the host; the option silently no-ops on older Windows ISOs.</source>
         <translation>Permet à un firmware UEFI ancien de démarrer les installateurs Windows récents signés par la nouvelle chaîne « Windows UEFI CA 2023 » de Microsoft. Si votre carte-mère n&apos;a pas encore reçu la nouvelle CA via Windows Update (fréquent sur les stations / serveurs qui ne tournent pas sous Windows), Secure Boot refusera sinon l&apos;installation. Requiert wimlib-imagex sur l&apos;hôte ; l&apos;option est silencieusement sans effet sur les anciennes ISO Windows.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2132"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2135"/>
         <source>Turns off the Windows &apos;features&apos; most people uninstall by hand: Cortana voice assistant, Copilot, Recall (the AI screenshot history), the News &amp; Interests taskbar widget, Bing / web suggestions in Start search, lockscreen ads + &apos;suggested&apos; apps + suggested toast notifications, the advertising ID, tailored experiences, online speech model downloads, the Phone-Link prompt, and the Feedback-Hub frequency popups. Telemetry is knocked down to the minimum the OS still requires. Applied both machine-wide and for every new user account. Win-11-only entries silently no-op on Win 10. Click the box again to see the full per-item list.</source>
         <translation>Désactive les « fonctionnalités » Windows que la plupart des gens désinstallent à la main : assistant vocal Cortana, Copilot, Recall (l&apos;historique de captures d&apos;écran IA), le widget Actualités &amp; Intérêts dans la barre des tâches, les suggestions Bing / web dans la recherche du menu Démarrer, les publicités sur l&apos;écran de verrouillage + applis « suggérées » + notifications toast suggérées, l&apos;identifiant publicitaire, les expériences personnalisées, les téléchargements de modèles de reconnaissance vocale en ligne, l&apos;invite Lien avec le Téléphone, et les pop-ups du Hub de commentaires. La télémétrie est réduite au strict minimum requis par l&apos;OS. Appliqué à l&apos;échelle de la machine et pour chaque nouveau compte utilisateur. Les entrées Win 11 seulement sont silencieusement sans effet sur Win 10. Cliquez à nouveau sur la case pour voir la liste détaillée.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2183"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2186"/>
         <source>Post-install desktop helpers</source>
         <translation>Outils post-installation sur le Bureau</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2190"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2193"/>
         <source>Drop a USBooty folder on the user&apos;s Desktop with ready-to-run scripts</source>
         <translation>Déposer un dossier USBooty sur le Bureau de l&apos;utilisateur avec des scripts prêts à l&apos;emploi</translation>
     </message>
     <message>
-        <source>After install, the user finds a USBooty folder on their Desktop with eleven right-click → &quot;Run as administrator&quot; .bat scripts: Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), an OneDrive remover, an OfficeTool downloader, one-click installers for Chocolatey, Scoop and winget, a Windows-AI stripper (Copilot / Recall / generative Paint+Notepad), Winhance and FR33THY&apos;s Ultimate gaming/latency tweaks. The folder is copied to the Default user profile during Windows setup, so every account created at OOBE inherits it.</source>
-        <translation type="vanished">Après installation, l&apos;utilisateur trouve un dossier USBooty sur son Bureau contenant onze scripts .bat à exécuter en clic-droit → « Exécuter en tant qu&apos;administrateur » : Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), un désinstalleur OneDrive, un téléchargeur OfficeTool, des installeurs en un clic pour Chocolatey, Scoop et winget, un outil de suppression des composants IA de Windows (Copilot / Recall / Paint+Bloc-notes génératifs), Winhance et les optimisations jeu/latence Ultimate de FR33THY. Le dossier est copié dans le profil utilisateur par défaut pendant l&apos;installation de Windows, de sorte que tout compte créé pendant l&apos;OOBE en hérite.</translation>
-    </message>
-    <message>
-        <source>Lands in &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NewUser&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt;:&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — Raphire&apos;s debloat (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, stable channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — same tool, dev channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — kill + uninstall OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — download OfficeTool runtime&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — install Chocolatey (machine-wide, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — install Scoop (per-user, no admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; — install / repair winget (asheroto)&lt;br&gt;&amp;nbsp;• &lt;b&gt;9-Remove-Windows-AI.bat&lt;/b&gt; — strip Copilot / Recall / AI features (zoicware)&lt;br&gt;&amp;nbsp;• &lt;b&gt;10-Winhance.bat&lt;/b&gt; — Winhance (debloat / privacy / optimise GUI)&lt;br&gt;&amp;nbsp;• &lt;b&gt;11-FR33THY-Ultimate.bat&lt;/b&gt; — FR33THY&apos;s Ultimate gaming / latency tweaks&lt;br&gt;&lt;br&gt;Each script fetches code from the public internet on first run.</source>
-        <translation type="vanished">Se place dans &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NouvelUtilisateur&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt; :&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — debloat de Raphire (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, canal stable&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — même outil, canal dev&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — arrêt + désinstallation de OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — téléchargement du runtime OfficeTool&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — installer Chocolatey (machine entière, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — installer Scoop (par utilisateur, sans admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; — installer / réparer winget (asheroto)&lt;br&gt;&amp;nbsp;• &lt;b&gt;9-Remove-Windows-AI.bat&lt;/b&gt; — supprimer Copilot / Recall / fonctions IA (zoicware)&lt;br&gt;&amp;nbsp;• &lt;b&gt;10-Winhance.bat&lt;/b&gt; — Winhance (interface debloat / vie privée / optimisations)&lt;br&gt;&amp;nbsp;• &lt;b&gt;11-FR33THY-Ultimate.bat&lt;/b&gt; — Ultimate de FR33THY (optimisations jeu / latence)&lt;br&gt;&lt;br&gt;Chaque script récupère du code depuis l&apos;Internet public lors de sa première exécution.</translation>
-    </message>
-    <message>
-        <source>After install, the user finds a USBooty folder on their Desktop with ten right-click → &quot;Run as administrator&quot; .bat scripts: Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), an OneDrive remover, an OfficeTool downloader, one-click installers for Chocolatey, Scoop and winget, a Windows-AI stripper (Copilot / Recall / generative Paint+Notepad) and Winhance. The folder is copied to the Default user profile during Windows setup, so every account created at OOBE inherits it.</source>
-        <translation type="vanished">Après installation, l&apos;utilisateur trouve un dossier USBooty sur son Bureau contenant dix scripts .bat à exécuter en clic-droit → « Exécuter en tant qu&apos;administrateur » : Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), un désinstalleur OneDrive, un téléchargeur OfficeTool, des installeurs en un clic pour Chocolatey, Scoop et winget, un outil de suppression des composants IA de Windows (Copilot / Recall / Paint+Bloc-notes génératifs) et Winhance. Le dossier est copié dans le profil utilisateur par défaut pendant l&apos;installation de Windows, de sorte que tout compte créé pendant l&apos;OOBE en hérite.</translation>
-    </message>
-    <message>
-        <source>Lands in &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NewUser&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt;:&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — Raphire&apos;s debloat (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, stable channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — same tool, dev channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — kill + uninstall OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — download OfficeTool runtime&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — install Chocolatey (machine-wide, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — install Scoop (per-user, no admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; — install / repair winget (asheroto)&lt;br&gt;&amp;nbsp;• &lt;b&gt;9-Remove-Windows-AI.bat&lt;/b&gt; — strip Copilot / Recall / AI features (zoicware)&lt;br&gt;&amp;nbsp;• &lt;b&gt;10-Winhance.bat&lt;/b&gt; — Winhance (debloat / privacy / optimise GUI)&lt;br&gt;&lt;br&gt;Each script fetches code from the public internet on first run.</source>
-        <translation type="vanished">Se place dans &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NouvelUtilisateur&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt; :&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — debloat de Raphire (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, canal stable&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — même outil, canal dev&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — arrêt + désinstallation de OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — téléchargement du runtime OfficeTool&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — installer Chocolatey (machine entière, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — installer Scoop (par utilisateur, sans admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; — installer / réparer winget (asheroto)&lt;br&gt;&amp;nbsp;• &lt;b&gt;9-Remove-Windows-AI.bat&lt;/b&gt; — supprimer Copilot / Recall / fonctions IA (zoicware)&lt;br&gt;&amp;nbsp;• &lt;b&gt;10-Winhance.bat&lt;/b&gt; — Winhance (interface debloat / vie privée / optimisations)&lt;br&gt;&lt;br&gt;Chaque script récupère du code depuis l&apos;Internet public lors de sa première exécution.</translation>
-    </message>
-    <message>
-        <source>After install, the user finds a USBooty folder on their Desktop with nine right-click → &quot;Run as administrator&quot; .bat scripts: Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), an OneDrive remover, an OfficeTool downloader, one-click installers for Chocolatey, Scoop and winget, and a Windows-AI stripper (Copilot / Recall / generative Paint+Notepad). The folder is copied to the Default user profile during Windows setup, so every account created at OOBE inherits it.</source>
-        <translation type="vanished">Après installation, l&apos;utilisateur trouve un dossier USBooty sur son Bureau contenant neuf scripts .bat à exécuter en clic-droit → « Exécuter en tant qu&apos;administrateur » : Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), un désinstalleur OneDrive, un téléchargeur OfficeTool, des installeurs en un clic pour Chocolatey, Scoop et winget, et un outil de suppression des composants IA de Windows (Copilot / Recall / Paint+Bloc-notes génératifs). Le dossier est copié dans le profil utilisateur par défaut pendant l&apos;installation de Windows, de sorte que tout compte créé pendant l&apos;OOBE en hérite.</translation>
-    </message>
-    <message>
-        <source>Lands in &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NewUser&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt;:&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — Raphire&apos;s debloat (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, stable channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — same tool, dev channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — kill + uninstall OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — download OfficeTool runtime&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — install Chocolatey (machine-wide, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — install Scoop (per-user, no admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; — install / repair winget (asheroto)&lt;br&gt;&amp;nbsp;• &lt;b&gt;9-Remove-Windows-AI.bat&lt;/b&gt; — strip Copilot / Recall / AI features (zoicware)&lt;br&gt;&lt;br&gt;Each script fetches code from the public internet on first run.</source>
-        <translation type="vanished">Se place dans &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NouvelUtilisateur&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt; :&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — debloat de Raphire (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, canal stable&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — même outil, canal dev&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — arrêt + désinstallation de OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — téléchargement du runtime OfficeTool&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — installer Chocolatey (machine entière, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — installer Scoop (par utilisateur, sans admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; — installer / réparer winget (asheroto)&lt;br&gt;&amp;nbsp;• &lt;b&gt;9-Remove-Windows-AI.bat&lt;/b&gt; — supprimer Copilot / Recall / fonctions IA (zoicware)&lt;br&gt;&lt;br&gt;Chaque script récupère du code depuis l&apos;Internet public lors de sa première exécution.</translation>
-    </message>
-    <message>
-        <source>After install, the user finds a USBooty folder on their Desktop with seven right-click → &quot;Run as administrator&quot; .bat scripts: Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), an OneDrive remover, an OfficeTool downloader, plus one-click installers for Chocolatey and Scoop. The folder is copied to the Default user profile during Windows setup, so every account created at OOBE inherits it.</source>
-        <translation type="vanished">Après installation, l&apos;utilisateur trouve un dossier USBooty sur son Bureau contenant sept scripts .bat à exécuter en clic-droit → « Exécuter en tant qu&apos;administrateur » : Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), un désinstalleur OneDrive, un téléchargeur OfficeTool, plus des installeurs en un clic pour Chocolatey et Scoop. Le dossier est copié dans le profil utilisateur par défaut pendant l&apos;installation de Windows, de sorte que tout compte créé pendant l&apos;OOBE en hérite.</translation>
-    </message>
-    <message>
-        <source>Lands in &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NewUser&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt;:&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — Raphire&apos;s debloat (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, stable channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — same tool, dev channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — kill + uninstall OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — download OfficeTool runtime&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — install Chocolatey (machine-wide, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — install Scoop (per-user, no admin)&lt;br&gt;&lt;br&gt;Each script fetches code from the public internet on first run.</source>
-        <translation type="vanished">Se place dans &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NouvelUtilisateur&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt; :&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — debloat de Raphire (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, canal stable&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — même outil, canal dev&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — arrêt + désinstallation de OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — téléchargement du runtime OfficeTool&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — installer Chocolatey (machine entière, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — installer Scoop (par utilisateur, sans admin)&lt;br&gt;&lt;br&gt;Chaque script récupère du code depuis l&apos;Internet public lors de sa première exécution.</translation>
-    </message>
-    <message>
-        <source>After install, the user finds a USBooty folder on their Desktop with five right-click → &quot;Run as administrator&quot; .bat scripts: Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), an OneDrive remover, and an OfficeTool downloader. The folder is copied to the Default user profile during Windows setup, so every account created at OOBE inherits it.</source>
-        <translation type="vanished">Après installation, l&apos;utilisateur trouve un dossier USBooty sur son Bureau contenant cinq scripts .bat à exécuter en clic-droit → « Exécuter en tant qu&apos;administrateur » : Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), un désinstalleur OneDrive et un téléchargeur OfficeTool. Le dossier est copié dans le profil utilisateur par défaut pendant l&apos;installation de Windows, de sorte que tout compte créé pendant l&apos;OOBE en hérite.</translation>
-    </message>
-    <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2554"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2557"/>
         <source>Source</source>
         <translation>Source</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2572"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2575"/>
         <source>DD raw / partition+copy / format / Ventoy / FreeDOS · FAT16-32, NTFS, exFAT, UDF, ext2/3/4, Btrfs, XFS, F2FS · Linux persistence · Windows 11 setup customisation · BLAKE3 verify · SBAT + DBX revocation · SMART probe.</source>
         <translation>DD brut / partition+copie / formatage / Ventoy / FreeDOS · FAT16-32, NTFS, exFAT, UDF, ext2/3/4, Btrfs, XFS, F2FS · persistance Linux · personnalisation de l&apos;installation Windows 11 · vérification BLAKE3 · révocation SBAT + DBX · sonde SMART.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2584"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2587"/>
         <source>Docs</source>
         <translation>Documentation</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2594"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2597"/>
         <source>Source code</source>
         <translation>Code source</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2603"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2606"/>
         <source>Report an issue</source>
         <translation>Signaler un problème</translation>
     </message>
@@ -601,8 +557,8 @@ FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et co
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="39"/>
-        <source>USBooty — Bootable USB Creator</source>
-        <translation>USBooty — Créateur de clé USB amorçable</translation>
+        <source>USBooty: Bootable USB Creator</source>
+        <translation>USBooty : Créateur de clé USB amorçable</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="551"/>
@@ -615,13 +571,9 @@ FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et co
         <translation>Toujours afficher le journal d&apos;activité</translation>
     </message>
     <message>
-        <source>usbooty scanned this ISO&apos;s signed EFI binaries against the Secure Boot revocation database (SBAT generations + the live UEFI Forum DBX update). One or more bootloaders are flagged as obsolete. UEFI firmware with current revocations will refuse to load them — try a newer ISO, or boot in legacy / non-Secure-Boot mode.</source>
-        <translation type="vanished">usbooty a comparé les binaires EFI signés de cette ISO à la base de révocations Secure Boot (générations SBAT + mise à jour DBX en direct du UEFI Forum). Un ou plusieurs chargeurs sont marqués obsolètes. Les firmwares UEFI à jour refuseront de les charger — utilisez une ISO plus récente, ou démarrez en mode legacy / Secure Boot désactivé.</translation>
-    </message>
-    <message>
         <location filename="../../crates/gui/qml/main.qml" line="664"/>
-        <source>Not used — FreeDOS files are downloaded from upstream</source>
-        <translation>Non utilisée — les fichiers FreeDOS sont téléchargés depuis l&apos;amont</translation>
+        <source>Not used: FreeDOS files are downloaded from upstream</source>
+        <translation>Non utilisée : les fichiers FreeDOS sont téléchargés depuis l&apos;amont</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="672"/>
@@ -637,26 +589,6 @@ FreeDOS — télécharge la dernière version du noyau et du shell FreeDOS et co
         <location filename="../../crates/gui/qml/main.qml" line="968"/>
         <source>FreeDOS bootable USB</source>
         <translation>USB amorçable FreeDOS</translation>
-    </message>
-    <message>
-        <source>DD — bit-for-bit copy of the ISO, no partitioning. Works for any isohybrid (most Linux ISOs).
-
-Partition &amp; copy — usbooty creates a fresh partition table, formats it, and copies the ISO files. Required for Windows install media and for anything that needs persistence.
-
-Format only — wipe + new partition table, no ISO involved.
-
-Ventoy — install Ventoy so you can drop multiple ISOs on the data partition and pick one at boot.
-
-FreeDOS — download the latest FreeDOS kernel + shell from upstream and build a self-contained bootable DOS stick (no ISO needed). Useful for BIOS flashing utilities and legacy DOS tools.</source>
-        <translation type="vanished">DD — copie bit à bit de l&apos;ISO, sans partitionnement. Fonctionne avec tout isohybride (la plupart des ISO Linux).
-
-Partitionnement &amp; copie — usbooty crée une nouvelle table de partitions, la formate et copie les fichiers de l&apos;ISO. Requis pour les supports d&apos;installation Windows et pour toute persistance.
-
-Formatage seul — efface + nouvelle table de partitions, sans ISO.
-
-Ventoy — installe Ventoy : déposez plusieurs ISO sur la partition de données et choisissez au démarrage.
-
-FreeDOS — télécharge la dernière version du noyau + du shell FreeDOS depuis l&apos;amont et construit une clé DOS autonome amorçable (sans ISO). Utile pour les utilitaires de flash BIOS et les outils DOS historiques.</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1018"/>
@@ -677,27 +609,27 @@ FreeDOS — télécharge la dernière version du noyau + du shell FreeDOS depuis
         <location filename="../../crates/gui/qml/main.qml" line="1028"/>
         <source>How the disk is laid out for the firmware that boots it.
 
-• GPT (UEFI) — modern default. Boots only on UEFI firmware. Required for disks larger than 2 TiB and for more than 4 partitions.
+• GPT (UEFI): modern default. Boots only on UEFI firmware. Required for disks larger than 2 TiB and for more than 4 partitions.
 
-• MBR (BIOS) — legacy 1980s table. Boots only on BIOS / CSM. Pick this when the target PC&apos;s firmware truly is BIOS-only.
+• MBR (BIOS): legacy 1980s table. Boots only on BIOS / CSM. Pick this when the target PC&apos;s firmware truly is BIOS-only.
 
-• MBR (BIOS+UEFI) — same on-disk layout as MBR, plus a bootable FAT partition with /EFI/BOOT/BOOTx64.EFI so UEFI firmware finds it via the fallback path. Simplest dual-firmware stick.
+• MBR (BIOS+UEFI): same on-disk layout as MBR, plus a bootable FAT partition with /EFI/BOOT/BOOTx64.EFI so UEFI firmware finds it via the fallback path. Simplest dual-firmware stick.
 
-• Hybrid MBR+GPT (BIOS+UEFI) — real GPT + a synthesised MBR mirror of the data partition (Apple-style). Maximum compatibility, but some buggy firmwares dislike hybrid MBRs entirely. Use only if MBR(BIOS+UEFI) doesn&apos;t boot on a specific machine.</source>
+• Hybrid MBR+GPT (BIOS+UEFI): real GPT + a synthesised MBR mirror of the data partition (Apple-style). Maximum compatibility, but some buggy firmwares dislike hybrid MBRs entirely. Use only if MBR(BIOS+UEFI) doesn&apos;t boot on a specific machine.</source>
         <translation>Détermine la disposition disque utilisée par le firmware qui démarre.
 
-• GPT (UEFI) — défaut moderne. Démarre uniquement sur firmware UEFI. Indispensable au-delà de 2 Tio et pour plus de 4 partitions.
+• GPT (UEFI) : défaut moderne. Démarre uniquement sur firmware UEFI. Indispensable au-delà de 2 Tio et pour plus de 4 partitions.
 
-• MBR (BIOS) — table héritée des années 1980. Démarre uniquement sur BIOS / CSM. À choisir si la machine cible n&apos;a vraiment qu&apos;un firmware BIOS.
+• MBR (BIOS) : table héritée des années 1980. Démarre uniquement sur BIOS / CSM. À choisir si la machine cible n&apos;a vraiment qu&apos;un firmware BIOS.
 
-• MBR (BIOS+UEFI) — même disposition disque que MBR, avec en plus une partition FAT amorçable contenant /EFI/BOOT/BOOTx64.EFI pour que l&apos;UEFI la trouve par le chemin de secours. Solution la plus simple pour une clé double-firmware.
+• MBR (BIOS+UEFI) : même disposition disque que MBR, avec en plus une partition FAT amorçable contenant /EFI/BOOT/BOOTx64.EFI pour que l&apos;UEFI la trouve par le chemin de secours. Solution la plus simple pour une clé double-firmware.
 
-• MBR hybride+GPT (BIOS+UEFI) — vrai GPT + un MBR synthétisé miroir de la partition de données (à la Apple). Compatibilité maximale, mais certains firmwares bogués refusent les MBR hybrides. À n&apos;utiliser que si MBR (BIOS+UEFI) ne démarre pas sur une machine particulière.</translation>
+• MBR hybride+GPT (BIOS+UEFI) : vrai GPT + un MBR synthétisé miroir de la partition de données (à la Apple). Compatibilité maximale, mais certains firmwares bogués refusent les MBR hybrides. À n&apos;utiliser que si MBR (BIOS+UEFI) ne démarre pas sur une machine particulière.</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1230"/>
-        <source>Creates /slax/changes/ on the data partition and patches the kernel command line with `perch`, so Slax saves your edits straight back into the changes folder on shutdown. No separate persistence partition is made — Slax just writes into the data partition until it fills.</source>
-        <translation>Crée /slax/changes/ sur la partition de données et ajoute `perch` à la ligne de commande du noyau, pour que Slax enregistre vos modifications directement dans ce dossier à l&apos;arrêt. Aucune partition de persistance séparée n&apos;est créée — Slax écrit dans la partition de données jusqu&apos;à ce qu&apos;elle soit pleine.</translation>
+        <source>Creates /slax/changes/ on the data partition and patches the kernel command line with `perch`, so Slax saves your edits straight back into the changes folder on shutdown. No separate persistence partition is made. Slax just writes into the data partition until it fills.</source>
+        <translation>Crée /slax/changes/ sur la partition de données et ajoute `perch` à la ligne de commande du noyau, pour que Slax enregistre vos modifications directement dans ce dossier à l&apos;arrêt. Aucune partition de persistance séparée n&apos;est créée. Slax écrit dans la partition de données jusqu&apos;à ce qu&apos;elle soit pleine.</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1261"/>
@@ -721,8 +653,8 @@ FreeDOS — télécharge la dernière version du noyau + du shell FreeDOS depuis
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1301"/>
-        <source>Ask the running helper to stop. The current sector finishes writing, then the partition table is left in whatever state the helper had got to — expect a partially-written drive.</source>
-        <translation>Demande au helper en cours d&apos;exécution de s&apos;arrêter. Le secteur en cours d&apos;écriture est terminé, puis la table de partitions reste dans l&apos;état où le helper en était — attendez-vous à un disque partiellement écrit.</translation>
+        <source>Ask the running helper to stop. The current sector finishes writing, then the partition table is left in whatever state the helper had got to. Expect a partially-written drive.</source>
+        <translation>Demande au helper en cours d&apos;exécution de s&apos;arrêter. Le secteur en cours d&apos;écriture est terminé, puis la table de partitions reste dans l&apos;état où le helper en était. Attendez-vous à un disque partiellement écrit.</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1305"/>
@@ -741,8 +673,8 @@ FreeDOS — télécharge la dernière version du noyau + du shell FreeDOS depuis
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1523"/>
-        <source>Write the current activity log to a text file. Useful for bug reports — attach the file instead of pasting in the panel.</source>
-        <translation>Écrit le journal d&apos;activité courant dans un fichier texte. Utile pour les rapports de bugs — joignez le fichier plutôt que de coller le contenu du panneau.</translation>
+        <source>Write the current activity log to a text file. Useful for bug reports. Attach the file instead of pasting in the panel.</source>
+        <translation>Écrit le journal d&apos;activité courant dans un fichier texte. Utile pour les rapports de bugs. Joignez le fichier plutôt que de coller le contenu du panneau.</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1536"/>
@@ -793,13 +725,13 @@ FreeDOS — télécharge la dernière version du noyau + du shell FreeDOS depuis
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1751"/>
-        <source>Writes two patterns across every sector — slow and exhaustive</source>
-        <translation>Écrit deux motifs sur chaque secteur — lent et exhaustif</translation>
+        <source>Writes two patterns across every sector, slow and exhaustive</source>
+        <translation>Écrit deux motifs sur chaque secteur, lent et exhaustif</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1752"/>
-        <source>Writes a fingerprint at ~256 sample positions — finishes in seconds</source>
-        <translation>Écrit une empreinte à ~256 positions d&apos;échantillonnage — termine en quelques secondes</translation>
+        <source>Writes a fingerprint at ~256 sample positions, finishes in seconds</source>
+        <translation>Écrit une empreinte à ~256 positions d&apos;échantillonnage, termine en quelques secondes</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1760"/>
@@ -813,241 +745,233 @@ FreeDOS — télécharge la dernière version du noyau + du shell FreeDOS depuis
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="1768"/>
-        <location filename="../../crates/gui/qml/main.qml" line="2390"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2393"/>
         <source>This cannot be undone.</source>
         <translation>Cette action est irréversible.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1795"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1798"/>
         <source>Windows setup</source>
         <translation>Configuration de Windows</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1796"/>
-        <source>Optional install tweaks — written to autounattend.xml</source>
-        <translation>Personnalisations d&apos;installation facultatives — écrites dans autounattend.xml</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="1799"/>
+        <source>Optional install tweaks (written to autounattend.xml)</source>
+        <translation>Personnalisations d&apos;installation facultatives (écrites dans autounattend.xml)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1817"/>
-        <source>Customize the installation below, or just press OK to skip — every option is optional.</source>
-        <translation>Personnalisez l&apos;installation ci-dessous, ou cliquez simplement sur OK pour passer — chaque option est facultative.</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="1820"/>
+        <source>Customize the installation below, or just press OK to skip. Every option is optional.</source>
+        <translation>Personnalisez l&apos;installation ci-dessous, ou cliquez simplement sur OK pour passer. Chaque option est facultative.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1825"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1828"/>
         <source>Setup</source>
         <translation>Installation</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1828"/>
-        <source>Bypass Windows 11 hardware checks — TPM, Secure Boot, RAM, Storage, CPU, Disk</source>
-        <translation>Contourner les contrôles matériels de Windows 11 — TPM, Secure Boot, RAM, Stockage, CPU, Disque</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="1831"/>
+        <source>Bypass Windows 11 hardware checks: TPM, Secure Boot, RAM, Storage, CPU, Disk</source>
+        <translation>Contourner les contrôles matériels de Windows 11 : TPM, Secure Boot, RAM, Stockage, CPU, Disque</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1846"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1849"/>
         <source>Auto-accept the Setup EULA</source>
         <translation>Accepter automatiquement le CLUF d&apos;installation</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1856"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1859"/>
         <source>Enable .NET Framework 3.5 from the install media</source>
         <translation>Activer .NET Framework 3.5 depuis le média d&apos;installation</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1868"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1871"/>
         <source>Product key</source>
         <translation>Clé de produit</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1876"/>
-        <source>Optional — e.g. VK7JG-NPHTM-C97JM-9MPGT-3V66T (Win 11 Pro)</source>
-        <translation>Facultatif — par exemple VK7JG-NPHTM-C97JM-9MPGT-3V66T (Win 11 Pro)</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="1879"/>
+        <source>Optional, e.g. VK7JG-NPHTM-C97JM-9MPGT-3V66T (Win 11 Pro)</source>
+        <translation>Facultatif, par exemple VK7JG-NPHTM-C97JM-9MPGT-3V66T (Win 11 Pro)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1899"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1902"/>
         <source>Out-of-box experience</source>
         <translation>Expérience de première utilisation</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1902"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1905"/>
         <source>Skip Microsoft-account requirement (works on Win 10 and all Win 11)</source>
         <translation>Sauter l&apos;obligation de compte Microsoft (fonctionne sur Win 10 et tous les Win 11)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1913"/>
-        <source>Disable network during OOBE — force local account on Win 11 24H2+</source>
-        <translation>Désactiver le réseau pendant l&apos;OOBE — force un compte local sur Win 11 24H2+</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="1916"/>
+        <source>Disable network during OOBE: force local account on Win 11 24H2+</source>
+        <translation>Désactiver le réseau pendant l&apos;OOBE : force un compte local sur Win 11 24H2+</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1925"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1928"/>
         <source>Skip the &quot;connect to a network&quot; Wi-Fi screen</source>
         <translation>Sauter l&apos;écran Wi-Fi « se connecter à un réseau »</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1935"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1938"/>
         <source>Hide the OEM-registration screen</source>
         <translation>Masquer l&apos;écran d&apos;enregistrement OEM</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1945"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1948"/>
         <source>Pre-answer the network-type prompt as &quot;Work&quot; (private/trusted)</source>
         <translation>Pré-répondre « Travail » (privé/de confiance) à l&apos;invite de type de réseau</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1956"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1959"/>
         <source>Disable data-collection / telemetry prompts</source>
         <translation>Désactiver les invites de collecte de données / télémétrie</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1968"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1971"/>
         <source>Local account</source>
         <translation>Compte local</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1972"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1975"/>
         <source>Name</source>
         <translation>Nom</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1980"/>
-        <source>Optional — leave empty to keep the OOBE prompt</source>
-        <translation>Facultatif — laisser vide pour conserver l&apos;invite OOBE</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="1983"/>
+        <source>Optional, leave empty to keep the OOBE prompt</source>
+        <translation>Facultatif, laisser vide pour conserver l&apos;invite OOBE</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1987"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1990"/>
         <source>Password</source>
         <translation>Mot de passe</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1995"/>
-        <source>Optional — sets a password and enables one-shot auto-logon</source>
-        <translation>Facultatif — définit un mot de passe et active une auto-connexion unique</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="1998"/>
+        <source>Optional, sets a password and enables one-shot auto-logon</source>
+        <translation>Facultatif, définit un mot de passe et active une auto-connexion unique</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2003"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2006"/>
         <source>System</source>
         <translation>Système</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2007"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2010"/>
         <source>Computer name</source>
         <translation>Nom de l&apos;ordinateur</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2015"/>
-        <source>Optional — up to 15 characters, no whitespace</source>
-        <translation>Facultatif — jusqu&apos;à 15 caractères, sans espace</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="2018"/>
+        <source>Optional, up to 15 characters, no whitespace</source>
+        <translation>Facultatif, jusqu&apos;à 15 caractères, sans espace</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2046"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2049"/>
         <source>Locale</source>
         <translation>Langue</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2054"/>
-        <source>Optional — e.g. en-US, fr-FR, de-DE</source>
-        <translation>Facultatif — par ex. en-US, fr-FR, de-DE</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="2057"/>
+        <source>Optional, e.g. en-US, fr-FR, de-DE</source>
+        <translation>Facultatif, par ex. en-US, fr-FR, de-DE</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2061"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2064"/>
         <source>Time zone</source>
         <translation>Fuseau horaire</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2088"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2091"/>
         <source>Copy from system</source>
         <translation>Copier depuis le système</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2092"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2095"/>
         <source>Reads the host&apos;s $LANG and /etc/localtime, picks the matching Microsoft TimeZone ID, and fills the Locale + Time zone fields. Saves typing en-US / Pacific Standard Time by hand.</source>
         <translation>Lit $LANG et /etc/localtime de l&apos;hôte, choisit l&apos;ID Microsoft TimeZone correspondant, et remplit les champs Locale + Fuseau horaire. Évite de saisir en-US / Pacific Standard Time à la main.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2099"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2102"/>
         <source>Privacy &amp; debloat</source>
         <translation>Confidentialité &amp; nettoyage</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2102"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2105"/>
         <source>Disable automatic BitLocker device encryption</source>
         <translation>Désactiver le chiffrement automatique BitLocker</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2114"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2117"/>
         <source>Install Windows CA 2023 Secure Boot policy</source>
         <translation>Installer la politique Secure Boot Windows CA 2023</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2127"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2130"/>
         <source>Apply debloat profile</source>
         <translation>Appliquer le profil de nettoyage</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2150"/>
-        <source>&lt;b&gt;Applied machine-wide (HKLM Group Policy):&lt;/b&gt;&lt;br&gt;&amp;nbsp;• News &amp;amp; Interests feed (taskbar widget)&lt;br&gt;&amp;nbsp;• Consumer-feature ads — suggested Store apps, OEM-style inserts&lt;br&gt;&amp;nbsp;• Activity History sync to Microsoft&lt;br&gt;&amp;nbsp;• Cortana in Search&lt;br&gt;&amp;nbsp;• Windows Copilot service&lt;br&gt;&amp;nbsp;• Windows Recall — the rolling-screenshot AI history (Win 11 24H2+)&lt;br&gt;&amp;nbsp;• Diagnostic data — set to Required only&lt;br&gt;&lt;br&gt;&lt;b&gt;Applied to the default user profile (inherited by every new account):&lt;/b&gt;&lt;br&gt;&amp;nbsp;• Bing / web suggestions in Start &amp;amp; Search&lt;br&gt;&amp;nbsp;• File extensions shown (instead of hidden)&lt;br&gt;&amp;nbsp;• Copilot, Task View, Widgets and &quot;People&quot; buttons hidden from the taskbar&lt;br&gt;&amp;nbsp;• Sync-provider ads in Explorer suppressed&lt;br&gt;&amp;nbsp;• Start menu &quot;recommendations&quot; and Iris suggestions disabled&lt;br&gt;&amp;nbsp;• ContentDeliveryManager: lock-screen rotation ads, pre-installed-app suggestions, &quot;subscribed content&quot; tiles&lt;br&gt;&amp;nbsp;• Cortana / Bing inside per-user Search&lt;br&gt;&amp;nbsp;• Advertising ID disabled&lt;br&gt;&amp;nbsp;• &quot;Tailored experiences&quot; derived from diagnostic data&lt;br&gt;&amp;nbsp;• &quot;Suggested&quot; toast notifications&lt;br&gt;&amp;nbsp;• Phone Link / &quot;use your mobile with Windows&quot; prompts&lt;br&gt;&amp;nbsp;• Online speech recognition (voice stays local)&lt;br&gt;&amp;nbsp;• Contact harvesting for input personalization&lt;br&gt;&amp;nbsp;• Feedback Hub frequency set to Never&lt;br&gt;&amp;nbsp;• &quot;Finish setting up your device&quot; prompts&lt;br&gt;&lt;br&gt;Windows 11-only keys (Copilot, Widgets, News &amp;amp; Interests, Recall) are silently ignored on Windows 10.</source>
-        <translation>&lt;b&gt;Appliqué à l&apos;échelle de la machine (HKLM Group Policy) :&lt;/b&gt;&lt;br&gt;&amp;nbsp;• Flux Actualités &amp;amp; Centres d&apos;intérêt (widget barre des tâches)&lt;br&gt;&amp;nbsp;• Pubs de fonctionnalités consommateurs — apps Store suggérées, encarts façon OEM&lt;br&gt;&amp;nbsp;• Synchronisation de l&apos;Historique d&apos;activités vers Microsoft&lt;br&gt;&amp;nbsp;• Cortana dans la recherche&lt;br&gt;&amp;nbsp;• Service Windows Copilot&lt;br&gt;&amp;nbsp;• Windows Recall — l&apos;historique IA par captures d&apos;écran tournantes (Win 11 24H2+)&lt;br&gt;&amp;nbsp;• Données de diagnostic — réglées sur Obligatoires uniquement&lt;br&gt;&lt;br&gt;&lt;b&gt;Appliqué au profil utilisateur par défaut (hérité par chaque nouveau compte) :&lt;/b&gt;&lt;br&gt;&amp;nbsp;• Suggestions Bing / Web dans Démarrer &amp;amp; Recherche&lt;br&gt;&amp;nbsp;• Extensions de fichier affichées (au lieu d&apos;être masquées)&lt;br&gt;&amp;nbsp;• Boutons Copilot, Affichage des tâches, Widgets et « Contacts » masqués dans la barre des tâches&lt;br&gt;&amp;nbsp;• Pubs de fournisseurs de synchro dans l&apos;Explorateur supprimées&lt;br&gt;&amp;nbsp;• « Recommandations » du menu Démarrer et suggestions Iris désactivées&lt;br&gt;&amp;nbsp;• ContentDeliveryManager : pubs de rotation d&apos;écran verrouillé, suggestions d&apos;apps pré-installées, tuiles « contenu abonné »&lt;br&gt;&amp;nbsp;• Cortana / Bing dans la Recherche par utilisateur&lt;br&gt;&amp;nbsp;• ID publicitaire désactivé&lt;br&gt;&amp;nbsp;• « Expériences personnalisées » dérivées des données de diagnostic&lt;br&gt;&amp;nbsp;• Notifications toast « suggérées »&lt;br&gt;&amp;nbsp;• Invites Phone Link / « utiliser votre mobile avec Windows »&lt;br&gt;&amp;nbsp;• Reconnaissance vocale en ligne (la voix reste locale)&lt;br&gt;&amp;nbsp;• Récolte de contacts pour la personnalisation des entrées&lt;br&gt;&amp;nbsp;• Fréquence du Hub de commentaires réglée sur Jamais&lt;br&gt;&amp;nbsp;• Invites « Terminer la configuration de votre appareil »&lt;br&gt;&lt;br&gt;Les clés spécifiques à Windows 11 (Copilot, Widgets, Actualités &amp;amp; Centres d&apos;intérêt, Recall) sont silencieusement ignorées sur Windows 10.</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="2153"/>
+        <source>&lt;b&gt;Applied machine-wide (HKLM Group Policy):&lt;/b&gt;&lt;br&gt;&amp;nbsp;• News &amp;amp; Interests feed (taskbar widget)&lt;br&gt;&amp;nbsp;• Consumer-feature ads: suggested Store apps, OEM-style inserts&lt;br&gt;&amp;nbsp;• Activity History sync to Microsoft&lt;br&gt;&amp;nbsp;• Cortana in Search&lt;br&gt;&amp;nbsp;• Windows Copilot service&lt;br&gt;&amp;nbsp;• Windows Recall: the rolling-screenshot AI history (Win 11 24H2+)&lt;br&gt;&amp;nbsp;• Diagnostic data: set to Required only&lt;br&gt;&lt;br&gt;&lt;b&gt;Applied to the default user profile (inherited by every new account):&lt;/b&gt;&lt;br&gt;&amp;nbsp;• Bing / web suggestions in Start &amp;amp; Search&lt;br&gt;&amp;nbsp;• File extensions shown (instead of hidden)&lt;br&gt;&amp;nbsp;• Copilot, Task View, Widgets and &quot;People&quot; buttons hidden from the taskbar&lt;br&gt;&amp;nbsp;• Sync-provider ads in Explorer suppressed&lt;br&gt;&amp;nbsp;• Start menu &quot;recommendations&quot; and Iris suggestions disabled&lt;br&gt;&amp;nbsp;• ContentDeliveryManager: lock-screen rotation ads, pre-installed-app suggestions, &quot;subscribed content&quot; tiles&lt;br&gt;&amp;nbsp;• Cortana / Bing inside per-user Search&lt;br&gt;&amp;nbsp;• Advertising ID disabled&lt;br&gt;&amp;nbsp;• &quot;Tailored experiences&quot; derived from diagnostic data&lt;br&gt;&amp;nbsp;• &quot;Suggested&quot; toast notifications&lt;br&gt;&amp;nbsp;• Phone Link / &quot;use your mobile with Windows&quot; prompts&lt;br&gt;&amp;nbsp;• Online speech recognition (voice stays local)&lt;br&gt;&amp;nbsp;• Contact harvesting for input personalization&lt;br&gt;&amp;nbsp;• Feedback Hub frequency set to Never&lt;br&gt;&amp;nbsp;• &quot;Finish setting up your device&quot; prompts&lt;br&gt;&lt;br&gt;Windows 11-only keys (Copilot, Widgets, News &amp;amp; Interests, Recall) are silently ignored on Windows 10.</source>
+        <translation>&lt;b&gt;Appliqué à l&apos;échelle de la machine (HKLM Group Policy) :&lt;/b&gt;&lt;br&gt;&amp;nbsp;• Flux Actualités &amp;amp; Centres d&apos;intérêt (widget barre des tâches)&lt;br&gt;&amp;nbsp;• Pubs de fonctionnalités consommateurs : apps Store suggérées, encarts façon OEM&lt;br&gt;&amp;nbsp;• Synchronisation de l&apos;Historique d&apos;activités vers Microsoft&lt;br&gt;&amp;nbsp;• Cortana dans la recherche&lt;br&gt;&amp;nbsp;• Service Windows Copilot&lt;br&gt;&amp;nbsp;• Windows Recall : l&apos;historique IA par captures d&apos;écran tournantes (Win 11 24H2+)&lt;br&gt;&amp;nbsp;• Données de diagnostic : réglées sur Obligatoires uniquement&lt;br&gt;&lt;br&gt;&lt;b&gt;Appliqué au profil utilisateur par défaut (hérité par chaque nouveau compte) :&lt;/b&gt;&lt;br&gt;&amp;nbsp;• Suggestions Bing / Web dans Démarrer &amp;amp; Recherche&lt;br&gt;&amp;nbsp;• Extensions de fichier affichées (au lieu d&apos;être masquées)&lt;br&gt;&amp;nbsp;• Boutons Copilot, Affichage des tâches, Widgets et « Contacts » masqués dans la barre des tâches&lt;br&gt;&amp;nbsp;• Pubs de fournisseurs de synchro dans l&apos;Explorateur supprimées&lt;br&gt;&amp;nbsp;• « Recommandations » du menu Démarrer et suggestions Iris désactivées&lt;br&gt;&amp;nbsp;• ContentDeliveryManager : pubs de rotation d&apos;écran verrouillé, suggestions d&apos;apps pré-installées, tuiles « contenu abonné »&lt;br&gt;&amp;nbsp;• Cortana / Bing dans la Recherche par utilisateur&lt;br&gt;&amp;nbsp;• ID publicitaire désactivé&lt;br&gt;&amp;nbsp;• « Expériences personnalisées » dérivées des données de diagnostic&lt;br&gt;&amp;nbsp;• Notifications toast « suggérées »&lt;br&gt;&amp;nbsp;• Invites Phone Link / « utiliser votre mobile avec Windows »&lt;br&gt;&amp;nbsp;• Reconnaissance vocale en ligne (la voix reste locale)&lt;br&gt;&amp;nbsp;• Récolte de contacts pour la personnalisation des entrées&lt;br&gt;&amp;nbsp;• Fréquence du Hub de commentaires réglée sur Jamais&lt;br&gt;&amp;nbsp;• Invites « Terminer la configuration de votre appareil »&lt;br&gt;&lt;br&gt;Les clés spécifiques à Windows 11 (Copilot, Widgets, Actualités &amp;amp; Centres d&apos;intérêt, Recall) sont silencieusement ignorées sur Windows 10.</translation>
     </message>
     <message>
-        <source>After install, the user finds a USBooty folder on their Desktop with eight right-click → &quot;Run as administrator&quot; .bat scripts: Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), an OneDrive remover, an OfficeTool downloader, plus one-click installers for Chocolatey, Scoop and winget. The folder is copied to the Default user profile during Windows setup, so every account created at OOBE inherits it.</source>
-        <translation type="vanished">Après installation, l&apos;utilisateur trouve un dossier USBooty sur son Bureau contenant huit scripts .bat à exécuter en clic-droit → « Exécuter en tant qu&apos;administrateur » : Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), un désinstalleur OneDrive, un téléchargeur OfficeTool, plus des installeurs en un clic pour Chocolatey, Scoop et winget. Le dossier est copié dans le profil utilisateur par défaut pendant l&apos;installation de Windows, de sorte que tout compte créé pendant l&apos;OOBE en hérite.</translation>
-    </message>
-    <message>
-        <source>Lands in &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NewUser&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt;:&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — Raphire&apos;s debloat (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, stable channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — same tool, dev channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — kill + uninstall OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — download OfficeTool runtime&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — install Chocolatey (machine-wide, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — install Scoop (per-user, no admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; — install / repair winget (asheroto)&lt;br&gt;&lt;br&gt;Each script fetches code from the public internet on first run.</source>
-        <translation type="vanished">Se place dans &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NouvelUtilisateur&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt; :&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — debloat de Raphire (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, canal stable&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — même outil, canal dev&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — arrêt + désinstallation de OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — téléchargement du runtime OfficeTool&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — installer Chocolatey (machine entière, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — installer Scoop (par utilisateur, sans admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; — installer / réparer winget (asheroto)&lt;br&gt;&lt;br&gt;Chaque script récupère du code depuis l&apos;Internet public lors de sa première exécution.</translation>
-    </message>
-    <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2273"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2276"/>
         <source>Erase device?</source>
         <translation>Effacer le périphérique ?</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2274"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2277"/>
         <source>All data on the target will be permanently lost</source>
         <translation>Toutes les données de la cible seront définitivement perdues</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2338"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2341"/>
         <source>Serial: %1</source>
         <translation>Numéro de série : %1</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2349"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2352"/>
         <source>⚠ This is an INTERNAL (non-removable) disk. Make absolutely sure it is the device you mean to erase.</source>
         <translation>⚠ Il s&apos;agit d&apos;un disque INTERNE (non amovible). Assurez-vous absolument que c&apos;est bien le périphérique que vous voulez effacer.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2369"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2372"/>
         <source>🔍  Inspect device details…</source>
         <translation>🔍  Inspecter les détails du périphérique…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2372"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2375"/>
         <source>Open lsblk + udevadm + smartctl output for this device in a read-only panel. Useful if anything above looks off.</source>
         <translation>Ouvre la sortie de lsblk + udevadm + smartctl pour ce périphérique dans un panneau en lecture seule. Utile si quelque chose ci-dessus paraît anormal.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2384"/>
-        <source>Ventoy will be updated — your existing ISOs on the data partition are kept.</source>
-        <translation>Ventoy sera mis à jour — vos ISO existantes sur la partition de données sont conservées.</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="2387"/>
+        <source>Ventoy will be updated. Your existing ISOs on the data partition are kept.</source>
+        <translation>Ventoy sera mis à jour. Vos ISO existantes sur la partition de données sont conservées.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2385"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2388"/>
         <source>All data on this device will be permanently erased.</source>
         <translation>Toutes les données de ce périphérique seront définitivement effacées.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2413"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2416"/>
         <source>Device details</source>
         <translation>Détails du périphérique</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2414"/>
-        <source>Read-only — lsblk + udevadm output for the chosen device</source>
-        <translation>Lecture seule — sortie de lsblk + udevadm pour le périphérique choisi</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="2417"/>
+        <source>Read-only: lsblk + udevadm output for the chosen device</source>
+        <translation>Lecture seule : sortie de lsblk + udevadm pour le périphérique choisi</translation>
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="131"/>
-        <location filename="../../crates/gui/qml/main.qml" line="2456"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2459"/>
         <source>Finished</source>
         <translation>Terminé</translation>
     </message>
@@ -1163,96 +1087,92 @@ FreeDOS — télécharge la dernière version du noyau + du shell FreeDOS depuis
     </message>
     <message>
         <location filename="../../crates/gui/qml/main.qml" line="132"/>
-        <location filename="../../crates/gui/qml/main.qml" line="2456"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2459"/>
         <source>Failed</source>
         <translation>Échec</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2195"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2198"/>
         <source>After install, the user finds a USBooty folder on their Desktop with right-click → &quot;Run as administrator&quot; .bat scripts: Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), an OneDrive remover, an OfficeTool downloader, one-click installers for Chocolatey, Scoop and winget, a Windows-AI stripper (Copilot / Recall / generative Paint+Notepad), Winhance, FR33THY&apos;s Ultimate gaming/latency tweaks, PowerToys, system tweaks (Fast Startup off, long paths on), VC++ Redistributables 2015-2022 and DirectX legacy runtimes, plus an interactive browser-installer menu (Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc). The folder is copied to the Default user profile during Windows setup, so every account created at OOBE inherits it.</source>
         <translation>Après installation, l&apos;utilisateur trouve un dossier USBooty sur son Bureau contenant des scripts .bat à exécuter en clic-droit → « Exécuter en tant qu&apos;administrateur » : Win11Debloat (Raphire), Chris Titus winutil (stable + dev), Microsoft Activation Scripts (Massgrave), un désinstalleur OneDrive, un téléchargeur OfficeTool, des installeurs en un clic pour Chocolatey, Scoop et winget, un outil de suppression des composants IA de Windows (Copilot / Recall / Paint+Bloc-notes génératifs), Winhance, les optimisations jeu/latence Ultimate de FR33THY, PowerToys, des ajustements système (Fast Startup désactivé, longs chemins activés), les redistribuables VC++ 2015-2022 et le runtime DirectX legacy, plus un menu interactif d&apos;installation de navigateur (Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc). Le dossier est copié dans le profil utilisateur par défaut pendant l&apos;installation de Windows, de sorte que tout compte créé pendant l&apos;OOBE en hérite.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2220"/>
-        <source>Lands in &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NewUser&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt;:&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — Raphire&apos;s debloat (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, stable channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — same tool, dev channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — kill + uninstall OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — download OfficeTool runtime&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — install Chocolatey (machine-wide, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — install Scoop (per-user, no admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; — install / repair winget (asheroto)&lt;br&gt;&amp;nbsp;• &lt;b&gt;9-Remove-Windows-AI.bat&lt;/b&gt; — strip Copilot / Recall / AI features (zoicware)&lt;br&gt;&amp;nbsp;• &lt;b&gt;10-Winhance.bat&lt;/b&gt; — Winhance (debloat / privacy / optimise GUI)&lt;br&gt;&amp;nbsp;• &lt;b&gt;11-FR33THY-Ultimate.bat&lt;/b&gt; — FR33THY&apos;s Ultimate gaming / latency tweaks&lt;br&gt;&amp;nbsp;• &lt;b&gt;12-Install-PowerToys.bat&lt;/b&gt; — Microsoft PowerToys via winget&lt;br&gt;&amp;nbsp;• &lt;b&gt;13-Disable-FastStartup.bat&lt;/b&gt; — clear HiberbootEnabled (dual-boot fix)&lt;br&gt;&amp;nbsp;• &lt;b&gt;14-Enable-LongPaths.bat&lt;/b&gt; — set LongPathsEnabled=1 (developer)&lt;br&gt;&amp;nbsp;• &lt;b&gt;15-Install-VCRedist.bat&lt;/b&gt; — VC++ Redistributable 2015-2022, x64 + x86&lt;br&gt;&amp;nbsp;• &lt;b&gt;16-Install-DirectX.bat&lt;/b&gt; — legacy DirectX runtime (older games)&lt;br&gt;&amp;nbsp;• &lt;b&gt;17-Install-Browser.bat&lt;/b&gt; — menu: Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc&lt;br&gt;&lt;br&gt;Each script fetches code from the public internet on first run.</source>
-        <translation>Se place dans &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NouvelUtilisateur&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt; :&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; — debloat de Raphire (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; — Chris Titus winutil, canal stable&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; — même outil, canal dev&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; — Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; — arrêt + désinstallation de OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; — téléchargement du runtime OfficeTool&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; — installer Chocolatey (machine entière, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; — installer Scoop (par utilisateur, sans admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; — installer / réparer winget (asheroto)&lt;br&gt;&amp;nbsp;• &lt;b&gt;9-Remove-Windows-AI.bat&lt;/b&gt; — supprimer Copilot / Recall / fonctions IA (zoicware)&lt;br&gt;&amp;nbsp;• &lt;b&gt;10-Winhance.bat&lt;/b&gt; — Winhance (interface debloat / vie privée / optimisations)&lt;br&gt;&amp;nbsp;• &lt;b&gt;11-FR33THY-Ultimate.bat&lt;/b&gt; — Ultimate de FR33THY (optimisations jeu / latence)&lt;br&gt;&amp;nbsp;• &lt;b&gt;12-Install-PowerToys.bat&lt;/b&gt; — Microsoft PowerToys via winget&lt;br&gt;&amp;nbsp;• &lt;b&gt;13-Disable-FastStartup.bat&lt;/b&gt; — désactiver HiberbootEnabled (correctif dual-boot)&lt;br&gt;&amp;nbsp;• &lt;b&gt;14-Enable-LongPaths.bat&lt;/b&gt; — activer LongPathsEnabled=1 (développeurs)&lt;br&gt;&amp;nbsp;• &lt;b&gt;15-Install-VCRedist.bat&lt;/b&gt; — Redistribuable VC++ 2015-2022, x64 + x86&lt;br&gt;&amp;nbsp;• &lt;b&gt;16-Install-DirectX.bat&lt;/b&gt; — runtime DirectX legacy (jeux plus anciens)&lt;br&gt;&amp;nbsp;• &lt;b&gt;17-Install-Browser.bat&lt;/b&gt; — menu : Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc&lt;br&gt;&lt;br&gt;Chaque script récupère du code depuis l&apos;Internet public lors de sa première exécution.</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="2223"/>
+        <source>Lands in &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NewUser&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt;:&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt;: Raphire&apos;s debloat (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt;: Chris Titus winutil, stable channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt;: same tool, dev channel&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt;: Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt;: kill + uninstall OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt;: download OfficeTool runtime&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt;: install Chocolatey (machine-wide, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt;: install Scoop (per-user, no admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt;: install / repair winget (asheroto)&lt;br&gt;&amp;nbsp;• &lt;b&gt;9-Remove-Windows-AI.bat&lt;/b&gt;: strip Copilot / Recall / AI features (zoicware)&lt;br&gt;&amp;nbsp;• &lt;b&gt;10-Winhance.bat&lt;/b&gt;: Winhance (debloat / privacy / optimise GUI)&lt;br&gt;&amp;nbsp;• &lt;b&gt;11-FR33THY-Ultimate.bat&lt;/b&gt;: FR33THY&apos;s Ultimate gaming / latency tweaks&lt;br&gt;&amp;nbsp;• &lt;b&gt;12-Install-PowerToys.bat&lt;/b&gt;: Microsoft PowerToys via winget&lt;br&gt;&amp;nbsp;• &lt;b&gt;13-Disable-FastStartup.bat&lt;/b&gt;: clear HiberbootEnabled (dual-boot fix)&lt;br&gt;&amp;nbsp;• &lt;b&gt;14-Enable-LongPaths.bat&lt;/b&gt;: set LongPathsEnabled=1 (developer)&lt;br&gt;&amp;nbsp;• &lt;b&gt;15-Install-VCRedist.bat&lt;/b&gt;: VC++ Redistributable 2015-2022, x64 + x86&lt;br&gt;&amp;nbsp;• &lt;b&gt;16-Install-DirectX.bat&lt;/b&gt;: legacy DirectX runtime (older games)&lt;br&gt;&amp;nbsp;• &lt;b&gt;17-Install-Browser.bat&lt;/b&gt;: menu: Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc&lt;br&gt;&lt;br&gt;Each script fetches code from the public internet on first run.</source>
+        <translation>Se place dans &lt;code&gt;C:&amp;#x5C;Users&amp;#x5C;&amp;lt;NouvelUtilisateur&amp;gt;&amp;#x5C;Desktop&amp;#x5C;USBooty&amp;#x5C;&lt;/code&gt; :&lt;br&gt;&amp;nbsp;• &lt;b&gt;1-Win11Debloat.bat&lt;/b&gt; : debloat de Raphire (debloat.raphi.re)&lt;br&gt;&amp;nbsp;• &lt;b&gt;2-ChrisTitus-Winutil.bat&lt;/b&gt; : Chris Titus winutil, canal stable&lt;br&gt;&amp;nbsp;• &lt;b&gt;2.1-ChrisTitus-Winutil-Dev.bat&lt;/b&gt; : même outil, canal dev&lt;br&gt;&amp;nbsp;• &lt;b&gt;3-Massgravel-Activator.bat&lt;/b&gt; : Microsoft Activation Scripts (MAS)&lt;br&gt;&amp;nbsp;• &lt;b&gt;4-Remove-OneDrive.bat&lt;/b&gt; : arrêt + désinstallation de OneDrive (x64 &amp;amp; WoW64)&lt;br&gt;&amp;nbsp;• &lt;b&gt;5-OfficeTool.bat&lt;/b&gt; : téléchargement du runtime OfficeTool&lt;br&gt;&amp;nbsp;• &lt;b&gt;6-Install-Chocolatey.bat&lt;/b&gt; : installer Chocolatey (machine entière, admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;7-Install-Scoop.bat&lt;/b&gt; : installer Scoop (par utilisateur, sans admin)&lt;br&gt;&amp;nbsp;• &lt;b&gt;8-Install-Winget.bat&lt;/b&gt; : installer / réparer winget (asheroto)&lt;br&gt;&amp;nbsp;• &lt;b&gt;9-Remove-Windows-AI.bat&lt;/b&gt; : supprimer Copilot / Recall / fonctions IA (zoicware)&lt;br&gt;&amp;nbsp;• &lt;b&gt;10-Winhance.bat&lt;/b&gt; : Winhance (interface debloat / vie privée / optimisations)&lt;br&gt;&amp;nbsp;• &lt;b&gt;11-FR33THY-Ultimate.bat&lt;/b&gt; : Ultimate de FR33THY (optimisations jeu / latence)&lt;br&gt;&amp;nbsp;• &lt;b&gt;12-Install-PowerToys.bat&lt;/b&gt; : Microsoft PowerToys via winget&lt;br&gt;&amp;nbsp;• &lt;b&gt;13-Disable-FastStartup.bat&lt;/b&gt; : désactiver HiberbootEnabled (correctif dual-boot)&lt;br&gt;&amp;nbsp;• &lt;b&gt;14-Enable-LongPaths.bat&lt;/b&gt; : activer LongPathsEnabled=1 (développeurs)&lt;br&gt;&amp;nbsp;• &lt;b&gt;15-Install-VCRedist.bat&lt;/b&gt; : Redistribuable VC++ 2015-2022, x64 + x86&lt;br&gt;&amp;nbsp;• &lt;b&gt;16-Install-DirectX.bat&lt;/b&gt; : runtime DirectX legacy (jeux plus anciens)&lt;br&gt;&amp;nbsp;• &lt;b&gt;17-Install-Browser.bat&lt;/b&gt; : menu : Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc&lt;br&gt;&lt;br&gt;Chaque script récupère du code depuis l&apos;Internet public lors de sa première exécution.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2458"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2461"/>
         <source>The device is ready to use.</source>
         <translation>Le périphérique est prêt à l&apos;emploi.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2459"/>
-        <source>The job did not complete — see details below.</source>
-        <translation>Le travail ne s&apos;est pas terminé — voir les détails ci-dessous.</translation>
+        <location filename="../../crates/gui/qml/main.qml" line="2462"/>
+        <source>The job did not complete. See details below.</source>
+        <translation>Le travail ne s&apos;est pas terminé. Voir les détails ci-dessous.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2466"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2469"/>
         <source>Eject device</source>
         <translation>Éjecter le périphérique</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2507"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2510"/>
         <source>Bootable USB Creator · Version %1</source>
         <translation>Créateur de clé USB amorçable · Version %1</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2532"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2535"/>
         <source>Create bootable USB drives from ISO images.</source>
         <translation>Créez des clés USB amorçables à partir d&apos;images ISO.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2545"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2548"/>
         <source>Author</source>
         <translation>Auteur</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2547"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2550"/>
         <source>License</source>
         <translation>Licence</translation>
     </message>
     <message>
-        <source>DD raw write (with transparent .gz/.xz/.zst/.bz2 and VHD support), partition-and-copy (FAT32 / NTFS / exFAT / ext4, UEFI:NTFS or wimlib-split for large install.wim), Linux persistence (Debian, Ubuntu, Fedora, openSUSE), Windows 11 setup customization, Ventoy multi-boot USBs, optional Syslinux MBR install, device snapshot, fake-drive / bad-blocks checks, SBAT revocation scan.</source>
-        <translation type="vanished">Écriture brute DD (avec support transparent .gz/.xz/.zst/.bz2 et VHD), partition-et-copie (FAT32 / NTFS / exFAT / ext4, UEFI:NTFS ou wimlib-split pour les gros install.wim), persistance Linux (Debian, Ubuntu, Fedora, openSUSE), personnalisation de l&apos;installation de Windows 11, USB multi-boot Ventoy, installation Syslinux MBR facultative, instantané de périphérique, vérifications de fausse capacité / blocs défectueux, scan de révocation SBAT.</translation>
-    </message>
-    <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2631"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2634"/>
         <source>Download a Windows ISO</source>
         <translation>Télécharger une ISO Windows</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2632"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2635"/>
         <source>Pull an official image directly from Microsoft</source>
         <translation>Récupérer une image officielle directement chez Microsoft</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2643"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2646"/>
         <source>Fetch an official ISO from Microsoft. Each step queries Microsoft and may take a few seconds.</source>
         <translation>Récupère une ISO officielle chez Microsoft. Chaque étape interroge Microsoft et peut prendre quelques secondes.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2660"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2663"/>
         <source>List languages</source>
         <translation>Lister les langues</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2676"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2679"/>
         <source>List downloads</source>
         <translation>Lister les téléchargements</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2692"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2695"/>
         <source>Download</source>
         <translation>Télécharger</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2710"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2713"/>
         <source>If Microsoft&apos;s anti-bot system rejects the request (common on VPNs and some networks), download manually:</source>
         <translation>Si le système anti-bot de Microsoft rejette la requête (fréquent sur VPN et certains réseaux), téléchargez manuellement :</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="2717"/>
+        <location filename="../../crates/gui/qml/main.qml" line="2720"/>
         <source>Open Microsoft download page</source>
         <translation>Ouvrir la page de téléchargement Microsoft</translation>
     </message>

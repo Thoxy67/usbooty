@@ -136,9 +136,9 @@ pub fn warning() -> String {
         .join(", ");
 
     if missing.iter().any(|t| t.critical) {
-        format!("Required tools are missing — install: {list}")
+        format!("Required tools are missing. Install: {list}")
     } else {
-        format!("Optional tools are missing (some methods unavailable) — install: {list}")
+        format!("Optional tools are missing (some methods unavailable). Install: {list}")
     }
 }
 

@@ -16,7 +16,7 @@ bootable-media logic is ported from
 * [Windows ISOs](windows-iso.md): WIM strategy (split vs UEFI:NTFS),
   every `autounattend.xml` option, the debloat profile, the Windows CA
   2023 fix, automatic BitLocker disable, the post-install desktop
-  helpers (eleven ready-to-run `.bat` scripts on the new user's
+  helpers (eighteen ready-to-run `.bat` scripts on the new user's
   desktop), the rg-adguard SHA-1 lookup, and the Microsoft ISO
   downloader.
 * [Linux ISOs](linux-iso.md): ISO classification, partition-based

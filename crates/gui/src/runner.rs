@@ -325,7 +325,7 @@ fn finish_summary(success: bool, message: String, meter: &RateMeter, moved: u64)
     let elapsed = meter.start.elapsed().as_secs();
     if success && moved > 0 && elapsed > 0 {
         format!(
-            "{message} — {} elapsed, {} average",
+            "{message} ({} elapsed, {} average)",
             format_duration(elapsed),
             format_rate(moved as f64 / elapsed as f64),
         )
@@ -340,7 +340,7 @@ fn outcome(child: &mut Child, saw_done: bool, last_error: Option<String>) -> (bo
     let success = saw_done && matches!(&status, Ok(s) if s.success());
 
     if success {
-        return (true, "Done — the drive is ready".into());
+        return (true, "Done. The drive is ready".into());
     }
     if let Some(err) = last_error {
         return (false, err);
@@ -409,9 +409,9 @@ fn finish(qt: &CxxQtThread<AppController>, success: bool, message: String) {
 fn notify(success: bool, message: &str) {
     let urgency = if success { "normal" } else { "critical" };
     let title = if success {
-        "usbooty — Finished"
+        "usbooty: Finished"
     } else {
-        "usbooty — Failed"
+        "usbooty: Failed"
     };
     let icon = if success { "dialog-ok" } else { "dialog-error" };
     let _ = std::process::Command::new("notify-send")

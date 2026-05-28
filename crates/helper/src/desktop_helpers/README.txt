@@ -59,7 +59,7 @@ Scripts
 
 7-Install-Scoop.bat
     Installs the Scoop command-line installer (source: get.scoop.sh).
-    Per-user — do NOT run this one as administrator. After install
+    Per-user: do NOT run this one as administrator. After install
     you can run e.g. `scoop install git neovim ripgrep`.
 
 8-Install-Winget.bat
@@ -95,7 +95,7 @@ Scripts
     (source: github.com/microsoft/PowerToys). FancyZones (window
     snapping), PowerRename (batch rename), Color Picker, PowerToys Run
     launcher, Always-On-Top, Keyboard Manager, Mouse Highlighter, and
-    more. Needs winget — run 8-Install-Winget.bat first if missing.
+    more. Needs winget; run 8-Install-Winget.bat first if missing.
 
 13-Disable-FastStartup.bat
     Clears the Windows Fast Startup flag (HiberbootEnabled=0). Fast

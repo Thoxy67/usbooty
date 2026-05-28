@@ -77,9 +77,9 @@ Key helper modules:
   EFI bootloader (works for NTFS and exFAT main partitions).
 * `winca2023.rs`: copies `SkuSiPolicy.p7b` from `install.wim` so older
   UEFI firmware can boot the Windows CA 2023 chain.
-* `unattend.rs`: generates `autounattend.xml`, the debloat policy
+* `unattend/`: generates `autounattend.xml`, the debloat policy
   import, the BitLocker auto-encryption guard, and the post-install
-  desktop helpers (eleven ready-to-run `.bat` scripts xcopied into
+  desktop helpers (eighteen ready-to-run `.bat` scripts xcopied into
   `C:\Users\Default\Desktop\USBooty\`).
 * `wimsplit.rs`: chunks an oversized `install.wim` into `install.swm`
   parts on a FAT32 target.
