@@ -11,6 +11,9 @@ use crate::{emit, fsutil};
 /// The fixed volume label used for the Fedora overlay partition. dracut picks
 /// the partition up at boot via the `rd.live.overlay=LABEL=…` kernel option.
 const FEDORA_OVERLAY_LABEL: &str = "OVERLAY";
+/// COW-store file that dracut's dmsquash-live loop-mounts on the Fedora /
+/// RHEL-family overlay partition (a bare partition is not used directly).
+const FEDORA_OVERLAY_FILE: &str = "overlay.img";
 /// The fixed volume label kiwi-live (openSUSE) uses for its overlay partition.
 /// The live system reads it by label automatically; no kernel arg needed.
 const OPENSUSE_COW_LABEL: &str = "cow";
@@ -36,23 +39,44 @@ pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
         PersistenceKind::FedoraOverlay => FEDORA_OVERLAY_LABEL,
         PersistenceKind::OpenSuseCow => OPENSUSE_COW_LABEL,
         PersistenceKind::ArchOverlay => ARCH_COW_LABEL,
-        PersistenceKind::SlaxChanges => {
-            // The caller violated the contract — route it through the
-            // inline path instead of returning a useless empty partition.
-            anyhow::bail!(
-                "Slax persistence uses an inline directory, not a partition; \
-                 call setup_inline() instead"
-            );
+        PersistenceKind::SlaxChanges | PersistenceKind::AlpineLbu => {
+            // Inline schemes (Slax, Alpine) have no dedicated partition; the
+            // caller must route them through setup_inline() instead.
+            anyhow::bail!("{kind:?} persistence is inline (no partition); call setup_inline()");
         }
     };
     fsutil::mkfs_ext4(device, label)?;
 
-    // Debian-live additionally needs a persistence.conf saying what to persist.
-    if kind == PersistenceKind::DebianLive {
-        let mount = fsutil::Mount::new(device, "ext4")?;
-        let conf = mount.path().join("persistence.conf");
-        std::fs::write(&conf, b"/ union\n")
-            .with_context(|| format!("writing {}", conf.display()))?;
+    match kind {
+        // Debian-live needs a persistence.conf saying what to persist.
+        PersistenceKind::DebianLive => {
+            let mount = fsutil::Mount::new(device, "ext4")?;
+            let conf = mount.path().join("persistence.conf");
+            std::fs::write(&conf, b"/ union\n")
+                .with_context(|| format!("writing {}", conf.display()))?;
+        }
+        // dracut's dmsquash-live (Fedora and the RHEL rebuilds) does not treat
+        // a bare partition as the overlay: it loop-mounts a COW *file* on it as
+        // a dm-snapshot. Create a zeroed sparse file filling the partition; the
+        // kernel arg in patch_boot_config points dracut at it.
+        //
+        // NOTE: only this wiring is unit-tested. Actual persistence across a
+        // reboot must be verified on real Fedora / AlmaLinux / Rocky / CentOS
+        // live media.
+        PersistenceKind::FedoraOverlay => {
+            let mount = fsutil::Mount::new(device, "ext4")?;
+            let path = mount.path().join(FEDORA_OVERLAY_FILE);
+            let file = std::fs::File::create(&path)
+                .with_context(|| format!("creating {}", path.display()))?;
+            let stat = nix::sys::statvfs::statvfs(mount.path())
+                .context("measuring the overlay partition")?;
+            let free = stat.blocks_available() as u64 * stat.fragment_size() as u64;
+            // Leave a little slack so the host filesystem keeps some headroom.
+            let size = free.saturating_sub(16 * 1024 * 1024);
+            file.set_len(size)
+                .with_context(|| format!("allocating {}", path.display()))?;
+        }
+        _ => {}
     }
     emit::log("Persistence partition created");
     Ok(())
@@ -70,6 +94,19 @@ pub fn setup_inline(data_mount: &Path, kind: PersistenceKind) -> Result<()> {
             std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
             emit::log(format!(
                 "Slax persistence directory created at {}",
+                dir.display()
+            ));
+            Ok(())
+        }
+        PersistenceKind::AlpineLbu => {
+            // Alpine persists via lbu (an apkovl tarball) on the writable boot
+            // media. The only thing to prepare here is a local apk package
+            // cache directory so `setup-apkcache` has a target; the apkovl
+            // itself is written at runtime by `lbu commit`.
+            let dir = data_mount.join("cache");
+            std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+            emit::log(format!(
+                "Alpine apk cache directory created at {}",
                 dir.display()
             ));
             Ok(())
@@ -97,10 +134,11 @@ pub fn patch_boot_config(target: &Path, kind: PersistenceKind) -> Result<()> {
             patch_dir(target, "boot=live", "boot=live persistence", &mut patched)
         }
         PersistenceKind::FedoraOverlay => {
-            // dracut activates the overlay when `rd.live.overlay=LABEL=<lbl>`
-            // is on the kernel command line. Insert it right after the
-            // `rd.live.image` marker the Fedora installer always ships.
-            let kernel_arg = format!("rd.live.overlay=LABEL={FEDORA_OVERLAY_LABEL}");
+            // Point dracut at the COW file created in `setup` (the
+            // devspec:pathspec form). Inserted after the `rd.live.image` marker
+            // every Fedora / RHEL-family live cmdline carries.
+            let kernel_arg =
+                format!("rd.live.overlay=LABEL={FEDORA_OVERLAY_LABEL}:/{FEDORA_OVERLAY_FILE}");
             patch_dir(
                 target,
                 "rd.live.image",
@@ -109,9 +147,18 @@ pub fn patch_boot_config(target: &Path, kind: PersistenceKind) -> Result<()> {
             );
         }
         PersistenceKind::OpenSuseCow => {
-            // No bootloader patching needed — kiwi-live finds the COW
-            // partition by label at boot. The mkfs label set in `setup` is
-            // the entire integration.
+            // kiwi-live creates its own persistent write partition (in free
+            // space) when `rd.live.overlay.persistent` is on the cmdline; it
+            // does not adopt a pre-made labelled partition. CAVEAT: this needs
+            // unpartitioned free space, which the current cow-partition layout
+            // does not leave, so this is only half the fix. Verify on real
+            // openSUSE live media.
+            patch_dir(
+                target,
+                "rd.live.image",
+                "rd.live.image rd.live.overlay.persistent",
+                &mut patched,
+            );
         }
         PersistenceKind::ArchOverlay => {
             // The archiso initramfs hook activates an overlay when
@@ -128,12 +175,14 @@ pub fn patch_boot_config(target: &Path, kind: PersistenceKind) -> Result<()> {
             );
         }
         PersistenceKind::SlaxChanges => {
-            // Slax 9+ activates persistent changes when `perch` appears on
-            // the kernel command line. Slax's syslinux/GRUB configs use
-            // `from=/slax` as the canonical entry-point string; append
-            // `perch` right after it so every menu entry (BIOS isolinux and
-            // UEFI grub) gets the kernel arg.
-            patch_dir(target, "from=/slax", "from=/slax perch", &mut patched);
+            // Slax 9+ saves changes to /slax/changes/ automatically on writable
+            // media, with no kernel parameter required (the only related arg,
+            // `perchsize=`, merely raises the FAT 16 GiB cap). The directory is
+            // created in setup_inline; there is nothing to patch here.
+        }
+        PersistenceKind::AlpineLbu => {
+            // Alpine's diskless init auto-loads the apkovl from the writable
+            // boot media; no kernel parameter is needed.
         }
     }
     emit::log(format!(

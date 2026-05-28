@@ -1234,20 +1234,20 @@ ApplicationWindow {
                 CheckBox {
                     visible: app.persistenceInline
                     enabled: !app.busy
-                    text: qsTr("Enable persistent changes (saves to /slax/changes/)")
+                    text: qsTr("Enable persistent changes")
                     checked: app.persistenceSize > 0
                     onToggled: app.persistenceSize = checked ? 1 : 0
                     ToolTip.delay: 500
                     ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Creates /slax/changes/ on the data partition and patches the "
-                        + "kernel command line with `perch`, so Slax saves your edits straight back "
-                        + "into the changes folder on shutdown. No separate persistence partition is "
-                        + "made. Slax just writes into the data partition until it fills.")
+                    ToolTip.text: qsTr("Persistence lives on the writable boot stick, with no "
+                        + "separate partition. Slax saves to /slax/changes/ automatically; Alpine "
+                        + "runs from RAM and persists with lbu, so run `lbu commit` inside Alpine to "
+                        + "save the apkovl (an apk cache folder is prepared for you).")
                 }
                 Label {
                     text: app.persistenceInline
-                        ? qsTr("Slax writes changes directly into a folder on the data partition. "
-                             + "No separate overlay partition is created.")
+                        ? qsTr("Changes are saved to the writable boot stick; no separate "
+                             + "partition is created.")
                         : qsTr("Keeps your files and settings across reboots of this live USB.")
                     color: palette.placeholderText
                     font.pointSize: 8

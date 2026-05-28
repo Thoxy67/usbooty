@@ -75,6 +75,10 @@ fn fixes_for(family: DistroFamily) -> Vec<fn(&Path, &str) -> Result<()>> {
         | DistroFamily::Debian
         | DistroFamily::Fedora
         | DistroFamily::Nobara
+        | DistroFamily::AlmaLinux
+        | DistroFamily::Rocky
+        | DistroFamily::CentOs
+        | DistroFamily::Alpine
         | DistroFamily::OpenSuse
         | DistroFamily::Slax => Vec::new(),
     }

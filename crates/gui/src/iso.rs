@@ -85,6 +85,17 @@ pub fn analyze(path: &Path) -> IsoReport {
         let root = list_dir(&iso, &[]).unwrap_or_default();
         report.distro = DistroFamily::detect(&report.label, &root);
         report.persistence = report.distro.persistence();
+        // The Fedora / RHEL overlay scheme only applies to real LIVE media (a
+        // `LiveOS/` squashfs). Rocky / AlmaLinux / CentOS also ship install
+        // DVDs that carry the same volume label but no live image, so don't
+        // offer persistence for those.
+        if report.persistence == Some(usbooty_core::PersistenceKind::FedoraOverlay)
+            && !root
+                .iter()
+                .any(|(name, is_dir, _)| *is_dir && name.eq_ignore_ascii_case("liveos"))
+        {
+            report.persistence = None;
+        }
     }
 
     // Modern Windows ISOs are UDF images carrying only a near-empty ISO9660

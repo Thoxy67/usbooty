@@ -23,6 +23,8 @@ bootable-media logic is ported from
   persistence for the Ubuntu, Debian, Fedora, openSUSE, and Arch
   families, Slax inline persistence, and the per-distro fix table
   (the archiso GRUB-redirect and the Knoppix safe-boot flags).
+* [Other systems](other-systems.md): how USBooty classifies and writes
+  BSD, FreeDOS, ReactOS, and other niche images.
 * [Installation](installation.md): build from source, the install
   script, the AUR package, and the optional runtime tools.
 * [Developing](developing.md): repo layout, running tests, the loopback

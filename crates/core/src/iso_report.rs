@@ -20,10 +20,10 @@ pub enum PersistenceKind {
     /// openSUSE live (kiwi-live) — an ext4 partition labelled `cow`, picked up
     /// automatically by the live system; no kernel parameter required.
     OpenSuseCow,
-    /// archiso-based live systems (Arch Linux, CachyOS, …) — an ext4 partition
-    /// labelled `PERSISTENCE`, activated by adding `cow_label=PERSISTENCE` to
-    /// the kernel command line. See the Arch wiki article on the USB flash
-    /// installation medium and Rufus issue #691 for the original write-up.
+    /// archiso-based live systems (Arch Linux, CachyOS, etc.): an ext4 partition
+    /// labelled `PERSISTENCE`. archiso turns it into the persistent cowspace
+    /// when `cow_label=PERSISTENCE` is on the kernel command line (see the
+    /// archiso `README.bootparams` `cow_label` / `cow_device` options).
     ArchOverlay,
     /// Slax — *no separate partition*. Slax 9+ persists into `/slax/changes/`
     /// at the data partition's root; the helper creates the directory and
@@ -32,14 +32,23 @@ pub enum PersistenceKind {
     /// variant the size slider is ignored — Slax just keeps writing into the
     /// folder until the partition fills.
     SlaxChanges,
+    /// Alpine "diskless" mode. No overlay partition: Alpine runs from RAM and
+    /// persists config via `lbu` (an apkovl tarball) on the writable boot
+    /// media. usbooty just prepares a local apk cache directory; the user runs
+    /// `lbu commit` to save. Inline, like Slax (the writable boot partition
+    /// itself holds the state).
+    AlpineLbu,
 }
 
 impl PersistenceKind {
     /// Whether this scheme needs its own dedicated partition. False for
-    /// inline-directory variants like Slax, where the size slider is moot
-    /// because persistence lives inside the main data partition.
+    /// inline variants (Slax, Alpine), where the size slider is moot because
+    /// persistence lives inside the main (writable) data partition.
     pub fn needs_partition(self) -> bool {
-        !matches!(self, PersistenceKind::SlaxChanges)
+        !matches!(
+            self,
+            PersistenceKind::SlaxChanges | PersistenceKind::AlpineLbu
+        )
     }
 }
 
@@ -70,6 +79,12 @@ pub enum DistroFamily {
     Bazzite,
     /// Nobara (Fedora-derived).
     Nobara,
+    /// AlmaLinux (RHEL rebuild; same dracut dmsquash-live live media as Fedora).
+    AlmaLinux,
+    /// Rocky Linux (RHEL rebuild; same dracut dmsquash-live live media).
+    Rocky,
+    /// CentOS Stream (RHEL upstream; same dracut dmsquash-live live media).
+    CentOs,
     /// openSUSE (kiwi-live).
     OpenSuse,
     /// GeckoLinux (openSUSE-derived).
@@ -82,6 +97,10 @@ pub enum DistroFamily {
     EndeavourOs,
     /// CachyOS (archiso-derived).
     CachyOs,
+    /// Alpine Linux (diskless mode). Persists via `lbu` (an apkovl tarball on
+    /// writable media), not an overlay partition, so no persistence partition
+    /// is offered.
+    Alpine,
     /// Slax — own `/slax/changes/` scheme.
     Slax,
     /// Knoppix — own scheme, very old isolinux defaults.
@@ -137,6 +156,12 @@ impl DistroFamily {
             ("manjaro", DistroFamily::Manjaro),
             ("endeavour", DistroFamily::EndeavourOs),
             ("cachyos", DistroFamily::CachyOs),
+            ("cos_", DistroFamily::CachyOs),
+            ("almalinux", DistroFamily::AlmaLinux),
+            ("rockylinux", DistroFamily::Rocky),
+            ("rocky", DistroFamily::Rocky),
+            ("centos", DistroFamily::CentOs),
+            ("alpine", DistroFamily::Alpine),
             ("ubuntu", DistroFamily::Ubuntu),
             ("kubuntu", DistroFamily::Ubuntu),
             ("xubuntu", DistroFamily::Ubuntu),
@@ -158,6 +183,15 @@ impl DistroFamily {
         // Structural fallback: if the ISO has a `casper/` directory but the
         // label didn't name an Ubuntu derivative, call it generic Ubuntu so
         // CasperRw persistence is still offered.
+        // Fedora / RHEL-family live media mark themselves with a `LiveOS/`
+        // directory (holding squashfs.img). Treat an unlabelled one as the
+        // generic dracut dmsquash-live family so the overlay scheme applies.
+        if root_entries
+            .iter()
+            .any(|(name, is_dir, _)| *is_dir && name.eq_ignore_ascii_case("liveos"))
+        {
+            return DistroFamily::Fedora;
+        }
         if has_dir("casper") {
             return DistroFamily::Ubuntu;
         }
@@ -182,12 +216,16 @@ impl DistroFamily {
             DistroFamily::Fedora => "Fedora",
             DistroFamily::Bazzite => "Bazzite",
             DistroFamily::Nobara => "Nobara",
+            DistroFamily::AlmaLinux => "AlmaLinux",
+            DistroFamily::Rocky => "Rocky Linux",
+            DistroFamily::CentOs => "CentOS Stream",
             DistroFamily::OpenSuse => "openSUSE",
             DistroFamily::GeckoLinux => "GeckoLinux",
             DistroFamily::Arch => "Arch Linux",
             DistroFamily::Manjaro => "Manjaro",
             DistroFamily::EndeavourOs => "EndeavourOS",
             DistroFamily::CachyOs => "CachyOS",
+            DistroFamily::Alpine => "Alpine Linux",
             DistroFamily::Slax => "Slax",
             DistroFamily::Knoppix => "Knoppix",
         }
@@ -200,15 +238,21 @@ impl DistroFamily {
         match self {
             DistroFamily::Ubuntu | DistroFamily::Mint => Some(PersistenceKind::CasperRw),
             DistroFamily::Debian | DistroFamily::Lmde => Some(PersistenceKind::DebianLive),
-            DistroFamily::Fedora | DistroFamily::Bazzite | DistroFamily::Nobara => {
-                Some(PersistenceKind::FedoraOverlay)
-            }
+            DistroFamily::Fedora
+            | DistroFamily::Bazzite
+            | DistroFamily::Nobara
+            | DistroFamily::AlmaLinux
+            | DistroFamily::Rocky
+            | DistroFamily::CentOs => Some(PersistenceKind::FedoraOverlay),
             DistroFamily::OpenSuse | DistroFamily::GeckoLinux => Some(PersistenceKind::OpenSuseCow),
             DistroFamily::Arch
             | DistroFamily::Manjaro
             | DistroFamily::EndeavourOs
             | DistroFamily::CachyOs => Some(PersistenceKind::ArchOverlay),
             DistroFamily::Slax => Some(PersistenceKind::SlaxChanges),
+            // Alpine "diskless" persists via lbu (an apkovl tarball on writable
+            // media), an inline scheme rather than an overlay partition.
+            DistroFamily::Alpine => Some(PersistenceKind::AlpineLbu),
             DistroFamily::Knoppix | DistroFamily::Unknown => None,
         }
     }
@@ -333,6 +377,29 @@ mod distro_family_tests {
             ("CachyOS-Live-2026", DistroFamily::CachyOs),
             ("archlinux-2026.05.01-x86_64", DistroFamily::Arch),
             ("ubuntu-24.04-desktop-amd64", DistroFamily::Ubuntu),
+            ("AlmaLinux-9-7-x86_64-Live-GNOME", DistroFamily::AlmaLinux),
+            ("Rocky-9-KDE-x86_64-latest", DistroFamily::Rocky),
+            ("CentOS-Stream-9-latest-x86_64-Live", DistroFamily::CentOs),
+            ("alpine-standard-3.20.0-x86_64", DistroFamily::Alpine),
+        ] {
+            assert_eq!(
+                DistroFamily::detect(label, &[]),
+                expected,
+                "label `{label}` should detect as {expected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn detects_real_world_volume_labels() {
+        // Exact ISO volume labels (not filenames) seen on real media. These
+        // are the strings detection actually keys on.
+        for (label, expected) in [
+            ("alpine-std 3.23.4 x86_64", DistroFamily::Alpine),
+            ("ARCH_202605", DistroFamily::Arch),
+            ("COS_202604", DistroFamily::CachyOs),
+            ("Rocky-10-1-x86_64-dvd", DistroFamily::Rocky),
+            ("AlmaLinux-10-2-x86_64-dvd", DistroFamily::AlmaLinux),
         ] {
             assert_eq!(
                 DistroFamily::detect(label, &[]),
@@ -370,6 +437,12 @@ mod distro_family_tests {
             DistroFamily::detect("MY_ARCH", &[dir("arch")]),
             DistroFamily::Arch
         );
+        // A `LiveOS/` directory (Fedora/RHEL dmsquash-live) without a known
+        // label is treated as the generic Fedora family.
+        assert_eq!(
+            DistroFamily::detect("CUSTOM_RHEL", &[dir("LiveOS")]),
+            DistroFamily::Fedora
+        );
         assert_eq!(DistroFamily::detect("", &[]), DistroFamily::Unknown);
     }
 
@@ -399,6 +472,19 @@ mod distro_family_tests {
             DistroFamily::Slax.persistence(),
             Some(PersistenceKind::SlaxChanges)
         );
+        assert_eq!(
+            DistroFamily::AlmaLinux.persistence(),
+            Some(PersistenceKind::FedoraOverlay)
+        );
+        assert_eq!(
+            DistroFamily::CentOs.persistence(),
+            Some(PersistenceKind::FedoraOverlay)
+        );
+        // Alpine persists via lbu (inline), not an overlay partition.
+        assert_eq!(
+            DistroFamily::Alpine.persistence(),
+            Some(PersistenceKind::AlpineLbu)
+        );
         assert_eq!(DistroFamily::Knoppix.persistence(), None);
         assert_eq!(DistroFamily::Unknown.persistence(), None);
     }
@@ -406,6 +492,7 @@ mod distro_family_tests {
     #[test]
     fn slax_persistence_does_not_need_a_partition() {
         assert!(!PersistenceKind::SlaxChanges.needs_partition());
+        assert!(!PersistenceKind::AlpineLbu.needs_partition());
         assert!(PersistenceKind::CasperRw.needs_partition());
         assert!(PersistenceKind::DebianLive.needs_partition());
         assert!(PersistenceKind::FedoraOverlay.needs_partition());

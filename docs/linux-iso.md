@@ -21,16 +21,17 @@ gets classified as Windows.
 
 Detected distribution families surface as a short chip under the ISO
 summary: Ubuntu, Linux Mint, LMDE, Debian, Fedora, Bazzite, Nobara,
-openSUSE, GeckoLinux, Arch Linux, Manjaro, EndeavourOS, CachyOS, Slax,
-and Knoppix. Detection is most-specific-first (a derivative like
-Bazzite or LMDE wins over its parent) by ISO volume label, with a
-`slax/` or `knoppix*` root directory overriding the label, then a
-structural fallback (`casper/` becomes Ubuntu, `live/` becomes Debian,
-`arch/` becomes Arch). Distros without their own label needle (Kali,
-Parrot, Pop!_OS, and similar) fall through to that structural check and
-are handled as their Debian or Ubuntu base. The family controls which
-post-copy quirk fixes are applied and which persistence strategy is
-offered.
+AlmaLinux, Rocky Linux, CentOS Stream, openSUSE, GeckoLinux, Arch Linux,
+Manjaro, EndeavourOS, CachyOS, Alpine Linux, Slax, and Knoppix.
+Detection is most-specific-first (a derivative like Bazzite or LMDE wins
+over its parent) by ISO volume label, with a `slax/` or `knoppix*` root
+directory overriding the label, then a structural fallback (`casper/`
+becomes Ubuntu, `live/` becomes Debian, `LiveOS/` becomes the
+Fedora / RHEL family, `arch/` becomes Arch). Distros without their own
+label needle (Kali, Parrot, Pop!_OS, and similar) fall through to that
+structural check and are handled as their Debian or Ubuntu base. The
+family controls which post-copy quirk fixes are applied and which
+persistence strategy is offered.
 
 ## Persistent live USBs
 
@@ -54,12 +55,21 @@ labelled and configured the way each live system expects:
   labelled `persistence` carrying a `persistence.conf` file with
   `/ union`, plus `persistence` appended to the `boot=live` line.
   `live-config` picks this up automatically.
-* **Fedora** (Fedora, Bazzite, Nobara): an ext4 overlay partition
-  labelled `OVERLAY`; USBooty adds `rd.live.overlay=LABEL=OVERLAY`
-  to the kernel command line so dracut activates it at boot.
-* **openSUSE** (openSUSE, GeckoLinux): an ext4 partition labelled
-  `cow`. kiwi-live finds it by label, so no kernel parameter is
-  needed; the label alone is the whole integration.
+* **Fedora / RHEL family** (Fedora, Bazzite, Nobara, AlmaLinux,
+  Rocky Linux, CentOS Stream): an ext4 partition labelled `OVERLAY`
+  holding a sparse COW file `overlay.img`. dracut's `dmsquash-live`
+  loop-mounts that file as a dm-snapshot when
+  `rd.live.overlay=LABEL=OVERLAY:/overlay.img` is on the kernel command
+  line (a bare partition is not enough). These distros all share the
+  same dracut live stack. **Verify on hardware:** the COW wiring is
+  unit-tested, but reboot persistence has not been bench-tested.
+* **openSUSE** (openSUSE, GeckoLinux): USBooty adds
+  `rd.live.overlay.persistent` to the kernel command line. **Known
+  limitation:** kiwi-live creates its own write partition in
+  unpartitioned free space rather than adopting a labelled one, so full
+  persistence also needs the device left with free space, which the
+  current layout does not do yet. Treat openSUSE persistence as
+  experimental.
 * **Arch / archiso** (Arch, Manjaro, EndeavourOS, CachyOS): an ext4
   partition labelled `PERSISTENCE`, activated by appending
   `cow_label=PERSISTENCE` to the kernel command line.
@@ -70,9 +80,16 @@ A few distros store persistence inside the live ISO's existing data
 partition rather than a separate partition:
 
 * **Slax**: USBooty creates the `slax/changes/` directory on the
-  main partition. Slax mounts changes from there automatically. The
-  persistence slider is hidden because the partition itself absorbs
-  writes.
+  main partition. Slax saves changes there automatically on writable
+  media (no kernel parameter needed). The persistence slider is hidden
+  because the partition itself absorbs writes.
+* **Alpine Linux** (diskless mode): Alpine does not use an overlay
+  partition at all. It runs from RAM and persists configuration with
+  `lbu`, which writes an `<host>.apkovl.tar.gz` to any writable
+  filesystem on the boot media. Write Alpine with the **Partition &
+  copy** method onto a writable FAT32/ext4 stick, then run `lbu commit`
+  inside the running system. USBooty shows no persistence slider for
+  Alpine.
 
 ## Per-distro fix table
 
