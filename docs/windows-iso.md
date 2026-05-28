@@ -256,14 +256,15 @@ the ISO manually.
 
 ## 5. ISO trust signals
 
-When you load a Windows ISO, USBooty computes its SHA-1 in the
-background and asks `sha1.rg-adguard.net` whether the hash matches
-a published Microsoft build. When the hash is listed, a small green
-badge appears next to the SHA-1 in the digest panel showing what the
-catalog reports: its category and the matched filename (for example
-`Retail · en-us_windows_11.iso`). If the hash is not in the catalog
-no badge is shown, which is not by itself a sign that the ISO has
-been tampered with.
+Trust signals are computed on demand, not on load: nothing is hashed
+or looked up until you click **Compute checksums**. As part of that
+pass USBooty sends the computed SHA-1 to `sha1.rg-adguard.net` to ask
+whether it matches a published Microsoft build. When the hash is
+listed, a small green badge appears next to the SHA-1 in the digest
+panel showing the file name the catalog records for that hash (for
+example `Verified: fr-fr_windows_11_..._x64_dvd_a1cf6c36.iso`). If the
+hash is not in the catalog no badge is shown, which is not by itself a
+sign that the ISO has been tampered with.
 
 If the SBAT or DBX scan flags any of the ISO's signed EFI binaries
 as revoked by current Secure Boot policy, a red banner appears

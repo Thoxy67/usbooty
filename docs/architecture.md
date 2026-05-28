@@ -44,9 +44,9 @@ Responsibilities:
 * Transparent decompression of `.xz`, `.gz`, `.bz2`, `.zst`, `.lzma`,
   `.zip`, `.Z`, and fixed `.vhd` inputs via `decompress.rs`.
 * Compute every digest (MD5, SHA-1, SHA-256, SHA-512, BLAKE3) of the
-  source for display, in one read pass.
-* Cross-check the SHA-1 against `sha1.rg-adguard.net` and label the
-  result (Retail, Volume, OEM, unknown).
+  source for display, on demand in one read pass.
+* Cross-check the SHA-1 against `sha1.rg-adguard.net` (part of that same
+  on-demand pass) and surface the catalogued file name as a badge.
 * Scan the ISO for SBAT generations and DBX-revoked Authenticode
   hashes, surface the result as a red banner.
 * Probe the selected block device with `smartctl` for reallocated

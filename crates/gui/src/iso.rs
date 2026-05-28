@@ -318,62 +318,154 @@ pub struct IsoHashes {
     pub blake3: String,
 }
 
-/// Compute all five digests of `path` in a single read pass, invoking
-/// `progress(done, total)` at least once per ~64 MiB read so the UI can
-/// surface a percentage instead of an opaque "Computing…".
+/// Identifies which digest a [`compute_hashes`] per-hash callback is reporting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HashKind {
+    Md5,
+    Sha1,
+    Sha256,
+    Sha512,
+    Blake3,
+}
+
+/// Compute all five digests of `path` in a single read pass.
 ///
-/// Slow on a multi-gigabyte image (disk-read bound, not CPU bound — running
-/// five hashers concurrently costs nothing on top of the read), so call this
-/// off the UI thread.
-pub fn compute_hashes(path: &Path, mut progress: impl FnMut(u64, u64)) -> IsoHashes {
+/// `progress(done, total)` fires roughly once per 64 MiB so the UI can show a
+/// percentage. `on_hash(kind, hex)` fires once per digest, in completion order,
+/// the moment that hash's worker finishes, so the UI can swap a per-hash
+/// spinner for its value as each lands instead of waiting for all five.
+///
+/// Each digest runs on its own worker thread, so the wall-clock cost is the
+/// slowest single hash rather than the sum of all five. The reader hands every
+/// chunk to all five workers as a shared `Arc<[u8]>` (one copy per chunk, then
+/// cheap refcount clones); bounded channels apply backpressure so the reader
+/// cannot outrun the slowest hash and balloon memory. Call this off the UI
+/// thread.
+pub fn compute_hashes(
+    path: &Path,
+    mut progress: impl FnMut(u64, u64),
+    mut on_hash: impl FnMut(HashKind, String),
+) -> IsoHashes {
     use md5::Md5;
     use sha1::Sha1;
     use sha2::{Digest, Sha256, Sha512};
+    use std::sync::Arc;
+    use std::sync::mpsc::{channel, sync_channel};
 
     let Ok(mut file) = File::open(path) else {
         return IsoHashes::default();
     };
     let total = file.metadata().map(|m| m.len()).unwrap_or(0);
-    let mut md5 = Md5::new();
-    let mut sha1 = Sha1::new();
-    let mut sha256 = Sha256::new();
-    let mut sha512 = Sha512::new();
-    let mut blake3 = blake3::Hasher::new();
 
-    let mut buf = vec![0u8; 1024 * 1024];
-    let mut done = 0u64;
-    // Reporting every 1-MiB read would flood the Qt thread, so coarse-grain
-    // to one update per ~64 MiB of progress.
-    const REPORT_EVERY: u64 = 64 * 1024 * 1024;
-    let mut next_report = 0u64;
-    loop {
-        match file.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                let chunk = &buf[..n];
-                md5.update(chunk);
-                sha1.update(chunk);
-                sha256.update(chunk);
-                sha512.update(chunk);
-                blake3.update(chunk);
-                done += n as u64;
-                if done >= next_report {
-                    progress(done, total);
-                    next_report = done + REPORT_EVERY;
+    type Chunk = Arc<[u8]>;
+    // Bounded so a slow hasher throttles the reader instead of letting unhashed
+    // chunks pile up. Depth 4 * 5 workers * 4 MiB caps the backlog at ~80 MiB.
+    let (md5_tx, md5_rx) = sync_channel::<Chunk>(4);
+    let (sha1_tx, sha1_rx) = sync_channel::<Chunk>(4);
+    let (sha256_tx, sha256_rx) = sync_channel::<Chunk>(4);
+    let (sha512_tx, sha512_rx) = sync_channel::<Chunk>(4);
+    let (blake3_tx, blake3_rx) = sync_channel::<Chunk>(4);
+    // Workers report `(kind, hex)` here the instant they finish.
+    let (res_tx, res_rx) = channel::<(HashKind, String)>();
+
+    std::thread::scope(|s| {
+        let r = res_tx.clone();
+        s.spawn(move || {
+            let mut h = Md5::new();
+            for c in md5_rx {
+                h.update(&c[..]);
+            }
+            let _ = r.send((HashKind::Md5, hex(&h.finalize())));
+        });
+        let r = res_tx.clone();
+        s.spawn(move || {
+            let mut h = Sha1::new();
+            for c in sha1_rx {
+                h.update(&c[..]);
+            }
+            let _ = r.send((HashKind::Sha1, hex(&h.finalize())));
+        });
+        let r = res_tx.clone();
+        s.spawn(move || {
+            let mut h = Sha256::new();
+            for c in sha256_rx {
+                h.update(&c[..]);
+            }
+            let _ = r.send((HashKind::Sha256, hex(&h.finalize())));
+        });
+        let r = res_tx.clone();
+        s.spawn(move || {
+            let mut h = Sha512::new();
+            for c in sha512_rx {
+                h.update(&c[..]);
+            }
+            let _ = r.send((HashKind::Sha512, hex(&h.finalize())));
+        });
+        let r = res_tx.clone();
+        s.spawn(move || {
+            let mut h = blake3::Hasher::new();
+            for c in blake3_rx {
+                h.update(&c[..]);
+            }
+            let _ = r.send((HashKind::Blake3, h.finalize().to_hex().to_string()));
+        });
+        // Drop our own handle so `res_rx` closes once the five workers do.
+        drop(res_tx);
+
+        let mut buf = vec![0u8; 4 * 1024 * 1024];
+        let mut done = 0u64;
+        const REPORT_EVERY: u64 = 64 * 1024 * 1024;
+        let mut next_report = 0u64;
+        let mut read_ok = true;
+        loop {
+            match file.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let chunk: Chunk = Arc::from(&buf[..n]);
+                    if md5_tx.send(chunk.clone()).is_err()
+                        || sha1_tx.send(chunk.clone()).is_err()
+                        || sha256_tx.send(chunk.clone()).is_err()
+                        || sha512_tx.send(chunk.clone()).is_err()
+                        || blake3_tx.send(chunk).is_err()
+                    {
+                        read_ok = false;
+                        break;
+                    }
+                    done += n as u64;
+                    if done >= next_report {
+                        progress(done, total);
+                        next_report = done + REPORT_EVERY;
+                    }
+                }
+                Err(_) => {
+                    read_ok = false;
+                    break;
                 }
             }
-            Err(_) => return IsoHashes::default(),
         }
-    }
-    progress(total.max(done), total.max(done));
+        // Close every input channel so the workers see EOF and finish.
+        drop((md5_tx, sha1_tx, sha256_tx, sha512_tx, blake3_tx));
 
-    IsoHashes {
-        md5: hex(&md5.finalize()),
-        sha1: hex(&sha1.finalize()),
-        sha256: hex(&sha256.finalize()),
-        sha512: hex(&sha512.finalize()),
-        blake3: blake3.finalize().to_hex().to_string(),
-    }
+        if !read_ok {
+            return IsoHashes::default();
+        }
+        progress(total.max(done), total.max(done));
+
+        // Collect the five digests in completion order, surfacing each to the
+        // caller the moment it arrives so a per-hash spinner can resolve.
+        let mut out = IsoHashes::default();
+        for (kind, digest) in res_rx {
+            match kind {
+                HashKind::Md5 => out.md5 = digest.clone(),
+                HashKind::Sha1 => out.sha1 = digest.clone(),
+                HashKind::Sha256 => out.sha256 = digest.clone(),
+                HashKind::Sha512 => out.sha512 = digest.clone(),
+                HashKind::Blake3 => out.blake3 = digest.clone(),
+            }
+            on_hash(kind, digest);
+        }
+        out
+    })
 }
 
 /// Lowercase hex encoding of a fixed-size digest.
@@ -557,6 +649,38 @@ mod tests {
         assert!(report.has_isolinux);
         assert!(report.has_grub);
         assert!(!report.has_install_wim);
+    }
+
+    #[test]
+    fn parallel_hashes_match_single_threaded_over_multiple_chunks() {
+        use md5::Md5;
+        use sha1::Sha1;
+        use sha2::{Digest, Sha256, Sha512};
+
+        // ~10 MiB so the reader emits several 4 MiB chunks and the per-worker
+        // channels must preserve byte order across threads.
+        let data: Vec<u8> = (0..10u32 * 1024 * 1024).map(|i| (i % 251) as u8).collect();
+        let dir = tempdir::Holder::new();
+        let path = dir.path().join("hashme.bin");
+        std::fs::write(&path, &data).unwrap();
+
+        let mut reported = std::collections::HashSet::new();
+        let got = compute_hashes(
+            &path,
+            |_, _| {},
+            |kind, _| {
+                reported.insert(kind);
+            },
+        );
+        let want = IsoHashes {
+            md5: hex(&Md5::digest(&data)),
+            sha1: hex(&Sha1::digest(&data)),
+            sha256: hex(&Sha256::digest(&data)),
+            sha512: hex(&Sha512::digest(&data)),
+            blake3: blake3::hash(&data).to_hex().to_string(),
+        };
+        assert_eq!(got, want);
+        assert_eq!(reported.len(), 5, "on_hash must fire once per digest");
     }
 
     /// Minimal scoped temp directory helper (avoids an extra dependency).

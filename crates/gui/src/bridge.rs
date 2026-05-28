@@ -32,16 +32,20 @@ pub mod qobject {
         #[qproperty(QString, iso_summary)]
         // Editable volume label, pre-filled from the ISO's own label.
         #[qproperty(QString, label)]
-        // Digests of the source ISO ("Computing…" while they are calculated).
-        // SHA-256 is the most commonly published, kept first for back-compat.
+        // Digests of the source ISO. Empty until computed; each fills in as
+        // its hash worker finishes. SHA-256 is the most commonly published,
+        // kept first for back-compat.
         #[qproperty(QString, iso_sha256)]
         #[qproperty(QString, iso_md5)]
         #[qproperty(QString, iso_sha1)]
         #[qproperty(QString, iso_sha512)]
         #[qproperty(QString, iso_blake3)]
-        // 0.0..=1.0 while `compute_hashes` runs; the UI binds to it to show
-        // a percentage instead of a frozen "Computing…" placeholder.
+        // 0.0..=1.0 while `compute_hashes` runs; the UI binds to it for the
+        // percentage shown next to the per-hash spinners.
         #[qproperty(f64, hash_progress)]
+        // True while digests are being computed; the panel shows a spinner
+        // per hash until each value lands.
+        #[qproperty(bool, hashing)]
         // Cross-check result from the rg-adguard SHA-1 database — when the
         // computed SHA-1 matches a known retail Microsoft ISO, the upstream
         // service returns a canonical filename + category which the UI
@@ -325,6 +329,7 @@ pub struct AppControllerRust {
     iso_sha512: QString,
     iso_blake3: QString,
     hash_progress: f64,
+    hashing: bool,
     app_version: QString,
     devices: QString,
     selected_device: i32,
@@ -428,6 +433,7 @@ impl Default for AppControllerRust {
             iso_sha512: QString::default(),
             iso_blake3: QString::default(),
             hash_progress: 0.0,
+            hashing: false,
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
             devices: QString::default(),
             selected_device: -1,
@@ -507,15 +513,44 @@ impl qobject::AppController {
         let include_fixed = *self.show_fixed_disks();
         let devices = crate::devices::enumerate(include_fixed);
 
-        let display = devices
-            .iter()
-            .map(DeviceInfo::display)
-            .collect::<Vec<_>>()
-            .join("\n");
-        self.as_mut().set_devices(QString::from(&display));
+        // Remember the selected device by its kernel path so an auto-refresh
+        // that returns the same drive keeps it selected, instead of snapping
+        // the combo back to the first entry every couple of seconds.
+        let prev_path = {
+            let idx = *self.selected_device();
+            if idx >= 0 {
+                self.rust()
+                    .device_list
+                    .get(idx as usize)
+                    .map(|d| d.path.clone())
+            } else {
+                None
+            }
+        };
 
-        let selected = if devices.is_empty() { -1 } else { 0 };
-        self.as_mut().set_selected_device(selected);
+        let display = QString::from(
+            &devices
+                .iter()
+                .map(DeviceInfo::display)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+        // Only rewrite the model when it actually changed; a no-op refresh must
+        // not rebuild the combo's model (which is what disturbed the selection).
+        if *self.devices() != display {
+            self.as_mut().set_devices(display);
+        }
+
+        // Re-find the previously-selected device; fall back to the first entry
+        // only when it is gone (or nothing was selected yet).
+        let selected = prev_path
+            .and_then(|path| devices.iter().position(|d| d.path == path))
+            .map(|i| i as i32)
+            .unwrap_or(if devices.is_empty() { -1 } else { 0 });
+        if *self.selected_device() != selected {
+            self.as_mut().set_selected_device(selected);
+        }
+
         self.as_mut().rust_mut().device_list = devices;
         self.as_mut().refresh_fit_warning();
         self.as_mut().refresh_persistence_max();
@@ -1128,21 +1163,24 @@ impl qobject::AppController {
     }
 
     /// Kick off off-thread digest computation for the currently-loaded ISO.
-    /// Sets every digest field to a "Computing…" placeholder while the work
-    /// runs and fills them in as soon as it finishes. `hash_progress` is
-    /// updated as fractions of completion so the UI can show a percent.
+    /// Clears the digest fields and sets `hashing` so the panel shows a spinner
+    /// per hash; the worker fills each value in as its thread finishes, and
+    /// `hash_progress` tracks the shared read pass for the percentage.
     pub fn compute_hashes(mut self: core::pin::Pin<&mut Self>) {
         let path = self.iso_path().to_string();
         if path.is_empty() {
             return;
         }
-        let placeholder = QString::from("Computing…");
-        self.as_mut().set_iso_md5(placeholder.clone());
-        self.as_mut().set_iso_sha1(placeholder.clone());
-        self.as_mut().set_iso_sha256(placeholder.clone());
-        self.as_mut().set_iso_sha512(placeholder.clone());
-        self.as_mut().set_iso_blake3(placeholder);
+        // Clear any previous digests and flip into the spinner-per-hash state;
+        // the worker fills each value in as its thread finishes.
+        self.as_mut().set_iso_md5(QString::default());
+        self.as_mut().set_iso_sha1(QString::default());
+        self.as_mut().set_iso_sha256(QString::default());
+        self.as_mut().set_iso_sha512(QString::default());
+        self.as_mut().set_iso_blake3(QString::default());
+        self.as_mut().set_iso_adguard_badge(QString::default());
         self.as_mut().set_hash_progress(0.0);
+        self.as_mut().set_hashing(true);
 
         let qt = self.qt_thread();
         std::thread::spawn(move || crate::runner::compute_iso_hashes(qt, path));

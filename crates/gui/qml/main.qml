@@ -738,17 +738,15 @@ ApplicationWindow {
                 spacing: 4
                 Layout.fillWidth: true
 
-                readonly property bool hasHashes: app.isoSha256 !== "" && app.isoSha256 !== "Computing…"
-                readonly property bool computing: app.isoSha256 === "Computing…"
+                readonly property bool anyHash: app.isoSha256 !== "" || app.isoMd5 !== ""
+                    || app.isoSha1 !== "" || app.isoSha512 !== "" || app.isoBlake3 !== ""
 
                 RowLayout {
                     Layout.fillWidth: true
-                    visible: !parent.hasHashes
+                    visible: !app.hashing && !parent.anyHash
                     Button {
-                        text: parent.parent.computing
-                            ? qsTr("Computing… %1 %").arg(Math.round(app.hashProgress * 100))
-                            : qsTr("Compute checksums")
-                        enabled: !app.busy && !parent.parent.computing
+                        text: qsTr("Compute checksums")
+                        enabled: !app.busy
                         onClicked: app.computeHashes()
                         ToolTip.delay: 500
                         ToolTip.visible: hovered
@@ -756,18 +754,8 @@ ApplicationWindow {
                             + "BLAKE3 in one pass. Disk-bound and CPU-heavy on a multi-GiB ISO; "
                             + "skip it unless you want to cross-check against a published hash.")
                     }
-                    // A thin progress bar inline with the button — exact %
-                    // sits on the button, the bar gives a peripheral cue.
-                    ProgressBar {
-                        Layout.fillWidth: true
-                        visible: parent.parent.computing
-                        from: 0
-                        to: 1
-                        value: app.hashProgress
-                    }
                     Label {
                         text: qsTr("Checksums skipped. Click to compute every digest.")
-                        visible: !parent.parent.computing
                         color: palette.placeholderText
                         font.pointSize: 9
                         elide: Text.ElideRight
@@ -775,8 +763,32 @@ ApplicationWindow {
                     }
                 }
 
+                // Computing: a single shared progress bar with the percentage.
+                // The five hashes stream through one read pass and finish
+                // together, so one bar is clearer than five spinners.
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: app.hashing
+                    Label {
+                        text: qsTr("Computing checksums…")
+                        color: palette.placeholderText
+                        font.pointSize: 9
+                    }
+                    ProgressBar {
+                        Layout.fillWidth: true
+                        from: 0
+                        to: 1
+                        value: app.hashProgress
+                    }
+                    Label {
+                        text: Math.round(app.hashProgress * 100) + " %"
+                        color: palette.placeholderText
+                        font.pointSize: 9
+                    }
+                }
+
                 ColumnLayout {
-                    visible: parent.hasHashes
+                    visible: !app.hashing && parent.anyHash
                     spacing: 1
                     Layout.fillWidth: true
 
@@ -830,8 +842,8 @@ ApplicationWindow {
                         font.pointSize: 8
                         Layout.fillWidth: true
                     }
-                    // Green "verified by rg-adguard" badge — only shown when
-                    // the upstream SHA-1 database recognised this ISO.
+                    // Green "verified" badge, shown only when the upstream
+                    // SHA-1 database recognised this ISO.
                     Rectangle {
                         visible: app.isoAdguardBadge !== ""
                         Layout.fillWidth: true
@@ -851,7 +863,7 @@ ApplicationWindow {
                             }
                             Label {
                                 Layout.fillWidth: true
-                                text: qsTr("Verified by rg-adguard: %1").arg(app.isoAdguardBadge)
+                                text: qsTr("Verified: %1").arg(app.isoAdguardBadge)
                                 color: "white"
                                 wrapMode: Text.Wrap
                                 font.pointSize: 9

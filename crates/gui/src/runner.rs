@@ -602,33 +602,50 @@ fn html_escape(s: &str) -> String {
 /// fractions of completion so the UI can show a percent instead of a
 /// frozen "Computing…".
 pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String) {
+    use crate::iso::HashKind;
+
     let qt_progress = qt.clone();
-    let hashes = crate::iso::compute_hashes(std::path::Path::new(&path), move |done, total| {
-        let fraction = if total > 0 {
-            (done as f64 / total as f64).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let _ = qt_progress.queue(move |mut ctrl: Pin<&mut AppController>| {
-            ctrl.as_mut().set_hash_progress(fraction);
-        });
-    });
-    // SHA-1 in hand → optionally cross-check against the rg-adguard
-    // database. The lookup is bounded by a short HTTP timeout and any
-    // failure path is silent, so this never holds up the hash display.
+    let qt_hash = qt.clone();
+    let hashes = crate::iso::compute_hashes(
+        std::path::Path::new(&path),
+        move |done, total| {
+            let fraction = if total > 0 {
+                (done as f64 / total as f64).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let _ = qt_progress.queue(move |mut ctrl: Pin<&mut AppController>| {
+                ctrl.as_mut().set_hash_progress(fraction);
+            });
+        },
+        // Each digest lands here as its worker finishes; publish it to the
+        // matching property so the UI swaps that hash's spinner for the value
+        // immediately, without waiting for the slower hashes.
+        move |kind, digest| {
+            let _ = qt_hash.queue(move |mut ctrl: Pin<&mut AppController>| {
+                let v = QString::from(&digest);
+                match kind {
+                    HashKind::Md5 => ctrl.as_mut().set_iso_md5(v),
+                    HashKind::Sha1 => ctrl.as_mut().set_iso_sha1(v),
+                    HashKind::Sha256 => ctrl.as_mut().set_iso_sha256(v),
+                    HashKind::Sha512 => ctrl.as_mut().set_iso_sha512(v),
+                    HashKind::Blake3 => ctrl.as_mut().set_iso_blake3(v),
+                }
+            });
+        },
+    );
+    // SHA-1 in hand: optionally cross-check against the rg-adguard database.
+    // The lookup is bounded by a short HTTP timeout and any failure path is
+    // silent, so it never holds up the hash display.
     let sha1 = hashes.sha1.clone();
     let badge = crate::rgadguard::lookup(&sha1)
         .map(|v| v.badge())
         .unwrap_or_default();
 
     let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
-        ctrl.as_mut().set_iso_md5(QString::from(&hashes.md5));
-        ctrl.as_mut().set_iso_sha1(QString::from(&hashes.sha1));
-        ctrl.as_mut().set_iso_sha256(QString::from(&hashes.sha256));
-        ctrl.as_mut().set_iso_sha512(QString::from(&hashes.sha512));
-        ctrl.as_mut().set_iso_blake3(QString::from(&hashes.blake3));
         ctrl.as_mut().set_iso_adguard_badge(QString::from(&badge));
         ctrl.as_mut().set_hash_progress(1.0);
+        ctrl.as_mut().set_hashing(false);
     });
 }
 

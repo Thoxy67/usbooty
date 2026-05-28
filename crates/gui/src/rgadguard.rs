@@ -48,13 +48,17 @@ pub fn lookup(sha1_hex: &str) -> Option<AdguardVerdict> {
         return None;
     }
 
-    let url = format!("https://sha1.rg-adguard.net/api/{sha1_hex}");
+    // The lookup is a plain GET search form: `search.php?sha1=<hex>&lang=...`.
+    // (The older `/api/<hex>` path now 404s, which silently disabled the
+    // badge.) `lang` only changes the page's UI text; the result table is the
+    // same regardless.
+    let url = format!("https://sha1.rg-adguard.net/search.php?sha1={sha1_hex}&lang=en-us");
     let resp = ureq::get(&url)
         .config()
         .timeout_global(Some(Duration::from_secs(8)))
         .build()
         .header("User-Agent", concat!("usbooty/", env!("CARGO_PKG_VERSION")))
-        .header("Accept", "application/json, text/plain;q=0.5")
+        .header("Accept", "text/html")
         .call()
         .ok()?;
 
@@ -65,47 +69,27 @@ pub fn lookup(sha1_hex: &str) -> Option<AdguardVerdict> {
     parse_response(&body)
 }
 
-/// Best-effort parser for whatever shape the upstream service hands back.
+/// Scrape the first matching file name out of the `search.php` results page.
 ///
-/// The historical rg-adguard endpoint returned JSON, but the project has
-/// been through several rewrites and currently sometimes returns minimal
-/// HTML. Try JSON first; if that fails, scrape any filename + category
-/// pair out of plain text. Any failure path is a silent `None`.
+/// On a hit, the page lists every match as an `<a>` linking into
+/// `files.rg-adguard.net/file/<id>`; the anchor text is the file name, and the
+/// first row is the canonical (Microsoft-named) image. On a miss the page says
+/// "not found" and carries no such link, so we return `None`. Only the file
+/// name is surfaced, so the badge reads e.g.
+/// "Verified by rg-adguard: fr-fr_windows_11_..._x64_dvd_a1cf6c36.iso".
 fn parse_response(body: &str) -> Option<AdguardVerdict> {
-    // Path A: structured JSON.
-    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
-        let filename = json
-            .get("name")
-            .or_else(|| json.get("filename"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        let category = json
-            .get("category")
-            .or_else(|| json.get("description"))
-            .or_else(|| json.get("info"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if !filename.is_empty() || !category.is_empty() {
-            return Some(AdguardVerdict { filename, category });
-        }
+    const MARKER: &str = "files.rg-adguard.net/file/";
+    let start = body.find(MARKER)?;
+    // Skip past the rest of the opening `<a ...>` tag (the first `>` after the
+    // href), then take the anchor text up to the closing `</a>`.
+    let gt = body[start..].find('>')?;
+    let name = body[start + gt + 1..].split("</a>").next()?.trim();
+    if name.is_empty() || name.len() >= 200 {
+        return None;
     }
-    // Path B: text scrape — find a Microsoft-y filename or category hint.
-    // Conservative; only emit a verdict when something definitely matches.
-    let needle = body
-        .lines()
-        .find(|l| {
-            let l = l.to_ascii_lowercase();
-            l.contains(".iso") && (l.contains("win") || l.contains("microsoft"))
-        })
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && s.len() < 200);
-    needle.map(|line| AdguardVerdict {
-        filename: line.to_string(),
-        category: String::from("Verified upstream"),
+    Some(AdguardVerdict {
+        filename: name.to_string(),
+        category: String::new(),
     })
 }
 
@@ -113,19 +97,28 @@ fn parse_response(body: &str) -> Option<AdguardVerdict> {
 mod tests {
     use super::*;
 
+    // Shape of a real `search.php` hit: each match is an <a> into
+    // files.rg-adguard.net, the first row being the canonical Microsoft name.
+    const MATCH_HTML: &str = concat!(
+        "<font size=\"5\">Match for this amount found in the database!</font>",
+        "<table><thead><tr><th>File:</th></tr></thead>",
+        "<tr><td><a href=\"https://files.rg-adguard.net/file/aa34423b\" target=\"_blank\">",
+        "fr-fr_windows_11_x64_dvd.iso</a></td></tr>",
+        "<tr><td><a href=\"https://files.rg-adguard.net/file/aa34423b\" target=\"_blank\">",
+        "Win11_25H2_French_x64_v2.iso</a></td></tr></table>"
+    );
+
     #[test]
-    fn parses_json_with_filename() {
-        let v = parse_response(r#"{"name":"Win11_24H2_English_x64.iso","category":"Windows 11"}"#)
-            .unwrap();
-        assert_eq!(v.filename, "Win11_24H2_English_x64.iso");
-        assert_eq!(v.category, "Windows 11");
-        assert!(v.badge().contains("Windows 11"));
+    fn extracts_first_filename_from_match_page() {
+        let v = parse_response(MATCH_HTML).unwrap();
+        assert_eq!(v.filename, "fr-fr_windows_11_x64_dvd.iso");
+        assert!(v.badge().contains("fr-fr_windows_11_x64_dvd.iso"));
     }
 
     #[test]
-    fn parses_text_fallback() {
-        let v = parse_response("Filename: Win11_x64.iso (Windows 11)").unwrap();
-        assert!(v.filename.contains("Win11_x64.iso"));
+    fn no_match_page_returns_none() {
+        // The miss page carries no files.rg-adguard.net link.
+        assert!(parse_response("<p>SHA-1 ... not found in the database.</p>").is_none());
     }
 
     #[test]
