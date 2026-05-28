@@ -109,8 +109,8 @@ It runs:
 * `cargo clippy --workspace --all-targets --locked -- -D warnings`. Every
   warning fails the gate; this is the single source of truth for "is
   clippy happy?".
-* `cargo test --workspace --locked`. Catches regressions in the 92 unit
-  and integration tests.
+* `cargo test --workspace --locked`. Catches regressions in the unit
+  and integration test suite (107 tests at last count).
 * A scan of `data/translations/usbooty_fr.ts` for `type="unfinished"`
   entries and a `lrelease6` smoke compile, so unfinished translations
   don't slip through.
@@ -180,10 +180,11 @@ HTML entity instead when writing a literal backslash inside `qsTr()`.
 1. Add a field to `WindowsSetup` in `crates/core/src/job.rs` and
    add it to the `is_active()` predicate so an empty struct still
    emits no settings.
-2. In `crates/helper/src/unattend.rs`, emit the right XML in
-   whichever pass it belongs to (`windowsPE`, `specialize`, or
-   `oobeSystem`). Add a unit test under
-   `unattend::tests::` that asserts the expected XML fragment.
+2. In the matching pass module under `crates/helper/src/unattend/`
+   (`windows_pe.rs`, `specialize.rs`, or `oobe.rs`), emit the right
+   XML for the pass it belongs to (`windowsPE`, `specialize`, or
+   `oobeSystem`). Add a unit test under `unattend::mod::tests` that
+   asserts the expected XML fragment.
 3. In `crates/gui/src/bridge.rs`, add a `#[qproperty(bool, ...)]`
    line, the field in `AppControllerRust`, the default, and wire
    it into the `WindowsSetup { ... }` builder in `start()`.
@@ -201,7 +202,7 @@ HTML entity instead when writing a literal backslash inside `qsTr()`.
    `title` directive at the top so the user knows what they
    launched.
 2. Add it to the `DESKTOP_HELPERS` `&[(name, body)]` constant in
-   `crates/helper/src/unattend.rs`.
+   `crates/helper/src/unattend/assets.rs`.
 3. Update the bundle expectation in the
    `desktop_helpers_bundle_lists_every_shipped_script` unit test.
 4. Mention it in

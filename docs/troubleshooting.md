@@ -133,23 +133,6 @@ specific user-agent patterns. When this happens:
    from there.
 3. Use **Browse** to load the resulting ISO into USBooty as usual.
 
-## ISO mount fails: "fusermount3 not found"
-
-USBooty mounts the source ISO via FUSE to read its contents (file
-list, digests, classification). It needs `fuse3` installed and
-either the `fuse` group or polkit-configured `fusermount`.
-
-On Arch:
-
-```sh
-sudo pacman -S --needed fuse3
-```
-
-If you cannot install FUSE, USBooty falls back to its embedded
-ISO9660 reader. That works for read-only metadata but cannot
-extract files for the partitioned copy method. The DD method does
-not need FUSE either way.
-
 ## "device too small" error
 
 USBooty refuses to write a layout that would not fit on the target.
@@ -161,15 +144,22 @@ bootloader. Use a larger USB stick.
 For the FreeDOS method, the FAT16 variant caps at 4 GB partitions
 on most BIOSes; if the drive is bigger and FAT16 fails, pick FAT32.
 
-## "Another process is already writing this device" (devlock)
+## "Another usbooty job is already running" (devlock)
 
-The helper checks every block device for open writers before it
-starts. A file manager preview, a stale `dd`, GNOME Files
-indexing, or a still-mounted partition can all hold a device open.
+To stop two usbooty writes racing on the same device, the helper
+takes an exclusive `flock` on `/run/usbooty-<device>.lock` as its
+first action. A second usbooty job aimed at the same device aborts
+immediately with `another usbooty job is already running on
+<device>`, before any destructive step. Wait for the first job to
+finish; the lock clears automatically when that helper exits, even
+on an unclean exit.
 
-The error message names the offending process and its PID. Close
-that program (or unmount the partition) and try again. If the
-process looks stale, kill it manually with `kill <PID>`.
+A device held open by *another* program (a file manager preview, a
+stale `dd`, or a still-mounted partition) is a separate case. The GUI
+unmounts the target's partitions with `udisksctl` before starting,
+and the helper opens the device with `O_EXCL`, so a still-busy device
+is refused rather than half-written. Close the program holding it (or
+unmount the partition) and try again.
 
 ## A device shows up that I do not want to touch
 

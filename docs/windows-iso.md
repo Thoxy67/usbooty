@@ -14,9 +14,10 @@ one of two strategies.
 
 ### Split (`WimStrategy::Split` in the JSON Job)
 
-Splits `install.wim` into 3.8 GiB `install.swm` chunks during the
-copy, using `wimlib-imagex`. Windows Setup picks the chunks up
-natively; no extra work at install time.
+Splits `install.wim` into ~4 GiB `install.swm` chunks (4094 MiB,
+just under the FAT32 file-size ceiling) during the copy, using
+`wimlib-imagex`. Windows Setup picks the chunks up natively; no extra
+work at install time.
 
 Pros: a single FAT32 partition, maximum firmware compatibility, no
 bootloader patching needed.
@@ -257,11 +258,12 @@ the ISO manually.
 
 When you load a Windows ISO, USBooty computes its SHA-1 in the
 background and asks `sha1.rg-adguard.net` whether the hash matches
-a published Microsoft retail, volume, or OEM build. The result shows
-up next to the SHA-1 in the digest panel as a small badge:
-**Retail**, **Volume**, **OEM**, or **Unknown**. An Unknown badge
-just means the upstream catalog does not list that exact hash; it
-is not by itself a sign that the ISO has been tampered with.
+a published Microsoft build. When the hash is listed, a small green
+badge appears next to the SHA-1 in the digest panel showing what the
+catalog reports: its category and the matched filename (for example
+`Retail · en-us_windows_11.iso`). If the hash is not in the catalog
+no badge is shown, which is not by itself a sign that the ISO has
+been tampered with.
 
 If the SBAT or DBX scan flags any of the ISO's signed EFI binaries
 as revoked by current Secure Boot policy, a red banner appears

@@ -18,14 +18,16 @@ privilege boundary.
 
 ### `usbooty-core`
 
-A small, dependency-light crate (only `serde`) containing:
+A small, dependency-light crate (only `serde` and `serde_json`) containing:
 
 * The serializable types passed over the privilege boundary: `Job`,
   `JobOptions`, `WindowsSetup`, `Persistence`, `ProgressMsg`,
   `IsoReport`, `DeviceInfo`, `RevocationDb`.
 * Pure decision logic that classifies an ISO and plans a layout
   (`plan::auto_filesystem`, `iso_report::IsoReport`,
-  `uefi_ntfs::validate_uefi_ntfs`, `revocation::scan_efi_binaries`).
+  `uefi_ntfs::validate_uefi_ntfs`, `revocation::evaluate_sbat`). The
+  EFI-binary scan that drives those primitives lives in the GUI's
+  `iso` module, not here.
 
 Nothing here touches Qt, the network, real hardware, or root. That
 means it can be exhaustively unit-tested in CI without sudo or attached
@@ -37,8 +39,8 @@ The unprivileged Qt 6 / QML application (binary `usbooty`).
 Responsibilities:
 
 * Enumerate removable devices via sysfs.
-* Analyse the source ISO (mount via FUSE if available, fall back to
-  the embedded ISO9660 reader otherwise).
+* Analyse the source ISO with a built-in ISO9660 / UDF reader (no
+  mounting, no root).
 * Transparent decompression of `.xz`, `.gz`, `.bz2`, `.zst`, `.lzma`,
   `.zip`, `.Z`, and fixed `.vhd` inputs via `decompress.rs`.
 * Compute every digest (MD5, SHA-1, SHA-256, SHA-512, BLAKE3) of the
@@ -83,14 +85,16 @@ Key helper modules:
   `C:\Users\Default\Desktop\USBooty\`).
 * `wimsplit.rs`: chunks an oversized `install.wim` into `install.swm`
   parts on a FAT32 target.
-* `persistence.rs`, `distro_fixes.rs`: per-distro overlays and quirks
-  (Debian `persistence.conf`, casper `persistent` parameter, Slax
-  inline `slax/changes/`, Manjaro `efi_boot_img` paths, etc.).
+* `persistence.rs`, `distro_fixes.rs`: per-distro persistence overlays
+  (casper `persistent`, Debian `persistence.conf`, Fedora
+  `rd.live.overlay`, archiso `cow_label`, Slax inline `slax/changes/`)
+  and post-copy quirk fixes (the archiso GRUB-redirect, Knoppix
+  safe-boot flags).
 * `backup.rs`: drive-to-image snapshot, the inverse of writing.
 * `check.rs`: Quick (F3-style fake-capacity / fake-flash) and Full
   (two-pattern bad-blocks) device check modes.
-* `devlock.rs`: refuses to touch a device that is currently held by
-  another writer.
+* `devlock.rs`: takes an exclusive per-device lock so a second
+  usbooty job cannot race on a drive already being written.
 * `vhd.rs`: fixed `.vhd` input and `.vhd` backup output (footer-aware).
 
 ## The privilege boundary

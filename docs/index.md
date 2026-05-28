@@ -20,10 +20,9 @@ bootable-media logic is ported from
   desktop), the rg-adguard SHA-1 lookup, and the Microsoft ISO
   downloader.
 * [Linux ISOs](linux-iso.md): ISO classification, partition-based
-  persistence for Debian / Ubuntu / Mint / Pop!_OS / Kali / Parrot,
-  Slax inline persistence, and the per-distro fix table that patches
-  things like Manjaro `efi_boot_img` paths and Tails verification
-  signatures.
+  persistence for the Ubuntu, Debian, Fedora, openSUSE, and Arch
+  families, Slax inline persistence, and the per-distro fix table
+  (the archiso GRUB-redirect and the Knoppix safe-boot flags).
 * [Installation](installation.md): build from source, the install
   script, the AUR package, and the optional runtime tools.
 * [Developing](developing.md): repo layout, running tests, the loopback

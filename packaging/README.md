@@ -31,13 +31,14 @@ and an "optional tools missing" hint when one of the optionals is.
 | `mkfs.ext4`      | ext4 formatting (Linux persistence)         | optional  |
 | `ventoy`         | Ventoy multi-boot USB install               | optional  |
 | `wimlib-imagex`  | split install.wim for Windows on FAT32      | optional  |
+| `mtools`         | FreeDOS bootable USB (mformat + mcopy)      | optional  |
 | `syslinux`       | legacy-BIOS bootloader install              | optional  |
 | `xorriso`        | advanced ISO inspection                     | optional  |
 | `smartctl`       | SMART health probe                          | nice-to-have |
 | `udisksctl`      | auto-mount Ventoy data partition            | nice-to-have |
 | `xdg-open`       | open mounted partition in file manager      | nice-to-have |
 | `notify-send`    | desktop notification on job finish          | nice-to-have |
-| `lsblk` / `udevadm` / `mount` / `losetup` / `blkid` / `findmnt` | helper plumbing | mandatory (in util-linux + systemd) |
+| `lsblk` / `udevadm` / `mount` / `findmnt` | helper plumbing | mandatory (in util-linux + systemd) |
 
 The "nice-to-have" tier is silently skipped when missing (no banner), since
 the underlying feature also degrades silently and an extra dep banner for

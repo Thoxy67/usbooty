@@ -20,36 +20,49 @@ Windows ISOs are detected separately via `sources/install.wim` (or
 gets classified as Windows.
 
 Detected distribution families surface as a short chip under the ISO
-summary (Debian, Ubuntu, Linux Mint, Pop!_OS, Kali, Parrot, Tails,
-Slax, Manjaro, Fedora, openSUSE, Arch, etc.). The family controls
-which post-copy quirk fixes are applied and which persistence
-strategy is offered.
+summary: Ubuntu, Linux Mint, LMDE, Debian, Fedora, Bazzite, Nobara,
+openSUSE, GeckoLinux, Arch Linux, Manjaro, EndeavourOS, CachyOS, Slax,
+and Knoppix. Detection is most-specific-first (a derivative like
+Bazzite or LMDE wins over its parent) by ISO volume label, with a
+`slax/` or `knoppix*` root directory overriding the label, then a
+structural fallback (`casper/` becomes Ubuntu, `live/` becomes Debian,
+`arch/` becomes Arch). Distros without their own label needle (Kali,
+Parrot, Pop!_OS, and similar) fall through to that structural check and
+are handled as their Debian or Ubuntu base. The family controls which
+post-copy quirk fixes are applied and which persistence strategy is
+offered.
 
 ## Persistent live USBs
 
 When a partitioned write is selected and the ISO is from a live-system
 family that USBooty knows how to persist, the **Persistent storage**
-slider appears. You set a size (0 means off, up to 32 GiB in the
-slider's range). The persistence strategy depends on the
+slider appears. You set a size (0 means off); the slider's maximum is
+whatever space is left on the device after the ISO and a small
+partition-table margin. The persistence strategy depends on the
 distribution:
 
 ### Partition-based persistence
 
-USBooty adds a second ext4 partition after the main FAT32 partition,
-labelled and configured as the live system expects:
+USBooty adds a second ext4 partition after the main partition,
+labelled and configured the way each live system expects:
 
-* **Debian live and derivatives**: writes a `persistence.conf` file
-  at the ext4 root containing `/ union`. Debian's `live-config`
-  picks this up automatically; the partition label `persistence` is
-  what the live system searches for at boot.
-* **Ubuntu / casper-based ISOs** (Ubuntu, Linux Mint, Pop!_OS,
-  Kubuntu, Lubuntu, etc.): appends the `persistent` kernel parameter
-  to the casper boot lines in the on-USB boot config
-  (`isolinux/grub.cfg`, etc.) so casper looks for a `casper-rw` or
-  `writable` partition. The persistence partition is labelled
-  accordingly.
-* **Kali**: same family as Debian live; uses `persistence.conf`.
-* **Parrot**: same family as Debian live.
+* **Ubuntu / casper-based** (Ubuntu, Linux Mint, Kubuntu, Lubuntu,
+  Pop!_OS, etc.): partition labelled `casper-rw`, and the
+  `persistent` keyword is appended to the `boot=casper` line in the
+  on-USB boot configs so casper looks for it.
+* **Debian live** (Debian, LMDE, Kali, Parrot, etc.): partition
+  labelled `persistence` carrying a `persistence.conf` file with
+  `/ union`, plus `persistence` appended to the `boot=live` line.
+  `live-config` picks this up automatically.
+* **Fedora** (Fedora, Bazzite, Nobara): an ext4 overlay partition
+  labelled `OVERLAY`; USBooty adds `rd.live.overlay=LABEL=OVERLAY`
+  to the kernel command line so dracut activates it at boot.
+* **openSUSE** (openSUSE, GeckoLinux): an ext4 partition labelled
+  `cow`. kiwi-live finds it by label, so no kernel parameter is
+  needed; the label alone is the whole integration.
+* **Arch / archiso** (Arch, Manjaro, EndeavourOS, CachyOS): an ext4
+  partition labelled `PERSISTENCE`, activated by appending
+  `cow_label=PERSISTENCE` to the kernel command line.
 
 ### Inline persistence
 
@@ -64,24 +77,28 @@ partition rather than a separate partition:
 ## Per-distro fix table
 
 The helper applies a small per-distro fix table after the file copy
-to paper over upstream quirks. Examples:
+to paper over upstream quirks. Every fix is idempotent and non-fatal.
+The fixes implemented today:
 
-* **Manjaro**: rewrites `efi_boot_img` paths in the GRUB config so
-  the resulting USB boots on UEFI without falling back to BIOS.
-* **Tails**: relaxes signature checks that assume the original
-  media was a freshly written DVD.
-* **Ubuntu LTS point releases**: a known casper bug that uses a
-  hard-coded UUID gets patched to the actual filesystem UUID.
+* **Arch / Manjaro / EndeavourOS / CachyOS / Bazzite / GeckoLinux**:
+  several of these ship a signed `grubx64.efi` with a hard-coded
+  `prefix=` that breaks once the ISO is copied onto a USB with a
+  different layout. USBooty writes a fallback `/EFI/BOOT/grub.cfg`
+  that locates the real config by volume label (`search --label`)
+  and chainloads it, but only when the ISO does not already ship
+  one.
+* **Knoppix**: appends `vga=normal nodma` to the isolinux boot
+  entries (matching Knoppix's own failsafe defaults), because older
+  releases hang on some GPUs in their default vesa mode.
 
 The fix table lives in `crates/helper/src/distro_fixes.rs`; each
 entry has a short rationale comment.
 
 ## What is not supported
 
-* Arch, Fedora, openSUSE persistence: there is no upstream-standard
-  partition persistence scheme for these. Use a DD image and accept
-  that the drive is read-only, or use Ventoy with a persistence
-  plugin.
+* Persistence for ISOs USBooty does not recognise as a known live
+  family (and for Knoppix): no overlay partition is offered. Use a
+  DD image, or Ventoy with a persistence plugin.
 * `nomodeset` and other kernel-parameter tweaks: not exposed in the
   UI. If you need them, edit the boot config on the resulting USB
   by hand.

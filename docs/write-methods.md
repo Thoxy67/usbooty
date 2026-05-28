@@ -13,7 +13,7 @@ table, filesystem, and contents all come from the ISO.
 The picker accepts the raw image plus several common compressed
 wrappers, transparently decompressed during the write:
 
-* `.iso`, `.img`, `.bin`, `.raw`
+* `.iso`, `.img`
 * `.xz`, `.gz`, `.bz2`, `.zst`, `.lzma`
 * `.zip` (single file inside)
 * `.Z` (Unix LZW)
@@ -161,13 +161,16 @@ A background SMART probe runs against the selected device using
 temperatures, and failing-prediction flags surface as a short
 yellow warning under the device picker. No probe means no warning.
 
-## Conflicting-process guard (devlock)
+## Conflicting-job guard (devlock)
 
-Before touching a device the helper checks whether another process
-already holds it open (a file manager preview, an in-flight `dd`,
-GNOME Files indexing, etc.). If something else is holding the device,
-the write is refused with a clear message naming the offending
-process, so you can close it and retry.
+To stop two usbooty writes racing on the same device, the helper
+takes an exclusive `flock` on `/run/usbooty-<device>.lock` before any
+destructive step; a second usbooty job on the same device aborts at
+once with a clear message. Separately, the GUI unmounts the target's
+partitions (via `udisksctl`) before starting and the helper opens the
+device with `O_EXCL`, so a device still held open by a file manager,
+an in-flight `dd`, or a mounted partition is refused rather than
+clobbered.
 
 ## Boot mode reference
 

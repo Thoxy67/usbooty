@@ -28,7 +28,7 @@ resolve at link time. If you maintain a downstream package, keep
 
 ### Prerequisites
 
-* Rust 1.87 or newer (the workspace pins this).
+* Rust 1.95 or newer (the workspace pins this).
 * A C++ toolchain (gcc or clang).
 * CMake.
 * Qt 6 development packages: Qt Base, Qt Declarative, Qt Quick
@@ -86,12 +86,11 @@ marked "optional" are nice-to-haves.
 | `mkfs.ntfs`      | `ntfs-3g`             | NTFS formatting, UEFI:NTFS mode.                    | Optional  |
 | `mkfs.exfat`     | `exfatprogs`          | exFAT formatting, UEFI:exFAT mode.                  | Optional  |
 | `mkfs.ext4`      | `e2fsprogs`           | ext4 partitions, partition-based persistence.       | Optional  |
-| `mkfs.ext2`, `.ext3`, `.udf`, `.btrfs`, `.xfs`, `.f2fs`, `.jfs`, `.nilfs2` | (matching `*-progs` packages) | Other filesystems in the picker. | Optional  |
+| `mkfs.ext2`, `.ext3`, `.btrfs`, `.xfs`, `.f2fs`, `.jfs`, `.nilfs2`, `mkudffs` | (matching tool packages, e.g. `udftools` for UDF) | Other filesystems in the picker. | Optional  |
 | `wimlib-imagex`  | `wimlib`              | `WimStrategy::Split`, Windows CA 2023 extraction.   | Optional  |
 | `ventoy`         | `ventoy-bin`          | The Ventoy method.                                  | Optional  |
 | `mtools`         | `mtools`              | FreeDOS bootable USB (`mformat`, `mcopy`).          | Optional  |
 | `smartmontools`  | `smartmontools`       | SMART probe of the selected device.                 | Optional  |
-| `fuse3`          | `fuse3`               | Mounting ISOs to read file lists for the partition copy. The DD method does not need it. | Optional |
 | `udisksctl` or `eject` | `udisks2` / `util-linux` | Powering off the drive cleanly after a write.  | Optional  |
 
 USBooty does not bundle any of these tools. Missing optionals just
@@ -121,16 +120,16 @@ Both preferences live-apply (no restart needed).
 
 ## Cache
 
-Downloaded resources live under `$XDG_CACHE_HOME/usbooty/` (typically
-`~/.cache/usbooty/`):
+Downloaded resources live under `$XDG_CACHE_HOME/usbooty/resources/`
+(typically `~/.cache/usbooty/resources/`):
 
 * `uefi-ntfs.img`: the Rufus EFI bootloader image used by the
   UEFI:NTFS / UEFI:exFAT strategies.
 * `freedos/`: the latest FreeDOS `KERNEL.SYS`, `COMMAND.COM`, and
   boot sector binaries fetched from upstream GitHub releases. The
   resolver runs once a day.
-* `dbx-x64.bin` / `dbx-arm64.bin`: the live UEFI Forum DBX revocation
-  file, used by the SBAT / DBX scanner.
+* `dbxupdate_x64.bin` / `dbxupdate_arm64.bin`: the live UEFI Forum DBX
+  revocation file, used by the SBAT / DBX scanner.
 
 You can delete the cache safely; USBooty re-downloads on next use.
 
