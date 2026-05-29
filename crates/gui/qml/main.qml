@@ -8,11 +8,12 @@ import com.usbooty
 ApplicationWindow {
     id: window
     visible: true
-    width: 600
+    width: 660
     // Height is content-driven (see binding below). Keep a generous floor
     // so a freshly-launched window doesn't snap to a sliver while QML is
     // still computing its first layout pass.
-    minimumWidth: 600
+    // 600 controls-column floor + 24 px RowLayout margins.
+    minimumWidth: 624
     minimumHeight: 360
     // Auto-fit the window vertically to the left column's actual content:
     // hidden banners and the absent progress frame contribute zero height,
@@ -584,6 +585,12 @@ ApplicationWindow {
     readonly property int compactWidth: 660
     readonly property int expandedWidth: 1080
     property bool logExpanded: false
+    // Hard floor for the controls column; the user can never drag the
+    // separator narrower than this.
+    readonly property int leftPanelMinWidth: 600
+    // Current width of the controls column. Bound to the separator drag;
+    // the log column (Layout.fillWidth) absorbs whatever is left over.
+    property int leftPanelWidth: compactWidth - 24
     Behavior on width {
         NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
     }
@@ -723,10 +730,17 @@ ApplicationWindow {
             // this implicitHeight). Hugged to the top so the log column
             // can be taller without dragging the controls down.
             Layout.alignment: Qt.AlignTop
-            // Fixed-ish width for the controls so they don't reflow when
-            // the window grows to make room for the log.
-            Layout.preferredWidth: window.compactWidth - 24
-            Layout.minimumWidth: window.minimumWidth - 24
+            // Width follows the separator drag; the log column fills the rest.
+            // Never narrower than leftPanelMinWidth (enforced both here and in
+            // the drag handler so the layout can't squeeze it below the floor).
+            Layout.preferredWidth: window.leftPanelWidth
+            Layout.minimumWidth: window.leftPanelMinWidth
+            // Pin the width while the log is visible: extra window width must
+            // go to the log column (Layout.fillWidth), never to the controls.
+            // The separator drag is the only thing that widens this column.
+            // With the log hidden there is no second column, so let it fill.
+            Layout.maximumWidth: window.logVisible
+                ? window.leftPanelWidth : Number.POSITIVE_INFINITY
             spacing: 8
 
         // ---- Advisory banners ------------------------------------------
@@ -1627,6 +1641,51 @@ ApplicationWindow {
             }
         }
 
+        }
+
+        // ---- Resizable separator ---------------------------------------
+        // Drag to redistribute width between the controls column and the
+        // log column. Only present while the log column itself is shown.
+        Rectangle {
+            id: logSplitter
+            visible: window.logVisible
+            Layout.fillHeight: true
+            Layout.preferredWidth: 6
+            // The grip line; brightens on hover/drag for affordance.
+            color: (splitterMouse.containsMouse || splitterMouse.pressed)
+                ? palette.highlight : palette.mid
+            radius: 3
+            // Keep the lower bound for the log column in one place: its own
+            // minimum (340) plus the two RowLayout gaps and the splitter.
+            readonly property int logMinWidth: 340
+            MouseArea {
+                id: splitterMouse
+                anchors.fill: parent
+                // Widen the hit area beyond the visible 6 px line so it is
+                // easy to grab without enlarging the drawn separator.
+                anchors.leftMargin: -4
+                anchors.rightMargin: -4
+                hoverEnabled: true
+                cursorShape: Qt.SplitHCursor
+                property real pressX: 0
+                property int startWidth: 0
+                onPressed: function(mouse) {
+                    pressX = mapToItem(window.contentItem, mouse.x, mouse.y).x
+                    startWidth = window.leftPanelWidth
+                }
+                onPositionChanged: function(mouse) {
+                    if (!pressed)
+                        return
+                    var curX = mapToItem(window.contentItem, mouse.x, mouse.y).x
+                    var proposed = startWidth + (curX - pressX)
+                    // Upper bound: leave the log column at least logMinWidth.
+                    // 54 = 24 outer margins + 2×12 RowLayout gaps + 6 splitter.
+                    var maxWidth = window.width - 54 - logSplitter.logMinWidth
+                    window.leftPanelWidth = Math.max(
+                        window.leftPanelMinWidth,
+                        Math.min(maxWidth, proposed))
+                }
+            }
         }
 
         // ---- Activity log (right column, lazy) -------------------------
