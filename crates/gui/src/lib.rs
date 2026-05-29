@@ -10,6 +10,7 @@ pub mod decompress;
 pub mod deps;
 pub mod devices;
 pub mod iso;
+pub mod qemu;
 pub mod resources;
 pub mod rgadguard;
 pub mod runner;

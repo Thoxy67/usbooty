@@ -213,11 +213,22 @@ impl<R: Read + Seek> UdfFs<R> {
             let l_fi = data[p + 19] as usize;
             let icb_bytes = &data[p + 20..p + 36];
             let l_iu = u16::from_le_bytes(data[p + 36..p + 38].try_into().ok()?) as usize;
-            let fi_start = p + 38 + l_iu;
-            let fi_end = fi_start + l_fi;
+            // The lengths come from untrusted image bytes; fold them with
+            // checked arithmetic so a hostile descriptor can't wrap the offset
+            // past the bounds check below. (On 64-bit these can't actually
+            // overflow given p <= data.len() and the u8/u16 fields, but the
+            // checks document intent and keep 32-bit targets safe.)
+            let Some(fi_start) = p.checked_add(38).and_then(|x| x.checked_add(l_iu)) else {
+                break;
+            };
+            let Some(fi_end) = fi_start.checked_add(l_fi) else {
+                break;
+            };
             if fi_end > data.len() {
                 break;
             }
+            // total = fi_end - p, already proven <= data.len(), so the round-up
+            // can't overflow. padded is >= 40, so `p` always advances.
             let total = 38 + l_iu + l_fi;
             let padded = (total + 3) & !3;
 

@@ -139,7 +139,12 @@ pub mod qobject {
         #[qproperty(bool, busy)]
         #[qproperty(f64, progress)]
         #[qproperty(QString, phase)]
-        #[qproperty(QString, log_text)]
+        // True once the activity log holds at least one line. The log body
+        // itself is kept Rust-side (see `full_log` / `log_html`) and streamed
+        // to the view via `append_log_html`, so appends stay O(1) instead of
+        // rebuilding a whole QString each line. This flag just drives the
+        // panel's auto-expand and the Save/Clear enabled states.
+        #[qproperty(bool, log_non_empty)]
         #[qproperty(QString, status)]
         // Live transfer stats (empty unless a transfer is in progress).
         #[qproperty(QString, speed)]
@@ -174,6 +179,12 @@ pub mod qobject {
         // Windows-download dialog: newline-separated language / option lists.
         #[qproperty(QString, win_languages)]
         #[qproperty(QString, win_options)]
+        // QEMU boot-test capabilities, probed once at startup: whether
+        // qemu-system-x86_64 is installed, whether /dev/kvm offers hardware
+        // acceleration, and whether OVMF firmware is present for UEFI boot.
+        #[qproperty(bool, qemu_available)]
+        #[qproperty(bool, qemu_kvm)]
+        #[qproperty(bool, qemu_uefi)]
         type AppController = super::AppControllerRust;
     }
 
@@ -284,14 +295,34 @@ pub mod qobject {
         fn save_log_to(self: Pin<&mut AppController>, path: &QString);
         /// Persist the "always show activity log" preference and update
         /// the Qt property so the QML layout reacts immediately. The
-        /// existing onLogTextChanged auto-expand path keeps working when
-        /// this is off.
+        /// log_non_empty auto-expand path keeps working when this is off.
         #[qinvokable]
         fn apply_show_logs_always(self: Pin<&mut AppController>, on: bool);
         /// Apply parsed CLI startup arguments (preload ISO / select device).
         /// Called from QML once the engine has finished loading.
         #[qinvokable]
         fn apply_startup_args(self: Pin<&mut AppController>);
+        /// Return the activity log as accumulated HTML. The QML view calls
+        /// this to repopulate itself when its (lazily-loaded) panel is shown,
+        /// since the live `append_log_html` stream only carries new lines.
+        #[qinvokable]
+        fn log_html_snapshot(self: &AppController) -> QString;
+        /// Empty the activity log (both the saved plain text and the HTML
+        /// buffer) and clear the non-empty flag; the view reacts by clearing.
+        #[qinvokable]
+        fn clear_log(self: Pin<&mut AppController>);
+        /// Boot the selected device in QEMU to verify it boots, in BIOS/MBR
+        /// mode (`uefi = false`) or UEFI mode (`uefi = true`), with `mem_mb`
+        /// of RAM and optional KVM acceleration. The device is opened in
+        /// snapshot mode, so the test never modifies it.
+        #[qinvokable]
+        fn verify_boot(self: Pin<&mut AppController>, mem_mb: i32, uefi: bool, kvm: bool);
+        /// Live status of every dependency (required and optional) for the
+        /// Dependencies dialog. One line per dependency, fields separated by
+        /// the unit-separator byte (U+001F): present(0/1), group key, name,
+        /// package, purpose.
+        #[qinvokable]
+        fn dependency_report(self: &AppController) -> QString;
     }
 
     #[auto_cxx_name]
@@ -299,6 +330,10 @@ pub mod qobject {
         /// Emitted when a job finishes (success or failure).
         #[qsignal]
         fn job_finished(self: Pin<&mut AppController>, success: bool, message: QString);
+        /// Emitted once per new activity-log line, carrying its pre-formatted
+        /// HTML. The QML view appends it incrementally.
+        #[qsignal]
+        fn append_log_html(self: Pin<&mut AppController>, html: QString);
     }
 
     impl cxx_qt::Threading for AppController {}
@@ -379,7 +414,7 @@ pub struct AppControllerRust {
     busy: bool,
     progress: f64,
     phase: QString,
-    log_text: QString,
+    log_non_empty: bool,
     status: QString,
     speed: QString,
     eta: QString,
@@ -397,6 +432,9 @@ pub struct AppControllerRust {
     available_filesystem_kinds: Vec<FileSystem>,
     win_languages: QString,
     win_options: QString,
+    qemu_available: bool,
+    qemu_kvm: bool,
+    qemu_uefi: bool,
     /// Enumerated devices, parallel to the `devices` display strings.
     device_list: Vec<DeviceInfo>,
     /// Analysis of the currently selected ISO.
@@ -407,6 +445,11 @@ pub struct AppControllerRust {
     pub win_option_list: Vec<crate::windisco::DownloadOption>,
     /// Present while a job runs; cleared by the runner when it finishes.
     pub job: Option<JobHandle>,
+    /// Plain-text activity log — the source of truth for "Save log".
+    pub full_log: String,
+    /// The same log accumulated as HTML, handed to the QML view via
+    /// `log_html_snapshot` when its lazily-loaded panel (re)appears.
+    pub log_html: String,
 }
 
 impl Default for AppControllerRust {
@@ -422,6 +465,7 @@ impl Default for AppControllerRust {
             .map(|fs| fs.label())
             .collect::<Vec<_>>()
             .join("\n");
+        let qemu_caps = crate::qemu::detect();
         Self {
             iso_path: QString::default(),
             iso_summary: QString::from("No image selected"),
@@ -483,7 +527,7 @@ impl Default for AppControllerRust {
             busy: false,
             progress: 0.0,
             phase: QString::default(),
-            log_text: QString::default(),
+            log_non_empty: false,
             status: QString::from("Ready"),
             speed: QString::default(),
             eta: QString::default(),
@@ -498,16 +542,54 @@ impl Default for AppControllerRust {
             available_filesystem_kinds: fs_kinds,
             win_languages: QString::default(),
             win_options: QString::default(),
+            qemu_available: qemu_caps.qemu,
+            qemu_kvm: qemu_caps.kvm,
+            qemu_uefi: qemu_caps.uefi,
             device_list: Vec::new(),
             iso_report: None,
             win_catalog: None,
             win_option_list: Vec::new(),
             job: None,
+            full_log: String::new(),
+            log_html: String::new(),
         }
     }
 }
 
 impl qobject::AppController {
+    /// Record one activity-log line: keep the plain text for "Save log", keep
+    /// the HTML for repopulating the lazily-loaded view, flip the non-empty
+    /// flag on the first line, and emit the new line for the live view to
+    /// append. Each call is O(line length) — no whole-buffer rebuild.
+    pub fn push_log_line(mut self: core::pin::Pin<&mut Self>, plain: &str, html: &str) {
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.full_log.push_str(plain);
+            rust.full_log.push('\n');
+            rust.log_html.push_str(html);
+        }
+        if !*self.as_ref().log_non_empty() {
+            self.as_mut().set_log_non_empty(true);
+        }
+        self.as_mut().append_log_html(QString::from(html));
+    }
+
+    /// Empty the activity log. The view clears itself when `log_non_empty`
+    /// flips to false.
+    pub fn clear_log(mut self: core::pin::Pin<&mut Self>) {
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.full_log.clear();
+            rust.log_html.clear();
+        }
+        self.as_mut().set_log_non_empty(false);
+    }
+
+    /// The full activity log as HTML, for the QML view to repopulate on load.
+    pub fn log_html_snapshot(&self) -> QString {
+        QString::from(&self.rust().log_html)
+    }
+
     /// Re-scan `/sys/block` for candidate target devices.
     pub fn refresh_devices(mut self: core::pin::Pin<&mut Self>) {
         let include_fixed = *self.show_fixed_disks();
@@ -846,7 +928,7 @@ impl qobject::AppController {
         self.as_mut().set_busy(true);
         self.as_mut().set_progress(0.0);
         self.as_mut().set_phase(QString::from("Starting"));
-        self.as_mut().set_log_text(QString::default());
+        self.as_mut().clear_log();
         self.as_mut().set_speed(QString::default());
         self.as_mut().set_eta(QString::default());
         self.as_mut().set_status(QString::from(status));
@@ -1361,6 +1443,45 @@ impl qobject::AppController {
         self.selected_info().is_some_and(|d| !d.removable)
     }
 
+    /// Boot the selected device in QEMU (BIOS/MBR or UEFI) to verify it boots.
+    /// Spawns QEMU and returns; outcome is surfaced on the status bar.
+    pub fn verify_boot(mut self: core::pin::Pin<&mut Self>, mem_mb: i32, uefi: bool, kvm: bool) {
+        let Some(path) = self.selected_info().map(|d| d.path.clone()) else {
+            self.as_mut()
+                .set_status(QString::from("Select a device to boot-test first"));
+            return;
+        };
+        let mem = mem_mb.max(0) as u32;
+        match crate::qemu::launch(&path, mem, uefi, kvm) {
+            Ok(()) => self.as_mut().set_status(QString::from(&format!(
+                "Launched QEMU boot test for {path} (snapshot mode — the device is not modified)"
+            ))),
+            Err(e) => self.as_mut().set_status(QString::from(&format!(
+                "Could not start the boot test: {e:#}"
+            ))),
+        }
+    }
+
+    /// Live dependency status for the Dependencies dialog (see the qinvokable
+    /// declaration for the line format). Probed fresh on every call so the
+    /// dialog reflects tools installed since launch.
+    pub fn dependency_report(&self) -> QString {
+        let lines: Vec<String> = crate::deps::full_report()
+            .iter()
+            .map(|d| {
+                format!(
+                    "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+                    u8::from(d.present),
+                    d.kind_key,
+                    d.name,
+                    d.package,
+                    d.purpose,
+                )
+            })
+            .collect();
+        QString::from(&lines.join("\n"))
+    }
+
     pub fn selected_bus(&self) -> QString {
         QString::from(
             self.selected_info()
@@ -1437,7 +1558,7 @@ impl qobject::AppController {
         if path.is_empty() {
             return;
         }
-        let body = self.log_text().to_string();
+        let body = self.rust().full_log.clone();
         match std::fs::write(&path, body.as_bytes()) {
             Ok(()) => self
                 .as_mut()
@@ -1458,11 +1579,9 @@ impl qobject::AppController {
             show_logs_always: *self.show_logs_always(),
         };
         if let Err(e) = s.save() {
-            let updated = format!(
-                "{}⚠ Could not persist 'Force English' preference: {e:#}\n",
-                self.log_text()
-            );
-            self.as_mut().set_log_text(QString::from(&updated));
+            let msg = format!("Could not persist 'Force English' preference: {e:#}");
+            let html = crate::runner::log_html(usbooty_core::LogLevel::Warn, &msg);
+            self.as_mut().push_log_line(&msg, &html);
         }
     }
 
@@ -1476,11 +1595,9 @@ impl qobject::AppController {
             show_logs_always: on,
         };
         if let Err(e) = s.save() {
-            let updated = format!(
-                "{}⚠ Could not persist 'Always show logs' preference: {e:#}\n",
-                self.log_text()
-            );
-            self.as_mut().set_log_text(QString::from(&updated));
+            let msg = format!("Could not persist 'Always show logs' preference: {e:#}");
+            let html = crate::runner::log_html(usbooty_core::LogLevel::Warn, &msg);
+            self.as_mut().push_log_line(&msg, &html);
         }
     }
 

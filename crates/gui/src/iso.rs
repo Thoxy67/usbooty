@@ -16,6 +16,12 @@ use usbooty_core::{DistroFamily, IsoReport, OsKind};
 /// FAT32's single-file ceiling, used for the `has_4gb_file` flag.
 const FOUR_GIB: u64 = 0xFFFF_FFFF;
 
+/// Upper bound on how much of an `.efi` binary we read for the SBAT
+/// revocation scan. Signed bootloaders are well under this; the cap stops a
+/// corrupt or hostile ISO whose directory record claims a multi-GB file size
+/// from pinning that much memory.
+const MAX_EFI_SCAN_BYTES: u64 = 16 * 1024 * 1024;
+
 /// Analyze the ISO at `path`. Never fails: an unreadable or exotic image still
 /// yields a usable (if minimal) report, since it can still be DD-written.
 pub fn analyze(path: &Path) -> IsoReport {
@@ -296,8 +302,17 @@ fn scan_efi_revocations(iso: &ISO9660<File>) -> Vec<String> {
         if !name.ends_with(".efi") {
             continue;
         }
-        let mut bytes = Vec::with_capacity(file.size() as usize);
-        if file.read().read_to_end(&mut bytes).is_err() {
+        // Trust neither the reserve hint nor the stream length: cap both at
+        // MAX_EFI_SCAN_BYTES so a bogus directory size can't drive a huge
+        // allocation or an unbounded read.
+        let cap = u64::from(file.size()).min(MAX_EFI_SCAN_BYTES);
+        let mut bytes = Vec::with_capacity(cap as usize);
+        if file
+            .read()
+            .take(MAX_EFI_SCAN_BYTES)
+            .read_to_end(&mut bytes)
+            .is_err()
+        {
             continue;
         }
         let Some(section) = revocation::extract_sbat(&bytes) else {

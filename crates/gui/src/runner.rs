@@ -198,7 +198,10 @@ pub fn run_job(
 
     // Send the job as one JSON line, then keep stdin open so `cancel` can be
     // written to it later by AppController::cancel.
-    let mut stdin = child.stdin.take().expect("stdin was piped");
+    let Some(mut stdin) = child.stdin.take() else {
+        finish(&qt, false, "Could not open the helper's stdin pipe".into());
+        return;
+    };
     let job_line = serde_json::to_string(&job).unwrap_or_default();
     if writeln!(stdin, "{job_line}")
         .and_then(|_| stdin.flush())
@@ -210,7 +213,10 @@ pub fn run_job(
     *stdin_slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(stdin);
 
     // Stream stdout, forwarding each progress message to the UI.
-    let stdout = child.stdout.take().expect("stdout was piped");
+    let Some(stdout) = child.stdout.take() else {
+        finish(&qt, false, "Could not open the helper's stdout pipe".into());
+        return;
+    };
     let mut last_error: Option<String> = None;
     let mut saw_done = false;
     let mut meter = RateMeter::new();
@@ -299,8 +305,10 @@ fn open_ventoy_data_partition(device_path: &std::path::Path) {
             });
     }
 
-    if let Some(mp) = mount_point {
-        let _ = Command::new("xdg-open").arg(&mp).spawn();
+    if let Some(mp) = mount_point
+        && let Err(e) = Command::new("xdg-open").arg(&mp).spawn()
+    {
+        eprintln!("usbooty: could not open {mp} in a file manager: {e}");
     }
 }
 
@@ -550,34 +558,39 @@ fn set_phase(qt: &CxxQtThread<AppController>, name: &str) {
     });
 }
 
-/// Append one HTML-formatted line to the controller's log text. The log
-/// TextArea renders as rich text, so warnings (amber) and errors (red) stand
-/// out against the default info colour. Each line is HTML-escaped before
-/// styling so file paths or messages containing `<`, `>`, `&` render verbatim.
-fn append_log(mut ctrl: Pin<&mut AppController>, level: LogLevel, text: &str) {
+/// Format one activity-log line as rich text. Warnings (amber) and errors
+/// (red) stand out against the default info colour; each line is HTML-escaped
+/// before styling so file paths or messages containing `<`, `>`, `&` render
+/// verbatim. Shared with the bridge's own log appends.
+pub(crate) fn log_html(level: LogLevel, text: &str) -> String {
     let escaped = html_escape(text);
-    let line = match level {
+    match level {
         LogLevel::Info => format!("<div>{escaped}</div>"),
         LogLevel::Warn => format!("<div style=\"color:#d18616\">\u{26A0} {escaped}</div>"),
         LogLevel::Error => format!("<div style=\"color:#e5534b\">\u{2717} {escaped}</div>"),
-    };
-    let updated = format!("{}{line}", ctrl.log_text());
-    ctrl.as_mut().set_log_text(QString::from(&updated));
+    }
+}
+
+/// Append one log line. The plain text is kept Rust-side for "Save log" and
+/// the HTML is appended incrementally by the QML view (see
+/// `AppController::push_log_line`), so each append is O(line length) rather
+/// than rebuilding the whole buffer.
+fn append_log(ctrl: Pin<&mut AppController>, level: LogLevel, text: &str) {
+    ctrl.push_log_line(text, &log_html(level, text));
 }
 
 /// Visually mark a new phase in the log with a bold, blue header line.
 /// Suppressed for the implicit "Starting" phase that every job begins in.
-fn append_phase_header(mut ctrl: Pin<&mut AppController>, name: &str) {
+fn append_phase_header(ctrl: Pin<&mut AppController>, name: &str) {
     if name.is_empty() || name.eq_ignore_ascii_case("Starting") {
         return;
     }
     let escaped = html_escape(name);
-    let line = format!(
+    let html = format!(
         "<div style=\"color:#2188ff;font-weight:bold;margin-top:4px\">\
          \u{25B6} {escaped}</div>"
     );
-    let updated = format!("{}{line}", ctrl.log_text());
-    ctrl.as_mut().set_log_text(QString::from(&updated));
+    ctrl.push_log_line(name, &html);
 }
 
 /// Minimal HTML escaping for log text (the four characters Qt's rich-text

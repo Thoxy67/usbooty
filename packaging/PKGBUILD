@@ -51,6 +51,8 @@ optdepends=(
     'wimlib: split install.wim chunks for Windows installers on FAT32'
     'syslinux: BIOS / legacy MBR bootloader install for Linux ISOs on FAT/ext4'
     'libisoburn: xorriso for advanced ISO inspection / repair'
+    'qemu-full: boot-test a device in a VM (Device → Verify boot device)'
+    'edk2-ovmf: UEFI firmware for the QEMU boot test (BIOS works without it)'
     # Quality-of-life integrations — features degrade silently when absent.
     'smartmontools: SMART health probe + Inspect-dialog SMART panel'
     'udisks2: auto-mount + open of the Ventoy data partition after install'

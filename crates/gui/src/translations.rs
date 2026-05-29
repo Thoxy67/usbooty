@@ -52,7 +52,7 @@ static ENGINE: Mutex<usize> = Mutex::new(0);
 /// QQmlApplicationEngine in `main.rs`. The pointer must remain valid for
 /// the lifetime of the application.
 pub fn register_engine(engine: *mut c_void) {
-    *ENGINE.lock().expect("engine lock poisoned") = engine as usize;
+    *ENGINE.lock().unwrap_or_else(|e| e.into_inner()) = engine as usize;
 }
 
 /// Pick the best `.qm` file for the current system locale and install it
@@ -80,7 +80,7 @@ pub fn install_for_system_locale() {
 /// so every `qsTr` binding re-evaluates.
 pub fn set_force_english(force_english: bool) {
     {
-        let mut slot = CURRENT.lock().expect("translator lock poisoned");
+        let mut slot = CURRENT.lock().unwrap_or_else(|e| e.into_inner());
         if *slot != 0 {
             unsafe {
                 let old = *slot as *mut QTranslator;
@@ -93,7 +93,7 @@ pub fn set_force_english(force_english: bool) {
     if !force_english {
         install_for_system_locale();
     }
-    let engine = *ENGINE.lock().expect("engine lock poisoned");
+    let engine = *ENGINE.lock().unwrap_or_else(|e| e.into_inner());
     if engine != 0 {
         unsafe { usbooty_engine_retranslate(engine as *mut QQmlApplicationEngine) };
     }
@@ -104,12 +104,16 @@ pub fn set_force_english(force_english: bool) {
 /// can remove it later. Returns whether the load succeeded.
 fn load_and_install(locale: &str) -> bool {
     let path = format!(":/i18n/usbooty_{locale}.qm");
-    let c_path = CString::new(path.clone()).expect("path has no interior NUL");
+    // A locale string with an interior NUL can't name a resource path; treat
+    // it as "no translation available" rather than crashing the whole UI.
+    let Ok(c_path) = CString::new(path.clone()) else {
+        return false;
+    };
     unsafe {
         let tr = usbooty_translator_new();
         if usbooty_translator_load(tr, c_path.as_ptr()) {
             usbooty_translator_install(tr);
-            *CURRENT.lock().expect("translator lock poisoned") = tr as usize;
+            *CURRENT.lock().unwrap_or_else(|e| e.into_inner()) = tr as usize;
             eprintln!("usbooty: loaded translation {path}");
             true
         } else {

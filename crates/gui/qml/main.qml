@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtQuick.Window
 import com.usbooty
 
 ApplicationWindow {
@@ -135,6 +136,30 @@ ApplicationWindow {
         return p
     }
 
+    // Translate a fixed status / ISO-summary string the Rust side emits in
+    // English. Like trPhase, the qsTr() literals keep these in the catalog
+    // for lupdate; interpolated / unknown messages (those carrying a path,
+    // size, or error) fall through and stay in English.
+    function trMsg(m) {
+        switch (m) {
+        case "Ready":                                   return qsTr("Ready")
+        case "No image selected":                       return qsTr("No image selected")
+        case "Cannot read that file":                   return qsTr("Cannot read that file")
+        case "Analyzing source image…":                 return qsTr("Analyzing source image…")
+        case "Decompressing source image…":             return qsTr("Decompressing source image…")
+        case "Unwrapping fixed VHD…":                   return qsTr("Unwrapping fixed VHD…")
+        case "Select an ISO and a target device first": return qsTr("Select an ISO and a target device first")
+        case "Select a target device first":            return qsTr("Select a target device first")
+        case "Contacting Microsoft…":                   return qsTr("Contacting Microsoft…")
+        case "Fetching download options…":              return qsTr("Fetching download options…")
+        case "Pick an output file for the backup":      return qsTr("Pick an output file for the backup")
+        case "Cancelling…":                             return qsTr("Cancelling…")
+        case "Select a device to boot-test first":      return qsTr("Select a device to boot-test first")
+        case "No device selected":                      return qsTr("No device selected")
+        }
+        return m
+    }
+
     // Format a second count as "1h 04m", "2m 12s" or "38s".
     function fmtTime(s) {
         if (s <= 0)
@@ -227,6 +252,67 @@ ApplicationWindow {
                     color: wlogo.tint
                 }
             }
+        }
+    }
+
+    // ---- Reusable Linux mascot (a simplified Tux), the Linux counterpart
+    // to WindowsLogo. Drawn with a Canvas (proportions scale to `size`) so it
+    // needs no bundled asset. Tux is multi-colour by nature, so unlike the
+    // monochrome WindowsLogo it ignores any tint.
+    component LinuxLogo: Canvas {
+        id: llogo
+        property real size: 18
+        implicitWidth: size
+        implicitHeight: size
+        width: size
+        height: size
+        onPaint: {
+            var ctx = getContext("2d")
+            var s = width
+            ctx.reset()
+            var black = "#2b2b2b"
+            var white = "#ffffff"
+            var orange = "#f6a623"
+
+            // Feet first, so the body overlaps their tops and only the
+            // outer edges peek out at the bottom.
+            ctx.fillStyle = orange
+            ctx.beginPath()
+            ctx.ellipse(0.12 * s, 0.78 * s, 0.34 * s, 0.18 * s)
+            ctx.ellipse(0.54 * s, 0.78 * s, 0.34 * s, 0.18 * s)
+            ctx.fill()
+
+            // Black body silhouette (egg shape).
+            ctx.fillStyle = black
+            ctx.beginPath()
+            ctx.ellipse(0.16 * s, 0.06 * s, 0.68 * s, 0.86 * s)
+            ctx.fill()
+
+            // White belly.
+            ctx.fillStyle = white
+            ctx.beginPath()
+            ctx.ellipse(0.30 * s, 0.40 * s, 0.40 * s, 0.50 * s)
+            ctx.fill()
+
+            // White eye patches.
+            ctx.fillStyle = white
+            ctx.beginPath()
+            ctx.ellipse(0.36 * s, 0.18 * s, 0.13 * s, 0.20 * s)
+            ctx.ellipse(0.51 * s, 0.18 * s, 0.13 * s, 0.20 * s)
+            ctx.fill()
+
+            // Black pupils.
+            ctx.fillStyle = black
+            ctx.beginPath()
+            ctx.ellipse(0.41 * s, 0.24 * s, 0.06 * s, 0.10 * s)
+            ctx.ellipse(0.53 * s, 0.24 * s, 0.06 * s, 0.10 * s)
+            ctx.fill()
+
+            // Orange beak between the eyes.
+            ctx.fillStyle = orange
+            ctx.beginPath()
+            ctx.ellipse(0.42 * s, 0.34 * s, 0.16 * s, 0.10 * s)
+            ctx.fill()
         }
     }
 
@@ -501,29 +587,60 @@ ApplicationWindow {
     Behavior on width {
         NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
     }
+    // The width the window had right before the log column forced it wider.
+    // Collapsing the log restores exactly this (e.g. the launch width) rather
+    // than a fixed constant, so the window returns to where it actually was.
+    property int preLogWidth: width
+    // Resize the window to `w`, but never while it is maximized or
+    // fullscreen: the user chose that geometry, and a width tweak would
+    // either be silently ignored or snap the window to the wrong size the
+    // moment they restore it. The log column still shows/hides via
+    // logVisible; only the windowed-mode auto-resize is suppressed.
+    function setWindowWidth(w) {
+        if (window.visibility === Window.Maximized
+                || window.visibility === Window.FullScreen)
+            return
+        window.width = w
+    }
+    // Grow to fit the log column, remembering the current width first (read
+    // fresh each time, so a manual resize between toggles is honoured). No-op
+    // and no remembering if the window is already wide enough.
+    function growForLog() {
+        if (window.width < window.expandedWidth) {
+            window.preLogWidth = window.width
+            window.setWindowWidth(window.expandedWidth)
+        }
+    }
+    // Collapse the log column, restoring the remembered pre-log width.
+    function shrinkAfterLog() {
+        window.setWindowWidth(window.preLogWidth)
+    }
     // Effective visibility of the activity log column: forced on by the
     // user setting, OR auto-expanded once the buffer holds something.
     readonly property bool logVisible: app.showLogsAlways || logExpanded
     Connections {
         target: app
-        function onLogTextChanged() {
-            if (app.logText !== "" && !window.logExpanded) {
+        function onLogNonEmptyChanged() {
+            if (app.logNonEmpty && !window.logExpanded) {
                 window.logExpanded = true
-                if (window.width < window.expandedWidth)
-                    window.width = window.expandedWidth
+                window.growForLog()
             }
         }
         function onShowLogsAlwaysChanged() {
-            // When the user flips the menu toggle on, grow the window to
-            // make room for the log column right away.
-            if (app.showLogsAlways && window.width < window.expandedWidth)
-                window.width = window.expandedWidth
+            if (app.showLogsAlways) {
+                // Flipped on: grow to make room for the log column.
+                window.growForLog()
+            } else if (!window.logExpanded) {
+                // Flipped off and nothing else is keeping the panel open
+                // (no log content auto-expanded it): reclaim the width.
+                window.shrinkAfterLog()
+            }
         }
     }
     Component.onCompleted: {
         // Honour the persisted "always show logs" choice on first paint.
-        if (app.showLogsAlways && window.width < window.expandedWidth)
-            window.width = window.expandedWidth
+        if (app.showLogsAlways)
+            window.growForLog()
     }
 
 
@@ -546,6 +663,17 @@ ApplicationWindow {
                 enabled: !app.busy && app.selectedDevice >= 0
                 onTriggered: backupDialog.open()
             }
+            // Only offered when the boot test can actually run: QEMU is
+            // installed and KVM virtualization is available on this host.
+            MenuSeparator {
+                visible: app.qemuAvailable && app.qemuKvm
+            }
+            MenuItem {
+                text: qsTr("Verify boot device (QEMU)…")
+                visible: app.qemuAvailable && app.qemuKvm
+                enabled: !app.busy && app.selectedDevice >= 0
+                onTriggered: bootTestDialog.open()
+            }
         }
         Menu {
             title: qsTr("Settings")
@@ -567,6 +695,13 @@ ApplicationWindow {
         }
         Menu {
             title: qsTr("?")
+            MenuItem {
+                text: qsTr("Dependencies")
+                onTriggered: {
+                    depsDialog.refresh()
+                    depsDialog.open()
+                }
+            }
             MenuItem {
                 text: qsTr("About USBooty")
                 onTriggered: aboutDialog.open()
@@ -716,6 +851,11 @@ ApplicationWindow {
                         label: qsTr("Windows")
                         tint: "#0078D4"
                     }
+                    LinuxLogo {
+                        size: 14
+                        visible: app.linuxIso
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
                     Pill {
                         visible: app.linuxIso
                         label: qsTr("Linux")
@@ -723,7 +863,7 @@ ApplicationWindow {
                     }
                 }
                 Label {
-                    text: qsTr(app.isoSummary)
+                    text: window.trMsg(app.isoSummary)
                     color: palette.placeholderText
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
@@ -1338,10 +1478,13 @@ ApplicationWindow {
             Layout.fillWidth: true
             visible: app.busy || app.progress > 0
             padding: 12
+            // Lower-cased phase name, computed once and shared by the phase
+            // colour below and the ProgressBar's indeterminate test.
+            readonly property string phaseLower: app.phase.toLowerCase()
             // A colour for the active phase, so the user can tell at a glance
             // whether we are still writing or already verifying the bytes back.
             readonly property color phaseColor: {
-                var p = app.phase.toLowerCase()
+                var p = progressFrame.phaseLower
                 if (p.indexOf("verif") >= 0)  return "#27AE60" // green
                 if (p.indexOf("flush") >= 0)  return "#F39C12" // amber
                 if (p.indexOf("format") >= 0) return "#8E44AD" // violet
@@ -1379,13 +1522,12 @@ ApplicationWindow {
                     // mkfs, syslinux install, ext4 persistence creation):
                     // switch to the indeterminate animation while we're in
                     // them so the bar doesn't sit frozen for minutes.
-                    readonly property string phaseLower: app.phase.toLowerCase()
                     indeterminate: app.busy
-                        && (phaseLower.indexOf("splitting") >= 0
-                            || phaseLower.indexOf("syslinux") >= 0
-                            || phaseLower.indexOf("extlinux") >= 0
-                            || phaseLower.indexOf("persistence") >= 0
-                            || phaseLower.indexOf("formatting") >= 0)
+                        && (progressFrame.phaseLower.indexOf("splitting") >= 0
+                            || progressFrame.phaseLower.indexOf("syslinux") >= 0
+                            || progressFrame.phaseLower.indexOf("extlinux") >= 0
+                            || progressFrame.phaseLower.indexOf("persistence") >= 0
+                            || progressFrame.phaseLower.indexOf("formatting") >= 0)
                     // Re-tint the fill bar to match the phase. The Qt default
                     // contentItem is a Rectangle, so we override it cleanly.
                     contentItem: Item {
@@ -1477,7 +1619,7 @@ ApplicationWindow {
                     }
                 }
                 Label {
-                    text: qsTr(app.status)
+                    text: window.trMsg(app.status)
                     color: palette.placeholderText
                     elide: Text.ElideRight
                     Layout.fillWidth: true
@@ -1500,9 +1642,10 @@ ApplicationWindow {
                 color: palette.base
                 border.color: palette.mid
             }
-            // The TextArea uses RichText and binds to a potentially large
-            // `app.logText`. Don't build it until the panel is actually
-            // shown; when the user collapses the log we unload it again.
+            // The TextArea renders a potentially large RichText document.
+            // Don't build it until the panel is actually shown; when the user
+            // collapses the log we unload it again (it repopulates from
+            // app.logHtmlSnapshot() on the next load).
             contentItem: Loader {
                 active: window.logVisible
                 sourceComponent: ColumnLayout {
@@ -1524,11 +1667,11 @@ ApplicationWindow {
                         // resolves to nothing).
                         text: qsTr("Save…")
                         icon.name: "document-save"
-                        display: icon.name && (icon.source.toString() !== "" || true)
+                        display: icon.name
                             ? AbstractButton.IconOnly
                             : AbstractButton.TextOnly
                         flat: true
-                        enabled: app.logText !== ""
+                        enabled: app.logNonEmpty
                         onClicked: saveLogDialog.open()
                         ToolTip.delay: 500
                         ToolTip.visible: hovered
@@ -1542,12 +1685,12 @@ ApplicationWindow {
                             ? AbstractButton.IconOnly
                             : AbstractButton.TextOnly
                         flat: true
-                        enabled: app.logText !== "" && !app.busy
+                        enabled: app.logNonEmpty && !app.busy
                         ToolTip.delay: 500
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Empty the activity log panel.")
                         onClicked: {
-                            app.logText = ""
+                            app.clearLog()
                             // Collapsing back also shrinks the window —
                             // the user explicitly asked for the screen
                             // estate back, so honour that. Unless they
@@ -1555,7 +1698,7 @@ ApplicationWindow {
                             // case the panel stays put.
                             if (!app.showLogsAlways) {
                                 window.logExpanded = false
-                                window.width = window.compactWidth
+                                window.shrinkAfterLog()
                             }
                         }
                     }
@@ -1583,7 +1726,22 @@ ApplicationWindow {
                         // errors (red), and phase headers (blue/bold) via
                         // inline HTML; plain info lines stay the default colour.
                         textFormat: TextEdit.RichText
-                        text: app.logText
+                        // The log buffer lives Rust-side and is streamed line by
+                        // line via `appendLogHtml` (so appends stay cheap and the
+                        // whole document is never re-parsed). This panel is in a
+                        // Loader that unloads when collapsed, so on (re)load we
+                        // repopulate from the snapshot, then append live lines.
+                        Component.onCompleted: text = app.logHtmlSnapshot()
+                        Connections {
+                            target: app
+                            function onAppendLogHtml(html) {
+                                logArea.append(html)
+                            }
+                            function onLogNonEmptyChanged() {
+                                if (!app.logNonEmpty)
+                                    logArea.clear()
+                            }
+                        }
                         // Smart autoscroll: only snap to the bottom when the
                         // user was already at (or near) the bottom before the
                         // append, so scrolling up to inspect an earlier line
@@ -2453,6 +2611,266 @@ ApplicationWindow {
         }
     }
 
+    // Every dependency (required + optional), grouped, with a live
+    // available/missing status. Re-probed each time it opens.
+    Dialog {
+        id: depsDialog
+        anchors.centerIn: parent
+        width: Math.min(560, window.width - 40)
+        height: Math.min(window.height - 80, 600)
+        modal: true
+        topPadding: 14
+        bottomPadding: 14
+        leftPadding: 18
+        rightPadding: 18
+        // Parsed rows from app.dependencyReport(); refreshed on open.
+        property var rows: []
+        function refresh() {
+            var out = []
+            var lines = app.dependencyReport().split("\n")
+            for (var i = 0; i < lines.length; i++) {
+                if (lines[i] === "")
+                    continue
+                var f = lines[i].split("")
+                out.push({ present: f[0] === "1", group: f[1],
+                           name: f[2], pkg: f[3], purpose: f[4] })
+            }
+            rows = out
+        }
+        readonly property int presentCount:
+            rows.filter(function(d) { return d.present }).length
+        header: DialogHeader {
+            tint: palette.highlight
+            iconGlyph: "ⓘ"
+            title: qsTr("Dependencies")
+            subtitle: qsTr("%1 of %2 present").arg(depsDialog.presentCount)
+                                              .arg(depsDialog.rows.length)
+        }
+        standardButtons: Dialog.Close
+        contentItem: ScrollView {
+            id: depsScroll
+            clip: true
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ColumnLayout {
+                width: depsScroll.availableWidth
+                spacing: 12
+                Repeater {
+                    model: [
+                        { key: "required",   title: qsTr("Required") },
+                        { key: "filesystem", title: qsTr("Filesystem formatters") },
+                        { key: "feature",    title: qsTr("Feature backends") },
+                        { key: "boot",       title: qsTr("Boot test (QEMU)") },
+                        { key: "qol",        title: qsTr("Quality-of-life") }
+                    ]
+                    delegate: ColumnLayout {
+                        id: section
+                        // The category key this section filters the dep rows by.
+                        readonly property string catKey: modelData.key
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Label {
+                            text: modelData.title
+                            font.bold: true
+                            font.pointSize: 11
+                            color: palette.highlight
+                            Layout.fillWidth: true
+                        }
+                        Repeater {
+                            model: depsDialog.rows.filter(function(d) {
+                                return d.group === section.catKey
+                            })
+                            delegate: RowLayout {
+                                id: deprow
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 6
+                                spacing: 8
+                                Label {
+                                    text: modelData.present ? "✓" : "✗"
+                                    color: modelData.present ? "#27AE60" : "#E74C3C"
+                                    font.bold: true
+                                    font.pointSize: 11
+                                    Layout.alignment: Qt.AlignTop
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        Label {
+                                            text: modelData.name
+                                            font.bold: true
+                                            elide: Text.ElideRight
+                                        }
+                                        Label {
+                                            text: modelData.pkg
+                                            font.family: "monospace"
+                                            font.pointSize: 8
+                                            color: palette.placeholderText
+                                            elide: Text.ElideRight
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Label {
+                                            text: modelData.present
+                                                ? qsTr("available") : qsTr("missing")
+                                            color: modelData.present ? "#27AE60" : "#E74C3C"
+                                            font.pointSize: 8
+                                        }
+                                    }
+                                    Label {
+                                        text: modelData.purpose
+                                        color: palette.placeholderText
+                                        font.pointSize: 8
+                                        wrapMode: Text.Wrap
+                                        Layout.fillWidth: true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Boot-test the selected device in QEMU (BIOS/MBR or UEFI). Minimal
+    // config: firmware, memory, KVM. The device is opened in snapshot mode so
+    // the test never writes back to it.
+    Dialog {
+        id: bootTestDialog
+        anchors.centerIn: parent
+        width: Math.min(460, window.width - 40)
+        modal: true
+        topPadding: 14
+        bottomPadding: 14
+        leftPadding: 18
+        rightPadding: 18
+        // Selectable RAM sizes (MiB) and the current pick.
+        readonly property var memValues: [1024, 2048, 4096, 8192]
+        property int memIndex: 1
+        // Default to UEFI when the firmware is available, else BIOS.
+        property bool uefi: app.qemuUefi
+        onAboutToShow: uefi = app.qemuUefi
+        header: DialogHeader {
+            // Teal, matching the "Ventoy" phase accent and distinct from the
+            // blue (Microsoft), red (erase) and green/red (result) headers.
+            tint: "#16A085"
+            iconGlyph: "▶"
+            title: qsTr("Verify boot device")
+            subtitle: qsTr("Boot the selected device in QEMU — it is not modified")
+        }
+        footer: DialogButtonBox {
+            standardButtons: DialogButtonBox.Cancel
+            Button {
+                text: qsTr("Launch")
+                enabled: app.qemuAvailable
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                onClicked: {
+                    app.verifyBoot(bootTestDialog.memValues[bootTestDialog.memIndex],
+                                   bootTestDialog.uefi,
+                                   kvmCheck.checked)
+                    bootTestDialog.close()
+                }
+            }
+        }
+        contentItem: ColumnLayout {
+            spacing: 10
+            // Target device path.
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    text: qsTr("Device")
+                    font.bold: true
+                }
+                Item { Layout.fillWidth: true }
+                Label {
+                    text: app.selectedPath()
+                    color: palette.placeholderText
+                    font.family: "monospace"
+                    font.pointSize: 10
+                    elide: Text.ElideMiddle
+                }
+            }
+            // Hard stop when QEMU itself is missing.
+            Label {
+                visible: !app.qemuAvailable
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: qsTr("⚠ qemu-system-x86_64 was not found. Install the 'qemu-full' "
+                    + "(Arch) or 'qemu-system-x86' (Debian/Ubuntu) package to use this.")
+                color: Qt.tint(window.palette.windowText, Qt.rgba(0.86, 0.21, 0.27, 0.85))
+                font.bold: true
+            }
+            // Firmware: BIOS/MBR vs UEFI.
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    text: qsTr("Firmware")
+                    Layout.preferredWidth: 90
+                }
+                RadioButton {
+                    text: qsTr("BIOS / MBR")
+                    checked: !bootTestDialog.uefi
+                    onClicked: bootTestDialog.uefi = false
+                }
+                RadioButton {
+                    text: qsTr("UEFI")
+                    enabled: app.qemuUefi
+                    checked: bootTestDialog.uefi
+                    onClicked: bootTestDialog.uefi = true
+                }
+                Item { Layout.fillWidth: true }
+            }
+            Label {
+                visible: !app.qemuUefi
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: qsTr("UEFI test needs OVMF firmware (install 'edk2-ovmf' / 'ovmf').")
+                color: palette.placeholderText
+                font.pointSize: 8
+            }
+            // Memory.
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    text: qsTr("Memory")
+                    Layout.preferredWidth: 90
+                }
+                FormCombo {
+                    id: memCombo
+                    model: ["1 GiB", "2 GiB", "4 GiB", "8 GiB"]
+                    currentIndex: bootTestDialog.memIndex
+                    onActivated: bootTestDialog.memIndex = currentIndex
+                }
+            }
+            // Hardware acceleration.
+            CheckBox {
+                id: kvmCheck
+                text: qsTr("Hardware acceleration (KVM)")
+                enabled: app.qemuKvm
+                checked: app.qemuKvm
+            }
+            Label {
+                visible: !app.qemuKvm
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: qsTr("KVM is unavailable (/dev/kvm missing); the VM will run under "
+                    + "slower software emulation.")
+                color: palette.placeholderText
+                font.pointSize: 8
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: qsTr("Opens in snapshot mode, so nothing is written back to the device. "
+                    + "Admin rights are required to read the raw device.")
+                color: palette.placeholderText
+                font.pointSize: 8
+            }
+        }
+    }
+
     Dialog {
         id: resultDialog
         anchors.centerIn: parent
@@ -2715,7 +3133,7 @@ ApplicationWindow {
             }
 
             Label {
-                text: qsTr(app.status)
+                text: window.trMsg(app.status)
                 color: palette.placeholderText
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true

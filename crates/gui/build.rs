@@ -116,6 +116,11 @@ fn compile_translations(dir: &Path) {
             )
         });
 
+    // Each `.ts` compiles into its own `.qm` independently, so spawn all the
+    // stale ones at once and collect their handles, then wait. On a fresh
+    // clone (every `.qm` missing) this turns N sequential lrelease runs into
+    // one concurrent batch.
+    let mut jobs = Vec::new();
     for ts in &ts_files {
         let qm = ts.with_extension("qm");
         let needs_rebuild = match (std::fs::metadata(&qm), std::fs::metadata(ts)) {
@@ -128,10 +133,16 @@ fn compile_translations(dir: &Path) {
         if !needs_rebuild {
             continue;
         }
-        let status = Command::new(lrelease)
+        let child = Command::new(lrelease)
             .arg(ts)
-            .status()
+            .spawn()
             .unwrap_or_else(|e| panic!("failed to spawn {lrelease}: {e}"));
+        jobs.push((ts, child));
+    }
+    for (ts, mut child) in jobs {
+        let status = child
+            .wait()
+            .unwrap_or_else(|e| panic!("failed to wait for {lrelease}: {e}"));
         if !status.success() {
             panic!("{lrelease} {} failed (exit {status})", ts.display());
         }

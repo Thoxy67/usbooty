@@ -13,9 +13,11 @@ pub enum PersistenceKind {
     CasperRw,
     /// Debian-live — a `persistence` partition carrying a `persistence.conf` file.
     DebianLive,
-    /// Fedora live — an ext4 partition whose label matches the ISO's volume
-    /// label with an `-Live-overlay` suffix. dracut detects it at boot via the
-    /// `rd.live.overlay` kernel parameter (which we add when patching configs).
+    /// Fedora / RHEL-family live — an ext4 partition with the fixed label
+    /// `OVERLAY` holding a sparse `overlay.img` COW file. dracut's dmsquash-live
+    /// loop-mounts that file as a dm-snapshot when
+    /// `rd.live.overlay=LABEL=OVERLAY:/overlay.img` is on the kernel command
+    /// line (which we add when patching configs).
     FedoraOverlay,
     /// openSUSE live (kiwi-live) — an ext4 partition labelled `cow`, picked up
     /// automatically by the live system; no kernel parameter required.

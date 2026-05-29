@@ -254,16 +254,7 @@ fn scan_pattern(
         let chunk = ((size - done) as usize).min(read_buf.len());
         dev.read_exact(&mut read_buf[..chunk])
             .context("reading the device back")?;
-        if read_buf[..chunk] != buf[..chunk] {
-            // Pinpoint per 4 KiB sector for an actionable report.
-            for (i, sector) in read_buf[..chunk].chunks(BLOCK).enumerate() {
-                let off = done + (i * BLOCK) as u64;
-                let expected = &buf[..BLOCK];
-                if sector != expected {
-                    bad.push(off);
-                }
-            }
-        }
+        diff_sectors(&read_buf[..chunk], &buf[..chunk], done, &mut bad);
         done += chunk as u64;
         if last.elapsed() >= REPORT_EVERY {
             emit::progress(phase, done, size);
@@ -271,6 +262,24 @@ fn scan_pattern(
         }
     }
     Ok(bad)
+}
+
+/// Compare a read-back chunk against the expected pattern buffer block by
+/// block, appending the device offset of every mismatching 4 KiB sector to
+/// `bad`. `base` is the device offset the chunk starts at. The trailing block
+/// may be shorter than `BLOCK`; `sector.len()` keeps the pattern slice in step.
+fn diff_sectors(read: &[u8], pattern: &[u8], base: u64, bad: &mut Vec<u64>) {
+    debug_assert_eq!(read.len(), pattern.len());
+    // Fast path: the common case is a clean chunk, so skip the per-sector walk.
+    if read == pattern {
+        return;
+    }
+    for (i, sector) in read.chunks(BLOCK).enumerate() {
+        let off = i * BLOCK;
+        if sector != &pattern[off..off + sector.len()] {
+            bad.push(base + off as u64);
+        }
+    }
 }
 
 /// Return `n` evenly-spaced 4 KiB-aligned offsets in `[0, size - BLOCK]`.
@@ -355,6 +364,40 @@ mod tests {
             u64::from_le_bytes(buf[8..16].try_into().unwrap()),
             0x99AA_BBCC_DDEE_FF00
         );
+    }
+
+    #[test]
+    fn diff_sectors_reports_each_corrupt_block_at_its_own_offset() {
+        // Three blocks of pattern; corrupt the *middle* one. A naive
+        // implementation that always compared against the first block would
+        // either miss this or flag the wrong offset.
+        let pattern = vec![0xAAu8; 3 * BLOCK];
+        let mut read = pattern.clone();
+        read[BLOCK + 17] = 0x55; // single bad byte inside block 1
+        let mut bad = Vec::new();
+        diff_sectors(&read, &pattern, 1_000_000, &mut bad);
+        assert_eq!(bad, vec![1_000_000 + BLOCK as u64]);
+    }
+
+    #[test]
+    fn diff_sectors_clean_chunk_reports_nothing() {
+        let pattern = vec![0x5Au8; 2 * BLOCK];
+        let read = pattern.clone();
+        let mut bad = Vec::new();
+        diff_sectors(&read, &pattern, 0, &mut bad);
+        assert!(bad.is_empty());
+    }
+
+    #[test]
+    fn diff_sectors_handles_short_final_block() {
+        // Last block is a partial sector; a corrupt byte in it must still be
+        // reported at the right offset without panicking on the slice.
+        let pattern = vec![0xFFu8; BLOCK + 512];
+        let mut read = pattern.clone();
+        read[BLOCK + 100] = 0x00;
+        let mut bad = Vec::new();
+        diff_sectors(&read, &pattern, 0, &mut bad);
+        assert_eq!(bad, vec![BLOCK as u64]);
     }
 
     #[test]

@@ -324,7 +324,8 @@ fn write_mbr_uefi_ntfs<D: Read + Write + Seek>(device: &mut D, fat_sectors: u64)
         .context("creating MBR")?;
 
     let total = mbr.disk_size;
-    let fat_sectors = fat_sectors as u32;
+    let fat_sectors =
+        u32::try_from(fat_sectors).context("FAT partition exceeds the MBR 2 TiB sector limit")?;
     let p1_start = ALIGN_SECTORS as u32;
     if total <= p1_start + fat_sectors {
         anyhow::bail!("device is too small for the UEFI:NTFS layout");
@@ -431,7 +432,8 @@ fn write_mbr_persistence<D: Read + Write + Seek>(
         .context("creating MBR")?;
 
     let total = mbr.disk_size;
-    let pers_sectors = pers_sectors as u32;
+    let pers_sectors = u32::try_from(pers_sectors)
+        .context("persistence partition exceeds the MBR 2 TiB sector limit")?;
     let p1_start = ALIGN_SECTORS as u32;
     if total <= p1_start + pers_sectors {
         anyhow::bail!("device is too small for the persistence layout");

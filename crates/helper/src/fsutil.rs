@@ -84,9 +84,21 @@ pub fn mkfs_exfat(device: &str, label: &str) -> Result<()> {
 /// (`label` is sanitized to ext4's 16-character limit).
 pub fn mkfs_ext4(device: &str, label: &str) -> Result<()> {
     let label = crate::label::ext4(label);
+    // `lazy_itable_init=1,lazy_journal_init=1` defers inode-table and journal
+    // zeroing to the kernel after first mount. It is the modern e2fsprogs
+    // default, but stating it explicitly keeps the "Persistence" phase fast on
+    // large overlays regardless of the host's mke2fs.conf.
     run_tool(
         "mkfs.ext4",
-        &["-F", "-q", "-L", label.as_str(), device],
+        &[
+            "-F",
+            "-q",
+            "-E",
+            "lazy_itable_init=1,lazy_journal_init=1",
+            "-L",
+            label.as_str(),
+            device,
+        ],
         "creating the ext4 filesystem",
     )
 }
