@@ -56,6 +56,10 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
 
     // wimlib-imagex extract <wim> <image-index> <internal-path> --dest-dir <dir>
     // Image index 1 is "Windows Setup / install" in every Microsoft WIM.
+    // `--nullglob`: a path that matches nothing is not an error, so a build
+    // that doesn't ship SkuSiPolicy.p7b (or files it elsewhere) is a clean
+    // skip rather than a hard `wimlib-imagex` failure that aborts the job.
+    // Without it, recent builds (e.g. Win 11 25H2) abort with exit code 49.
     let mut child = Command::new("wimlib-imagex")
         .arg("extract")
         .arg(&install_wim)
@@ -64,6 +68,7 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
         .arg("--dest-dir")
         .arg(&staging)
         .arg("--no-acls")
+        .arg("--nullglob")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -75,13 +80,22 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
             let _ = s.read_to_string(&mut stderr);
         }
         let stderr = stderr.trim();
-        // `SkuSiPolicy.p7b` is only in Windows builds that ship the CA 2023
-        // assets (Win 11 23H2 onwards, recent Win 10 servicing). Older WIMs
-        // just don't have the file; that's a soft-skip, not a failure.
-        if stderr.contains("Path not found") || stderr.contains("file not found") {
+        // `SkuSiPolicy.p7b` is only present in some Windows builds, and at a
+        // path that has shifted between releases. When the WIM simply doesn't
+        // contain it, that's a soft-skip, not a failure. `--nullglob` above
+        // already turns a no-match into a clean exit; this stays as a belt-
+        // and-suspenders for wimlib versions that still report it, across the
+        // several phrasings it uses ("Path not found", "No matches for path
+        // pattern", "path does not exist in the WIM image").
+        let s = stderr.to_ascii_lowercase();
+        if s.contains("path not found")
+            || s.contains("file not found")
+            || s.contains("no matches for path")
+            || s.contains("does not exist in the wim")
+        {
             emit::log(format!(
                 "{SOURCE_PATH} not found inside install.wim; skipping \
-                 Windows CA 2023 policy (older Windows build)."
+                 Windows CA 2023 policy (this Windows build doesn't ship it)."
             ));
             let _ = fs::remove_dir_all(&staging);
             return Ok(());
@@ -96,7 +110,12 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
         .join("SecureBootUpdates")
         .join("SkuSiPolicy.p7b");
     if !staged_file.is_file() {
-        emit::log("wimlib reported success but produced no SkuSiPolicy.p7b; skipping.");
+        // With --nullglob this is the normal "the file isn't in this WIM"
+        // outcome: extract succeeds but matches nothing. Skip cleanly.
+        emit::log(
+            "SkuSiPolicy.p7b is not present in this install.wim; skipping \
+             Windows CA 2023 policy (this Windows build doesn't ship it).",
+        );
         let _ = fs::remove_dir_all(&staging);
         return Ok(());
     }
