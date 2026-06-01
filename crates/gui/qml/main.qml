@@ -2147,6 +2147,26 @@ ApplicationWindow {
             Label { text: qsTr("Out-of-box experience"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             WrapCheckBox {
+                // Convenience: flip the four privacy / prompt-skip options below
+                // together. Checked only when all of them are already on. The
+                // Microsoft-account skip stays separate (it's an account choice,
+                // not a privacy prompt).
+                text: qsTr("Express: skip the optional OOBE prompts (Wi-Fi, OEM, network type, privacy)")
+                checked: app.hideWirelessSetup && app.hideOemRegistration
+                         && app.networkLocationWork && app.disableTelemetry
+                onToggled: {
+                    app.hideWirelessSetup = checked
+                    app.hideOemRegistration = checked
+                    app.networkLocationWork = checked
+                    app.disableTelemetry = checked
+                }
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("One switch for the four prompt-skip options below: hide the Wi-Fi "
+                    + "screen, the OEM-registration screen, pre-answer the network type as Work, and "
+                    + "skip the privacy / data-collection page. Toggle the individual boxes for finer control.")
+            }
+            WrapCheckBox {
                 text: qsTr("Skip Microsoft-account requirement (works on Win 10 and all Win 11)")
                 checked: app.skipMsaccount
                 onToggled: app.skipMsaccount = checked
@@ -2355,9 +2375,9 @@ ApplicationWindow {
             Label { text: qsTr("Privacy & debloat"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             WrapCheckBox {
-                // Win 11-only: auto device-encryption is a Win 11 24H2+ behavior
-                // (Rufus also gates this to Win 11).
-                visible: window.isWin11
+                // 24H2+ only: automatic device encryption on a clean first boot
+                // is a Windows 11 24H2 (build 26100) behavior.
+                visible: window.isWin11_24H2
                 text: qsTr("Disable automatic BitLocker device encryption")
                 checked: app.disableBitlocker
                 onToggled: app.disableBitlocker = checked

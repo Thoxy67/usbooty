@@ -326,41 +326,50 @@ fn scan_efi_revocations(iso: &ISO9660<File>) -> Vec<String> {
     warnings
 }
 
-/// The Windows build number of the ISO's `install.wim` / `install.esd` (e.g.
-/// 26100), or 0 when it can't be determined (not a Windows/UDF ISO, no install
-/// image, or unparseable metadata). Read cheaply from the WIM header + its
-/// trailing XML (no full extraction). Used to gate version-specific installer
-/// customization options by Windows version, the way Rufus does (Windows 11 is
-/// build >= 22000; the Microsoft-account-bypass option, build >= 22500).
-pub fn windows_build(path: &Path) -> u32 {
-    let Ok(file) = File::open(path) else {
-        return 0;
-    };
-    let Some(mut udf) = usbooty_core::udf::UdfFs::open(file) else {
-        return 0;
-    };
+/// Read and decode the trailing `<WIM>` XML metadata of the ISO's
+/// `install.wim` / `install.esd` (no full extraction, cheap even on a
+/// multi-gigabyte image). `None` when the ISO is not UDF, has no install image,
+/// or the WIM header is unrecognizable.
+fn read_wim_xml(path: &Path) -> Option<String> {
+    let file = File::open(path).ok()?;
+    let mut udf = usbooty_core::udf::UdfFs::open(file)?;
     let segs: &[&str] = if udf.file_size(&["sources", "install.wim"]).is_some() {
         &["sources", "install.wim"]
     } else if udf.file_size(&["sources", "install.esd"]).is_some() {
         &["sources", "install.esd"]
     } else {
-        return 0;
+        return None;
     };
 
     // WIM header (WIMHEADER_V1_PACKED): the XML-data resource header sits at
     // byte 0x48: 24 bytes of { size+flags (u64), offset (i64), originalSize }.
     let header = udf.read_file_range(segs, 0, 208).unwrap_or_default();
     if header.len() < 0x60 || &header[0..5] != b"MSWIM" {
-        return 0;
+        return None;
     }
     let size =
         u64::from_le_bytes(header[0x48..0x50].try_into().unwrap()) & 0x00FF_FFFF_FFFF_FFFF;
     let offset = u64::from_le_bytes(header[0x50..0x58].try_into().unwrap());
     if size == 0 || size > 64 * 1024 * 1024 {
-        return 0;
+        return None;
     }
     let xml_bytes = udf.read_file_range(segs, offset, size).unwrap_or_default();
-    parse_windows_build(&decode_utf16le(&xml_bytes))
+    Some(decode_utf16le(&xml_bytes))
+}
+
+/// The Windows build number of the ISO's `install.wim` / `install.esd` (e.g.
+/// 26100), or 0 when it can't be determined. Used to gate version-specific
+/// installer customization options by Windows version, the way Rufus does
+/// (Windows 11 is build >= 22000; the Microsoft-account-bypass option, >= 22500).
+pub fn windows_build(path: &Path) -> u32 {
+    read_wim_xml(path).map_or(0, |xml| parse_windows_build(&xml))
+}
+
+/// The unattend processor-architecture name (`"x86"`, `"amd64"`, or `"arm64"`)
+/// of the ISO's install image, or `None` if undetermined. Lets the unattend
+/// emit a single arch-matched `<component>` instead of one per architecture.
+pub fn windows_arch(path: &Path) -> Option<String> {
+    parse_windows_arch(&read_wim_xml(path)?)
 }
 
 /// Decode a UTF-16LE byte buffer (with an optional leading BOM) to a `String`,
@@ -387,6 +396,22 @@ fn parse_windows_build(xml: &str) -> u32 {
         return 0;
     };
     rest[..end].trim().parse().unwrap_or(0)
+}
+
+/// Map the first `<ARCH>N</ARCH>` (the `PROCESSOR_ARCHITECTURE` value Windows
+/// stores in the WIM XML) to an unattend `processorArchitecture` name. Returns
+/// `None` for unknown / unhandled values so the caller falls back to emitting
+/// every architecture.
+fn parse_windows_arch(xml: &str) -> Option<String> {
+    let start = xml.find("<ARCH>")? + "<ARCH>".len();
+    let rest = &xml[start..];
+    let end = rest.find("</ARCH>")?;
+    match rest[..end].trim() {
+        "0" => Some("x86".into()),
+        "9" => Some("amd64".into()),
+        "12" => Some("arm64".into()),
+        _ => None,
+    }
 }
 
 /// The set of digests usbooty computes for a source ISO.
@@ -690,6 +715,19 @@ mod tests {
             </IMAGE></WIM>"#;
         assert_eq!(parse_windows_build(xml), 26100);
         assert_eq!(parse_windows_build("<WIM></WIM>"), 0);
+    }
+
+    #[test]
+    fn parses_windows_arch_from_wim_xml() {
+        let xml = r#"<WIM><IMAGE INDEX="1"><WINDOWS><ARCH>9</ARCH></WINDOWS></IMAGE></WIM>"#;
+        assert_eq!(parse_windows_arch(xml).as_deref(), Some("amd64"));
+        assert_eq!(
+            parse_windows_arch("<WINDOWS><ARCH>12</ARCH></WINDOWS>").as_deref(),
+            Some("arm64")
+        );
+        assert_eq!(parse_windows_arch("<ARCH>0</ARCH>").as_deref(), Some("x86"));
+        assert_eq!(parse_windows_arch("<ARCH>99</ARCH>"), None); // unknown
+        assert_eq!(parse_windows_arch("<WIM></WIM>"), None);
     }
 
     #[test]

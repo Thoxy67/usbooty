@@ -121,10 +121,24 @@ fn write_helpers_into(dir: &Path) -> Result<()> {
 // surface is small enough that another file would be more navigation than
 // it saves.
 
-/// Emit a `<component>` block once per supported processor architecture with
-/// identical body content.
-pub(super) fn push_component_per_arch(s: &mut String, name: &str, body: &str) {
-    for arch in ARCHITECTURES {
+/// The processor architectures to emit `<component>` blocks for. When the
+/// image's arch is known (and supported) we emit just that one, cutting the
+/// unattend to a third of its size; otherwise we emit every supported arch,
+/// which is always safe since Windows ignores components whose arch doesn't
+/// match the running image.
+pub(super) fn target_archs(setup: &WindowsSetup) -> Vec<&'static str> {
+    if let Some(arch) = setup.arch.as_deref() {
+        if let Some(&matched) = ARCHITECTURES.iter().find(|&&a| a == arch) {
+            return vec![matched];
+        }
+    }
+    ARCHITECTURES.to_vec()
+}
+
+/// Emit a `<component>` block for each architecture in `archs` with identical
+/// body content.
+pub(super) fn push_component_per_arch(s: &mut String, archs: &[&str], name: &str, body: &str) {
+    for arch in archs {
         s.push_str(&format!(
             "    <component name=\"{name}\" processorArchitecture=\"{arch}\" \
              publicKeyToken=\"31bf3856ad364e35\" language=\"neutral\" versionScope=\"nonSxS\">\n"
@@ -226,6 +240,32 @@ mod tests {
                 "missing component variant for {arch}"
             );
         }
+    }
+
+    #[test]
+    fn known_arch_emits_a_single_component() {
+        let setup = WindowsSetup {
+            bypass_tpm: true,
+            arch: Some("amd64".into()),
+            ..WindowsSetup::default()
+        };
+        let xml = generate(&setup);
+        // Only the amd64 component is emitted, not all three.
+        assert_eq!(xml.matches("name=\"Microsoft-Windows-Setup\"").count(), 1);
+        assert!(xml.contains("processorArchitecture=\"amd64\""));
+        assert!(!xml.contains("processorArchitecture=\"x86\""));
+        assert!(!xml.contains("processorArchitecture=\"arm64\""));
+    }
+
+    #[test]
+    fn unknown_arch_falls_back_to_all_architectures() {
+        let setup = WindowsSetup {
+            bypass_tpm: true,
+            arch: Some("sparc".into()), // not in ARCHITECTURES
+            ..WindowsSetup::default()
+        };
+        let xml = generate(&setup);
+        assert_eq!(xml.matches("name=\"Microsoft-Windows-Setup\"").count(), 3);
     }
 
     #[test]

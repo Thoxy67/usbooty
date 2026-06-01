@@ -4,7 +4,7 @@
 
 use usbooty_core::WindowsSetup;
 
-use super::{escape, push_component_per_arch, push_run_command};
+use super::{escape, push_component_per_arch, push_run_command, target_archs};
 
 pub(super) fn push_windows_pe(s: &mut String, setup: &WindowsSetup) {
     let bypasses: Vec<&str> = [
@@ -64,12 +64,13 @@ pub(super) fn push_windows_pe(s: &mut String, setup: &WindowsSetup) {
         intl_body.push_str(&format!("      <UILanguage>{loc}</UILanguage>\n"));
     }
 
+    let archs = target_archs(setup);
     s.push_str("  <settings pass=\"windowsPE\">\n");
     if !setup_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-Setup", &setup_body);
+        push_component_per_arch(s, &archs, "Microsoft-Windows-Setup", &setup_body);
     }
     if !intl_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-International-Core-WinPE", &intl_body);
+        push_component_per_arch(s, &archs, "Microsoft-Windows-International-Core-WinPE", &intl_body);
     }
     s.push_str("  </settings>\n");
 }

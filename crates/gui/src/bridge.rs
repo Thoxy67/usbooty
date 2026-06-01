@@ -95,6 +95,9 @@ pub mod qobject {
         // if unknown / not a Windows ISO. Gates version-specific installer
         // options in QML (Windows 11 is build >= 22000).
         #[qproperty(i32, windows_build)]
+        // Install-image arch ("x86"/"amd64"/"arm64"), empty if unknown. Lets the
+        // unattend emit a single arch-matched component instead of all three.
+        #[qproperty(QString, windows_arch)]
         // For Windows ISOs with install.wim larger than 4 GiB, choose between
         // UEFI:NTFS (false, default) and wimlib-imagex split onto FAT32 (true).
         #[qproperty(bool, split_wim)]
@@ -405,6 +408,7 @@ pub struct AppControllerRust {
     windows_iso: bool,
     linux_iso: bool,
     windows_build: i32,
+    windows_arch: QString,
     split_wim: bool,
     bypass_tpm: bool,
     bypass_secureboot: bool,
@@ -523,6 +527,7 @@ impl Default for AppControllerRust {
             windows_iso: false,
             linux_iso: false,
             windows_build: 0,
+            windows_arch: QString::default(),
             split_wim: false,
             bypass_tpm: false,
             bypass_secureboot: false,
@@ -900,6 +905,14 @@ impl qobject::AppController {
             0
         };
         self.as_mut().set_windows_build(build as i32);
+        // Install-image arch lets the unattend target one architecture instead
+        // of emitting all three. Empty when unknown / non-Windows.
+        let arch = if is_windows {
+            crate::iso::windows_arch(std::path::Path::new(path)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        self.as_mut().set_windows_arch(QString::from(&arch));
 
         // Auto-pick the write method the image needs: the partition method for
         // a Windows/Linux installer, raw DD for a BSD/other image (DD is
@@ -1248,6 +1261,7 @@ impl qobject::AppController {
             locale: trimmed_opt(&self.locale().to_string()),
             timezone: trimmed_opt(&self.timezone().to_string()),
             product_key: trimmed_opt(&self.product_key().to_string()),
+            arch: trimmed_opt(&self.windows_arch().to_string()),
         }
     }
 

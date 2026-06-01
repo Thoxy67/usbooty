@@ -304,6 +304,13 @@ pub struct WindowsSetup {
     /// activation-key prompt as well.
     #[serde(default)]
     pub force_edition_picker: bool,
+    /// Target processor architecture of the install image (`"x86"`, `"amd64"`,
+    /// or `"arm64"`), detected from the WIM. When set, the unattend emits a
+    /// single arch-matched `<component>` per setting instead of one for every
+    /// architecture. `None` falls back to emitting all supported architectures
+    /// (always safe: Windows ignores components whose arch doesn't match).
+    #[serde(default)]
+    pub arch: Option<String>,
 }
 
 impl WindowsSetup {

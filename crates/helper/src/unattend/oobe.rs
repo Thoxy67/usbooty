@@ -5,7 +5,7 @@
 use usbooty_core::WindowsSetup;
 
 use super::assets::ENABLE_ADAPTERS_COMMAND;
-use super::{escape, push_component_per_arch, push_first_logon_commands};
+use super::{escape, push_component_per_arch, push_first_logon_commands, target_archs};
 
 pub(super) fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
     let oobe_items = build_oobe_items(setup);
@@ -75,7 +75,7 @@ pub(super) fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
             "            <DisplayName>{}</DisplayName>\n",
             escape(name)
         ));
-        shell_body.push_str("            <Group>Administrators</Group>\n");
+        shell_body.push_str("            <Group>Administrators;Power Users</Group>\n");
         shell_body.push_str("          </LocalAccount>\n");
         shell_body.push_str("        </LocalAccounts>\n      </UserAccounts>\n");
     }
@@ -89,12 +89,13 @@ pub(super) fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
         intl_body.push_str(&format!("      <UserLocale>{loc}</UserLocale>\n"));
     }
 
+    let archs = target_archs(setup);
     s.push_str("  <settings pass=\"oobeSystem\">\n");
     if !shell_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-Shell-Setup", &shell_body);
+        push_component_per_arch(s, &archs, "Microsoft-Windows-Shell-Setup", &shell_body);
     }
     if !intl_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-International-Core", &intl_body);
+        push_component_per_arch(s, &archs, "Microsoft-Windows-International-Core", &intl_body);
     }
     s.push_str("  </settings>\n");
 }

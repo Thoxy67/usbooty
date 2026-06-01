@@ -9,7 +9,7 @@ use super::assets::{
     DEBLOAT_REG_NAME, DESKTOP_HELPERS_DIR, DESKTOP_HELPERS_SENTINEL, DISABLE_ADAPTERS_COMMAND,
     DOTNET35_COMMAND,
 };
-use super::{escape, push_component_per_arch, push_run_command, sanitize_computer_name};
+use super::{escape, push_component_per_arch, push_run_command, sanitize_computer_name, target_archs};
 
 pub(super) fn push_specialize(s: &mut String, setup: &WindowsSetup) {
     let mut deploy_cmds: Vec<(String, Option<&'static str>)> = Vec::new();
@@ -121,12 +121,13 @@ pub(super) fn push_specialize(s: &mut String, setup: &WindowsSetup) {
         shell_body.push_str(&format!("      <TimeZone>{}</TimeZone>\n", escape(tz)));
     }
 
+    let archs = target_archs(setup);
     s.push_str("  <settings pass=\"specialize\">\n");
     if !deploy_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-Deployment", &deploy_body);
+        push_component_per_arch(s, &archs, "Microsoft-Windows-Deployment", &deploy_body);
     }
     if !shell_body.is_empty() {
-        push_component_per_arch(s, "Microsoft-Windows-Shell-Setup", &shell_body);
+        push_component_per_arch(s, &archs, "Microsoft-Windows-Shell-Setup", &shell_body);
     }
     s.push_str("  </settings>\n");
 }
