@@ -27,7 +27,7 @@ const MBR_CANDIDATES: &[&str] = &[
 ];
 
 /// Lay down the Syslinux config and `ldlinux.sys` on the partition's
-/// filesystem. Run from **inside** the mount RAII scope — the partition is
+/// filesystem. Run from **inside** the mount RAII scope; the partition is
 /// still mounted at `mount` and the bootloader needs that to install.
 ///
 /// The MBR boot sector is intentionally **not** written here; call
@@ -50,7 +50,7 @@ pub fn install_files(partition: &str, mount: &Path, filesystem: FileSystem) -> R
             // filesystems are bootable via GRUB or systemd-boot, but those
             // paths aren't wired through yet.
             bail!(
-                "Syslinux installation is only supported on FAT12/16/32 or ext2/3/4 — \
+                "Syslinux installation is only supported on FAT12/16/32 or ext2/3/4; \
                  {} cannot host the Syslinux boot files",
                 filesystem.label()
             );
@@ -74,7 +74,7 @@ fn install_fat(partition: &str, mount: &Path) -> Result<()> {
 }
 
 /// Mirror `isolinux/isolinux.cfg` to `syslinux/syslinux.cfg` if the new
-/// location does not exist yet — needed because the ISO's bootloader directory
+/// location does not exist yet, needed because the ISO's bootloader directory
 /// is named `isolinux` but Syslinux on disk looks at `syslinux`.
 fn ensure_syslinux_cfg(mount: &Path) -> Result<()> {
     let target_dir = mount.join("syslinux");
@@ -84,7 +84,7 @@ fn ensure_syslinux_cfg(mount: &Path) -> Result<()> {
     }
     let source = mount.join("isolinux").join("isolinux.cfg");
     if !source.exists() {
-        // No isolinux config to mirror — syslinux will still install and look
+        // No isolinux config to mirror; syslinux will still install and look
         // for `boot/syslinux.cfg` or fail gracefully at boot time.
         return Ok(());
     }

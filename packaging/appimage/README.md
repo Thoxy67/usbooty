@@ -27,6 +27,7 @@ helper shells out to:
 | ext4 format                              | `e2fsprogs`                     |
 | Ventoy install                           | `ventoy`                        |
 | Split install.wim onto FAT32             | `wimlib` (`wimlib-imagex`)      |
+| Windows To Go (apply image + BCD)        | `wimlib`, `hivex`, `ntfs-3g`    |
 | Syslinux MBR install for legacy BIOS     | `syslinux`                      |
 | SMART probe in Inspect panel             | `smartmontools`                 |
 | Auto-mount + open Ventoy data partition  | `udisks2`, `xdg-utils`          |

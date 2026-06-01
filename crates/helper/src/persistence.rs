@@ -85,7 +85,7 @@ pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
 /// Inline-folder persistence: create the directory Slax saves changes into
 /// directly on the main data partition. The kernel option that activates the
 /// feature (`perch`) is added by [`patch_boot_config`] in the same flow, so
-/// the user lands on a working persistent stick on first boot — no boot-menu
+/// the user lands on a working persistent stick on first boot, no boot-menu
 /// fiddling required.
 pub fn setup_inline(data_mount: &Path, kind: PersistenceKind) -> Result<()> {
     match kind {
@@ -119,7 +119,7 @@ pub fn setup_inline(data_mount: &Path, kind: PersistenceKind) -> Result<()> {
 }
 
 /// Patch the copied bootloader configs on `target` so the live system
-/// actually activates persistence — without the kernel option the overlay
+/// actually activates persistence; without the kernel option the overlay
 /// partition is created but never used. Mirrors Rufus's `iso.c` patching.
 pub fn patch_boot_config(target: &Path, kind: PersistenceKind) -> Result<()> {
     let mut patched = 0u32;
@@ -241,7 +241,7 @@ mod tests {
         patch_boot_config(&dir, PersistenceKind::ArchOverlay).unwrap();
         let out = std::fs::read_to_string(&cfg).unwrap();
         assert!(out.contains("archisobasedir=arch cow_label=PERSISTENCE"));
-        // Idempotent — a second pass must not double the keyword.
+        // Idempotent: a second pass must not double the keyword.
         patch_boot_config(&dir, PersistenceKind::ArchOverlay).unwrap();
         assert_eq!(
             std::fs::read_to_string(&cfg)
@@ -264,7 +264,7 @@ mod tests {
         patch_boot_config(&dir, PersistenceKind::CasperRw).unwrap();
         let out = std::fs::read_to_string(&cfg).unwrap();
         assert!(out.contains("boot=casper persistent"));
-        // Idempotent — a second pass must not double the keyword.
+        // Idempotent: a second pass must not double the keyword.
         patch_boot_config(&dir, PersistenceKind::CasperRw).unwrap();
         assert_eq!(
             std::fs::read_to_string(&cfg)

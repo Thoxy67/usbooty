@@ -23,7 +23,7 @@ use crate::{emit, fsutil};
 /// How often to poll `abort` while wimlib-imagex runs.
 const POLL_EVERY: Duration = Duration::from_millis(250);
 
-/// Chunk size in MiB. Rufus uses 4094 — sized just below the 4 GiB FAT32
+/// Chunk size in MiB. Rufus uses 4094, sized just below the 4 GiB FAT32
 /// single-file ceiling so split outputs always fit, with margin for the
 /// `.swm` container overhead.
 const CHUNK_MIB: u32 = 4094;
@@ -36,7 +36,7 @@ const CHUNK_MIB: u32 = 4094;
 pub fn split_install_wim(src_iso: &Path, dest_mount: &Path, abort: &AtomicBool) -> Result<()> {
     if !fsutil::wimlib_available() {
         bail!(
-            "wimlib-imagex is required for the Split strategy — install the \
+            "wimlib-imagex is required for the Split strategy; install the \
              `wimtools` / `wimlib` package and try again, or use UEFI:NTFS instead"
         );
     }

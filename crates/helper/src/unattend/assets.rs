@@ -117,7 +117,7 @@ pub(super) const DOTNET35_COMMAND: &str = concat!(
     r#"break}}""#,
 );
 
-/// PowerShell command that disables every network adapter — used in the
+/// PowerShell command that disables every network adapter, used in the
 /// `specialize` pass to force OOBE down the local-account path on Win 11 24H2+.
 pub(super) const DISABLE_ADAPTERS_COMMAND: &str = concat!(
     r#"powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass "#,

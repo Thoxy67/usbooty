@@ -44,7 +44,7 @@ pub fn run(
 
 /// Run the Ventoy CLI, feeding it confirmation and streaming its output.
 ///
-/// The exFAT data partition keeps Ventoy's default `Ventoy` label — `-L` is
+/// The exFAT data partition keeps Ventoy's default `Ventoy` label; `-L` is
 /// not passed, since an image's own label is often too long for exFAT.
 fn run_cli(device: &Path, table: PartitionTable, secure_boot: bool, update: bool) -> Result<()> {
     let dev = device.to_string_lossy().into_owned();
@@ -69,7 +69,7 @@ fn run_cli(device: &Path, table: PartitionTable, secure_boot: bool, update: bool
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .context("could not run the Ventoy CLI — is the `ventoy` package installed?")?;
+        .context("could not run the Ventoy CLI. Is the `ventoy` package installed?")?;
 
     // Ventoy2Disk.sh prompts for confirmation (sometimes twice); answer it.
     if let Some(mut stdin) = child.stdin.take() {

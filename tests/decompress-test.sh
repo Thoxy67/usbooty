@@ -26,7 +26,7 @@ ISO="$WORK/test.iso"
 # across runs and the .meta.json sidecar can be inspected by eye.
 if [ ! -s "$ISO" ]; then
     if ! command -v xorriso >/dev/null 2>&1; then
-        echo "xorriso not installed — install xorriso (libisoburn) and re-run." >&2
+        echo "xorriso not installed; install xorriso (libisoburn) and re-run." >&2
         exit 1
     fi
     rm -rf "$WORK/seed"
@@ -37,7 +37,7 @@ if [ ! -s "$ISO" ]; then
     echo "Built $ISO ($(stat -c %s "$ISO") bytes)"
 fi
 
-# Build one compressed fixture, skipping any tool that isn't installed — the
+# Build one compressed fixture, skipping any tool that isn't installed; the
 # decompressor still has to handle whichever ones the CI host happens to have.
 # (Named `make_fixture` so it doesn't shadow the `compress(1)` binary the .Z
 # arm needs to invoke.)

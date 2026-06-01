@@ -40,7 +40,7 @@ zstd = "0.13"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 # Pure-Rust LZW reader used for `.Z` (Unix compress(1)). The Decoder reads
 # the standard 3-byte header (magic + flag byte with the max-code-width)
-# and dispenses the underlying LZW stream — exactly what we need to slot
+# and dispenses the underlying LZW stream, exactly what we need to slot
 # `.Z` into the decompress dispatch alongside xz / gz / bz2 / zst.
 weezl = "0.2"
 tempfile = "3"

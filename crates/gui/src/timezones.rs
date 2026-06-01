@@ -782,7 +782,7 @@ fn offset_string(minutes: i32) -> String {
 
 /// Convert an IANA zone name (e.g. `Europe/Paris`) to its closest Microsoft
 /// TimeZone ID (`Romance Standard Time`). A subset of the CLDR
-/// `windowsZones.xml` map — covers the ~60 zones that account for the bulk
+/// `windowsZones.xml` map, covers the ~60 zones that account for the bulk
 /// of real-world hosts. Returns `None` for unknown zones; callers fall back
 /// to `UTC` then.
 pub fn from_iana(iana: &str) -> Option<&'static str> {

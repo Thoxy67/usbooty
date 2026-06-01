@@ -1,5 +1,5 @@
 #!/bin/sh
-# publish-aur.sh — copy PKGBUILD + .install + README into a checkout of the
+# publish-aur.sh: copy PKGBUILD + .install + README into a checkout of the
 # separate AUR repo for usbooty-git, regenerate .SRCINFO, show a diff, and
 # optionally commit + push.
 #
@@ -57,7 +57,7 @@ if [ ! -d "$AUR_DIR/.git" ]; then
 else
     echo "==> Updating $AUR_DIR"
     git -C "$AUR_DIR" fetch --quiet origin || :
-    # An empty AUR remote has no refs yet — only sync if there's an
+    # An empty AUR remote has no refs yet; only sync if there's an
     # upstream branch to sync with. The first push creates it.
     if git -C "$AUR_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' \
             >/dev/null 2>&1; then

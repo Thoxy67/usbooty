@@ -2,7 +2,7 @@
 //! large-`install.wim` strategy the partition method should use.
 //!
 //! Everything here is a pure function so it can be exhaustively unit-tested
-//! with fabricated reports — no hardware, no root.
+//! with fabricated reports: no hardware, no root.
 
 use crate::iso_report::{IsoReport, OsKind};
 use crate::job::{FileSystem, WimStrategy};
@@ -13,7 +13,7 @@ pub const FAT32_MAX_FILE: u64 = 0xFFFF_FFFF;
 /// Decide the default filesystem and large-`install.wim` strategy for an ISO.
 ///
 /// A Windows ISO whose `install.wim` is too large for a FAT32 single file gets
-/// the UEFI:NTFS layout — an NTFS partition keeps the image intact, and a tiny
+/// the UEFI:NTFS layout: an NTFS partition keeps the image intact, and a tiny
 /// FAT partition carries a signed bootloader. Everything else uses a single
 /// FAT32 partition. The GUI seeds its filesystem selector with this; the user
 /// may still override it.

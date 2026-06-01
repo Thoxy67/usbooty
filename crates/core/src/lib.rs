@@ -1,4 +1,4 @@
-//! `usbooty-core` — the shared contract between the unprivileged GUI and the
+//! `usbooty-core`, the shared contract between the unprivileged GUI and the
 //! privileged helper.
 //!
 //! This crate is deliberately tiny and dependency-light (only `serde`). It

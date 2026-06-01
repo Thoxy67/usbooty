@@ -152,13 +152,13 @@ fn quick(device: &Path, abort: &AtomicBool) -> Result<CheckReport> {
     };
     let summary = if ok {
         format!(
-            "Quick check passed — {} samples across {} of capacity matched",
+            "Quick check passed: {} samples across {} of capacity matched",
             offsets.len(),
             usbooty_core::device::format_size(size)
         )
     } else {
         format!(
-            "Quick check FAILED — {} of {} samples did not match{}",
+            "Quick check FAILED: {} of {} samples did not match{}",
             bad_offsets.len(),
             offsets.len(),
             match effective_capacity {
@@ -197,11 +197,11 @@ fn full(device: &Path, abort: &AtomicBool) -> Result<CheckReport> {
     let ok = bad.is_empty();
     let summary = if ok {
         format!(
-            "Full check passed — {} survived both patterns",
+            "Full check passed: {} survived both patterns",
             usbooty_core::device::format_size(size)
         )
     } else {
-        format!("Full check FAILED — {} bad sector(s) found", bad.len())
+        format!("Full check FAILED: {} bad sector(s) found", bad.len())
     };
     Ok(CheckReport {
         ok,

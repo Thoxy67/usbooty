@@ -8,7 +8,7 @@
 //! The lookup is fire-and-forget by design: any failure (network down, API
 //! returns 4xx, response doesn't parse, etc.) just returns `None` and the
 //! UI shows no badge. Never block a write on a verdict from a third-party
-//! service — the SHA-1 itself is the source of truth, the lookup just
+//! service; the SHA-1 itself is the source of truth, the lookup just
 //! tells the user what *name* that SHA-1 is associated with upstream.
 
 use std::time::Duration;
@@ -39,7 +39,7 @@ impl AdguardVerdict {
 
 /// Query the upstream service for a SHA-1 hex string (40 lowercase hex
 /// chars). Returns `None` when the response can't be confidently parsed
-/// into a verdict — never propagates network errors to the caller.
+/// into a verdict, never propagates network errors to the caller.
 ///
 /// Runs on a worker thread; the call is HTTP-blocking with a short timeout
 /// so a slow / unreachable service doesn't stall the hash-display path.

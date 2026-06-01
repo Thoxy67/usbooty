@@ -4,17 +4,17 @@
 //! exploitable, UEFI firmware can refuse to load future copies of it via two
 //! mechanisms:
 //!
-//! * **SBAT** — every signed binary embeds a `.sbat` CSV section listing the
+//! * **SBAT**: every signed binary embeds a `.sbat` CSV section listing the
 //!   product name and a generation number. The firmware's stored
 //!   "SbatLevel" variable rejects anything whose generation is lower than the
 //!   level for its product. This is what is normally tripped today.
-//! * **DBX** — a list of forbidden Authenticode hashes; matching binaries are
+//! * **DBX**: a list of forbidden Authenticode hashes; matching binaries are
 //!   refused outright. Used for one-off revocations and pre-SBAT vulnerable
 //!   shims that cannot be retroactively re-signed.
 //!
 //! We ship a baked-in fallback so warnings work offline; an optional cache
 //! refresh (handled by the GUI) can replace it with the live data Microsoft
-//! publishes. This module is dependency-light on purpose — it parses the
+//! publishes. This module is dependency-light on purpose; it parses the
 //! formats with primitive ops only, no PE parser pulled in.
 
 use serde::{Deserialize, Serialize};
@@ -143,7 +143,7 @@ pub fn extract_sbat(pe: &[u8]) -> Option<String> {
     //          [+16] u16 SizeOfOptionalHeader
     //          [+18] u16 NumberOfSections (we use NoS at offset 2)
     //   PE+24: Optional Header (variable, sized by SizeOfOptionalHeader)
-    //   Then:  Section table — 40 bytes per entry.
+    //   Then:  Section table, 40 bytes per entry.
     if pe.len() < 0x40 || &pe[0..2] != b"MZ" {
         return None;
     }
@@ -194,7 +194,7 @@ const EFI_CERT_SHA256_GUID: [u8; 16] = [
 /// `EFI_VARIABLE_AUTHENTICATION_2` envelope wrapping a sequence of
 /// `EFI_SIGNATURE_LIST` records; we skip the envelope and walk the lists.
 ///
-/// Non-SHA-256 entries (x509 certs, SHA-384/512) are ignored — usbooty
+/// Non-SHA-256 entries (x509 certs, SHA-384/512) are ignored; usbooty
 /// only matches Authenticode hashes today. Malformed input returns an
 /// empty set rather than panicking; the caller is expected to fall back
 /// to the baked-in DB.

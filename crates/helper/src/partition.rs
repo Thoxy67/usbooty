@@ -15,11 +15,19 @@ const ALIGN_SECTORS: u64 = 2048;
 /// Microsoft Basic Data partition type GUID, in on-disk byte order. Used for
 /// *both* the main partition and the tiny UEFI:NTFS partition. UEFI firmware
 /// boots `/EFI/BOOT/boot*.efi` from a FAT partition regardless of its type
-/// GUID — and, crucially, Rufus found that declaring the UEFI:NTFS partition
+/// GUID, and, crucially, Rufus found that declaring the UEFI:NTFS partition
 /// as an EFI System Partition makes the Windows installer choke ("can't handle
 /// two ESPs"), so it must stay Basic Data.
 const BASIC_DATA_GUID: [u8; 16] = [
     0xA2, 0xA0, 0xD0, 0xEB, 0xE5, 0xB9, 0x33, 0x44, 0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7,
+];
+
+/// EFI System Partition type GUID (`C12A7328-F81F-11D2-BA4B-00A0C93EC93B`), in
+/// on-disk byte order. Used for the ESP of a Windows To Go layout, where (unlike
+/// UEFI:NTFS) firmware must boot `\EFI\Microsoft\Boot\bootmgfw.efi` from a real
+/// ESP and there is no second NTFS-resident installer to confuse.
+const ESP_GUID: [u8; 16] = [
+    0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11, 0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B,
 ];
 
 /// Linux filesystem-data partition type GUID, in on-disk byte order. Used for
@@ -28,7 +36,7 @@ const LINUX_DATA_GUID: [u8; 16] = [
     0xAF, 0x63, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47, 0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4,
 ];
 
-/// GPT attribute bit 63 — "do not assign a drive letter". Set on the tiny
+/// GPT attribute bit 63: "do not assign a drive letter". Set on the tiny
 /// UEFI:NTFS partition so Windows never surfaces it to the user.
 const GPT_ATTR_NO_DRIVE_LETTER: u64 = 1 << 63;
 
@@ -38,7 +46,7 @@ const MBR_TYPE_FAT32_LBA: u8 = 0x0C;
 const MBR_TYPE_NTFS: u8 = 0x07;
 /// MBR partition type byte for a Linux filesystem.
 const MBR_TYPE_LINUX: u8 = 0x83;
-/// MBR partition type byte for an EFI System Partition — the type Rufus uses
+/// MBR partition type byte for an EFI System Partition: the type Rufus uses
 /// for the UEFI:NTFS partition so firmware reliably boots it.
 const MBR_TYPE_EFI_SYSTEM: u8 = 0xEF;
 
@@ -55,7 +63,7 @@ fn gpt_type_guid(filesystem: FileSystem) -> [u8; 16] {
         | FileSystem::Nilfs2 => LINUX_DATA_GUID,
         // FAT16 / FAT32 / NTFS / exFAT / UDF all map to Microsoft Basic Data,
         // which is the GPT type firmware looks for when probing for an FAT or
-        // NTFS partition. UDF doesn't have its own GPT GUID — Basic Data is
+        // NTFS partition. UDF doesn't have its own GPT GUID; Basic Data is
         // what every BD/UDF burner ships with too.
         _ => BASIC_DATA_GUID,
     }
@@ -85,7 +93,7 @@ fn mbr_type_byte(filesystem: FileSystem) -> u8 {
 }
 
 /// Read `N` random bytes from `/dev/urandom`, for GUIDs and disk signatures.
-/// Fails loudly rather than silently returning zeros — an all-zero GPT disk
+/// Fails loudly rather than silently returning zeros; an all-zero GPT disk
 /// GUID or MBR disk signature violates the spec and has been known to confuse
 /// Windows and firmware (two zero-signature disks look identical to the boot
 /// manager), so silently degrading here would defeat the point of the tool.
@@ -257,7 +265,7 @@ pub fn write_uefi_ntfs_layout<D: Read + Write + Seek>(
 ) -> Result<()> {
     let fat_sectors = fat_bytes.div_ceil(SECTOR);
     match table {
-        // GPT-based variants — the hybrid one then synthesises an MBR mirror.
+        // GPT-based variants; the hybrid one then synthesises an MBR mirror.
         PartitionTable::Gpt => write_gpt_uefi_ntfs(device, fat_sectors, main_name),
         PartitionTable::HybridMbrGpt => {
             write_gpt_uefi_ntfs(device, fat_sectors, main_name)?;
@@ -268,7 +276,7 @@ pub fn write_uefi_ntfs_layout<D: Read + Write + Seek>(
             // the GPT; BIOSes don't need it.
             synthesize_hybrid_mbr(device, MBR_TYPE_NTFS, 1)
         }
-        // Pure-MBR variants — same on-disk layout.
+        // Pure-MBR variants: same on-disk layout.
         PartitionTable::Mbr | PartitionTable::MbrBiosUefi => {
             write_mbr_uefi_ntfs(device, fat_sectors)
         }
@@ -303,7 +311,7 @@ fn write_gpt_uefi_ntfs<D: Read + Write + Seek>(
         partition_name: crate::label::partition(main_name).as_str().into(),
     };
     // Partition 2: tiny FAT32 partition holding the UEFI:NTFS bootloader.
-    // Typed Basic Data (not ESP — see `BASIC_DATA_GUID`) and hidden from
+    // Typed Basic Data (not ESP, see `BASIC_DATA_GUID`) and hidden from
     // Windows via the no-drive-letter attribute.
     gpt[2] = gptman::GPTPartitionEntry {
         partition_type_guid: BASIC_DATA_GUID,
@@ -354,6 +362,73 @@ fn write_mbr_uefi_ntfs<D: Read + Write + Seek>(device: &mut D, fat_sectors: u64)
 
     mbr.write_into(device).context("writing MBR")?;
     Ok(())
+}
+
+/// Write the Windows To Go GPT layout: an EFI System Partition (FAT32) of
+/// `esp_bytes` at the front of the disk, then a Microsoft Basic Data (NTFS)
+/// partition spanning the rest for the Windows installation. UEFI/GPT only;
+/// firmware boots `\EFI\Microsoft\Boot\bootmgfw.efi` from the ESP, which chains
+/// to the Windows install on the NTFS partition via the generated BCD store.
+pub fn write_gpt_esp_ntfs<D: Read + Write + Seek>(
+    device: &mut D,
+    esp_bytes: u64,
+    main_name: &str,
+) -> Result<GptIds> {
+    let esp_sectors = esp_bytes.div_ceil(SECTOR);
+    // Capture the GUIDs we mint: the BCD boot store references the ESP and NTFS
+    // partitions (and the disk) by these exact on-disk GUIDs.
+    let disk_guid = random_bytes::<16>()?;
+    let esp_guid = random_bytes::<16>()?;
+    let ntfs_guid = random_bytes::<16>()?;
+
+    let mut gpt = gptman::GPT::new_from(device, SECTOR, disk_guid).context("creating GPT")?;
+    gpt.header
+        .update_from(device, SECTOR)
+        .context("sizing GPT to the device")?;
+
+    let first = gpt.header.first_usable_lba.max(ALIGN_SECTORS);
+    let last = gpt.header.last_usable_lba;
+    let esp_end = first + esp_sectors - 1;
+    // Start the NTFS partition on the next 1 MiB boundary after the ESP.
+    let main_start = (esp_end + 1).next_multiple_of(ALIGN_SECTORS);
+    if last <= main_start {
+        anyhow::bail!("device is too small for the Windows To Go layout");
+    }
+
+    // Partition 1: EFI System Partition (FAT32), front of the disk.
+    gpt[1] = gptman::GPTPartitionEntry {
+        partition_type_guid: ESP_GUID,
+        unique_partition_guid: esp_guid,
+        starting_lba: first,
+        ending_lba: esp_end,
+        attribute_bits: 0,
+        partition_name: "ESP".into(),
+    };
+    // Partition 2: Microsoft Basic Data (NTFS), holds the Windows install.
+    gpt[2] = gptman::GPTPartitionEntry {
+        partition_type_guid: BASIC_DATA_GUID,
+        unique_partition_guid: ntfs_guid,
+        starting_lba: main_start,
+        ending_lba: last,
+        attribute_bits: 0,
+        partition_name: crate::label::partition(main_name).as_str().into(),
+    };
+
+    gpt.write_into(device).context("writing GPT")?;
+    gptman::GPT::write_protective_mbr_into(device, SECTOR).context("writing protective MBR")?;
+    Ok(GptIds {
+        disk_guid,
+        esp_guid,
+        ntfs_guid,
+    })
+}
+
+/// The on-disk GUIDs of a freshly-written [`write_gpt_esp_ntfs`] layout, needed
+/// to build the BCD device elements that point at these partitions.
+pub struct GptIds {
+    pub disk_guid: [u8; 16],
+    pub esp_guid: [u8; 16],
+    pub ntfs_guid: [u8; 16],
 }
 
 /// Write a two-partition layout for a Linux live USB with persistence: a main
@@ -467,7 +542,7 @@ mod tests {
     use std::io::Cursor;
 
     /// gptman/mbrman operate on any `Read + Write + Seek`, so an in-memory
-    /// buffer stands in for a device — no root, no real disk.
+    /// buffer stands in for a device: no root, no real disk.
     fn disk(size: usize) -> Cursor<Vec<u8>> {
         Cursor::new(vec![0u8; size])
     }
@@ -484,6 +559,23 @@ mod tests {
         assert!(gpt[1].starting_lba >= ALIGN_SECTORS);
         assert!(gpt[1].ending_lba > gpt[1].starting_lba);
         assert_eq!(gpt[2].partition_type_guid, [0u8; 16]); // only one partition
+    }
+
+    #[test]
+    fn writes_a_wtg_esp_ntfs_gpt_layout() {
+        let mut disk = disk(512 * 1024 * 1024 + 64 * 1024 * 1024);
+        write_gpt_esp_ntfs(&mut disk, 32 * 1024 * 1024, "WINTOGO").unwrap();
+
+        disk.set_position(0);
+        let gpt = gptman::GPT::read_from(&mut disk, SECTOR).unwrap();
+        // P1 is a real ESP at the front.
+        assert_eq!(gpt[1].partition_type_guid, ESP_GUID);
+        assert!(gpt[1].starting_lba >= ALIGN_SECTORS);
+        // P2 is NTFS (Basic Data), aligned after the ESP, spanning the rest.
+        assert_eq!(gpt[2].partition_type_guid, BASIC_DATA_GUID);
+        assert!(gpt[2].starting_lba > gpt[1].ending_lba);
+        assert_eq!(gpt[2].starting_lba % ALIGN_SECTORS, 0);
+        assert!(gpt[2].ending_lba > gpt[2].starting_lba);
     }
 
     #[test]

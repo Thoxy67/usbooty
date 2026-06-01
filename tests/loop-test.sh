@@ -1,5 +1,5 @@
 #!/bin/sh
-# Integration test for usbooty-helper against a loopback image — no real USB
+# Integration test for usbooty-helper against a loopback image; no real USB
 # drive is touched. Requires root (losetup, mkfs, mount) and xorriso.
 #
 # Usage: sudo ./tests/loop-test.sh

@@ -5,7 +5,7 @@
 //! starting state so a user can drive usbooty from a desktop shortcut or a
 //! shell command without clicking through the picker every time. The full
 //! Rufus CLI surface (locale, filesystem, wait, gui-off) is intentionally
-//! deferred to a future TODO entry — this is the minimum that makes the
+//! deferred to a future TODO entry. This is the minimum that makes the
 //! decompression path testable headlessly.
 
 use std::path::PathBuf;
@@ -31,7 +31,7 @@ static ARGS: OnceLock<StartupArgs> = OnceLock::new();
 
 /// Parse a flat slice of arguments (typically `&std::env::args()[1..]`).
 ///
-/// Unknown flags are tolerated with a warning to stderr — the GUI must still
+/// Unknown flags are tolerated with a warning to stderr; the GUI must still
 /// be usable when a desktop file passes something unexpected, and locking the
 /// user out of the app over an argv typo would be a poor trade.
 pub fn parse(args: &[String]) -> Parsed {

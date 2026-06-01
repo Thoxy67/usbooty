@@ -30,7 +30,8 @@ and an "optional tools missing" hint when one of the optionals is.
 | `mkfs.exfat`     | exFAT formatting                            | optional  |
 | `mkfs.ext4`      | ext4 formatting (Linux persistence)         | optional  |
 | `ventoy`         | Ventoy multi-boot USB install               | optional  |
-| `wimlib-imagex`  | split install.wim for Windows on FAT32      | optional  |
+| `wimlib-imagex`  | split install.wim / apply for Windows To Go | optional  |
+| `hivexsh`        | build the BCD boot store for Windows To Go  | optional  |
 | `mtools`         | FreeDOS bootable USB (mformat + mcopy)      | optional  |
 | `syslinux`       | legacy-BIOS bootloader install              | optional  |
 | `xorriso`        | advanced ISO inspection                     | optional  |

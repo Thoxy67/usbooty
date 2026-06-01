@@ -146,7 +146,7 @@ fn plain_copy(
                 crate::winca2023::apply(iso, mount.path())?;
             }
         }
-        // Inline-directory persistence — currently Slax. The directory is
+        // Inline-directory persistence, currently Slax. The directory is
         // created on the main data partition and the kernel command line
         // patched so the live system picks the overlay up automatically.
         if let Some(p) = persistence
@@ -166,7 +166,7 @@ fn plain_copy(
         // `mount` drops here: sync + unmount.
     }
     // MBR stub goes on after the unmount so the whole-disk open can be
-    // exclusive — otherwise EBUSY because the partition is still mounted.
+    // exclusive, otherwise EBUSY because the partition is still mounted.
     if install_bootloader {
         crate::syslinux::write_mbr(device).context("writing the Syslinux MBR")?;
     }
@@ -199,7 +199,7 @@ pub fn setup_single_partition(
             bail!("the target device is smaller than the ISO contents");
         }
         emit::log(format!(
-            "Target {} — {}",
+            "Target {}: {}",
             device.display(),
             usbooty_core::device::format_size(dev_size)
         ));
@@ -281,14 +281,14 @@ fn copy_with_persistence(
         // Add the persistence kernel option to the copied bootloader configs,
         // so the live system actually uses the overlay partition.
         crate::persistence::patch_boot_config(mount.path(), persistence.kind)?;
-        // Distro-specific post-copy fixes — same as the no-persistence path.
+        // Distro-specific post-copy fixes, same as the no-persistence path.
         crate::distro_fixes::apply(mount.path(), distro, &opts.label);
         if install_bootloader {
             crate::syslinux::install_files(&main_part, mount.path(), filesystem)?;
         }
     }
     // MBR stub goes on after the unmount so the whole-disk open can be
-    // exclusive — otherwise EBUSY because the partition is still mounted.
+    // exclusive, otherwise EBUSY because the partition is still mounted.
     if install_bootloader {
         crate::syslinux::write_mbr(device).context("writing the Syslinux MBR")?;
     }

@@ -1,4 +1,4 @@
-//! `usbooty-helper` — the privileged worker.
+//! `usbooty-helper`: the privileged worker.
 //!
 //! Invoked via `pkexec` by the unprivileged GUI. It reads a single
 //! [`Job`](usbooty_core::Job) as a JSON line on stdin, performs every
@@ -9,15 +9,16 @@
 //! ## Cancellation
 //!
 //! stdin stays open for the lifetime of the job. A watcher thread keeps reading
-//! it: the line `cancel` — or EOF, which happens when the GUI process dies —
+//! it: the line `cancel` (or EOF, which happens when the GUI process dies)
 //! sets the global [`ABORT`] flag. This is the only cross-process control
 //! channel that works, since the unprivileged GUI cannot signal this root
 //! process directly.
 //!
-//! This binary contains no GUI and no networking — it is small and auditable
+//! This binary contains no GUI and no networking; it is small and auditable
 //! on purpose, since it is the only component that runs as root.
 
 mod backup;
+mod bcd;
 mod blockdev;
 mod check;
 mod dd;
@@ -38,8 +39,10 @@ mod uefi_ntfs;
 mod unattend;
 mod ventoy;
 mod vhd;
+mod wimapply;
 mod wimsplit;
 mod winca2023;
+mod windows_to_go;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -90,13 +93,13 @@ fn stdin_watcher(tx: Sender<Job>) {
                     got_job = true;
                     let _ = tx.send(job);
                 }
-                Err(_) => break, // malformed job — drop tx, main thread errors out
+                Err(_) => break, // malformed job: drop tx, main thread errors out
             }
         } else if line.trim() == "cancel" {
             ABORT.store(true, Ordering::SeqCst);
         }
     }
-    // stdin closed or errored — treat as an abort request.
+    // stdin closed or errored; treat as an abort request.
     ABORT.store(true, Ordering::SeqCst);
 }
 
@@ -212,6 +215,20 @@ fn run() -> Result<()> {
             },
             &ABORT,
         ),
+        Job::WindowsToGo {
+            iso_path,
+            device_path,
+            image_index,
+            windows_setup,
+            opts,
+        } => windows_to_go::run(
+            &iso_path,
+            &device_path,
+            image_index,
+            windows_setup.as_ref(),
+            &opts,
+            &ABORT,
+        ),
     }
 }
 
@@ -275,6 +292,14 @@ fn describe_job(job: &Job) -> String {
             "Job: FreeDOS bootable USB → {} ({})",
             device_path.display(),
             filesystem.label()
+        ),
+        Job::WindowsToGo {
+            device_path,
+            image_index,
+            ..
+        } => format!(
+            "Job: Windows To Go → {} (image #{image_index})",
+            device_path.display(),
         ),
     }
 }

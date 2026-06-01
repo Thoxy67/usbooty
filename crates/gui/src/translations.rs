@@ -56,7 +56,7 @@ pub fn register_engine(engine: *mut c_void) {
 }
 
 /// Pick the best `.qm` file for the current system locale and install it
-/// onto the global QCoreApplication. Best-effort — a missing translation
+/// onto the global QCoreApplication. Best-effort: a missing translation
 /// (no matching `.qm`, the user runs a locale we don't ship) silently
 /// falls back to the English source strings baked into `qsTr` calls.
 ///

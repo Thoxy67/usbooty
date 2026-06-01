@@ -38,7 +38,7 @@ pub enum Compression {
     Zst,
     Lzma,
     Zip,
-    /// Unix `compress(1)` — legacy LZW. Rarely seen on modern distros
+    /// Unix `compress(1)`: legacy LZW. Rarely seen on modern distros
     /// (last common use was IRIX / Solaris), included for completeness
     /// because the cost of adding it is one tiny crate.
     Z,
@@ -85,7 +85,7 @@ pub fn detect(path: &Path) -> Compression {
     } else if lower.ends_with(".zip") {
         Compression::Zip
     } else if lower.ends_with(".z") || lower.ends_with(".tz") {
-        // Unix `compress(1)` — extension is case-sensitive by convention
+        // Unix `compress(1)`: extension is case-sensitive by convention
         // (always uppercase `.Z`), but `lower` here matches both spellings.
         Compression::Z
     } else {
@@ -194,7 +194,7 @@ pub fn decompress_to_cache(
     }
 
     // Stage the decompressed output to a sibling tempfile and atomically
-    // rename on success — that way an interrupted decompress (Ctrl-C, OOM,
+    // rename on success; that way an interrupted decompress (Ctrl-C, OOM,
     // disk-full) never leaves a half-written file claiming to be cached.
     let mut tmp = tempfile::NamedTempFile::new_in(&dir)
         .with_context(|| format!("creating tempfile in {}", dir.display()))?;
@@ -330,7 +330,7 @@ fn cache_dir() -> Result<PathBuf> {
 ///
 /// Including `(path, size, mtime, algorithm)` means: a different file at the
 /// same path produces a different cache entry, but the *same* file with the
-/// same mtime always hits cache — so users who pick the same `.iso.xz` twice
+/// same mtime always hits cache, so users who pick the same `.iso.xz` twice
 /// don't pay for a second decompress.
 fn cache_key(path: &Path, size: u64, mtime: u64, algo: Compression) -> String {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());

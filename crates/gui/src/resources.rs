@@ -52,7 +52,7 @@ impl Resource {
         }
     }
 
-    /// Structurally validate the bytes of this resource — the download is never
+    /// Structurally validate the bytes of this resource; the download is never
     /// integrity-checked by the transport, so a truncated or corrupted file
     /// must be rejected before it is cached or written to a drive.
     fn validate(self, bytes: &[u8]) -> Result<(), String> {
@@ -60,7 +60,7 @@ impl Resource {
             Resource::UefiNtfsImg => usbooty_core::validate_uefi_ntfs(bytes),
             // DBX update files vary by month (Microsoft re-signs them every
             // few weeks). The hard guarantee is that they're at least
-            // 64 bytes — anything shorter can't even hold the auth header.
+            // 64 bytes; anything shorter can't even hold the auth header.
             Resource::DbxX64 | Resource::DbxArm64 => {
                 if bytes.len() < 64 {
                     Err(format!(
@@ -106,7 +106,7 @@ pub fn ensure(resource: Resource) -> Result<PathBuf> {
 
     match download(resource, meta.etag.as_deref()) {
         Ok(Fetch::NotModified) => {
-            // The server says our copy is current — trust it only if the bytes
+            // The server says our copy is current; trust it only if the bytes
             // on disk still validate (a cache file can rot independently).
             if cached_valid(resource, &file) {
                 save_meta(
@@ -164,7 +164,7 @@ fn cached_valid(resource: Resource, file: &Path) -> bool {
 
 /// Outcome of a conditional download.
 enum Fetch {
-    /// Server replied 304 — the cached copy is current.
+    /// Server replied 304: the cached copy is current.
     NotModified,
     /// A fresh body was downloaded.
     Body {
@@ -228,7 +228,7 @@ static REVOCATION_DB: OnceLock<usbooty_core::revocation::RevocationDb> = OnceLoc
 /// updates we can fetch from the UEFI Forum, then memoise the result in
 /// the process-global cache so subsequent calls are free.
 ///
-/// Fails soft on every network hop — a missing or unreachable update file
+/// Fails soft on every network hop; a missing or unreachable update file
 /// leaves the baked-in baseline intact, never blocks the SBAT scan.
 /// Called by the GUI at startup, off the Qt thread.
 pub fn prime_revocation_db() {
@@ -274,7 +274,7 @@ const FREEDOS_KERNEL_REPO: &str = "FDOS/kernel";
 const FREEDOS_COMMAND_REPO: &str = "FDOS/command-com";
 
 /// How long usbooty trusts the resolved "latest release" URL before asking
-/// GitHub again. A day is fine — these projects ship at glacial speed and
+/// GitHub again. A day is fine; these projects ship at glacial speed and
 /// the cached zips themselves are dimension-checked by their own metadata.
 const LATEST_RELEASE_TTL: Duration = Duration::from_secs(24 * 3600);
 
@@ -295,7 +295,7 @@ pub struct FreedosFiles {
 ///
 /// `fat32`: pick `BOOT32.BIN` when true, `BOOT16.BIN` otherwise.
 ///
-/// The helper itself never touches the network — the GUI runs this off the
+/// The helper itself never touches the network; the GUI runs this off the
 /// Qt thread and hands the resulting paths over via [`Job::Freedos`].
 ///
 /// [`Job::Freedos`]: usbooty_core::Job::Freedos
@@ -392,7 +392,7 @@ fn ensure_url(url: &str, name: &str) -> Result<PathBuf> {
 /// Ask GitHub for `<repo>`'s latest release and return the first `.zip`
 /// asset's download URL. Resolutions are cached under `<repo-slug>.url`
 /// alongside the rest of the resources, so we hit the API at most once
-/// per day — well under the 60/hour unauthenticated quota even if the
+/// per day, well under the 60/hour unauthenticated quota even if the
 /// app is opened constantly.
 fn latest_release_zip(repo: &str) -> Result<String> {
     let dir = cache_dir()?;
@@ -460,7 +460,7 @@ fn latest_release_zip(repo: &str) -> Result<String> {
 
 /// Extract the first entry whose path (case-insensitive) matches any of
 /// `candidates` from `zip_path` into `dest`. Overwrites any existing file
-/// at `dest`. Fails loudly if no candidate is found — that catches
+/// at `dest`. Fails loudly if no candidate is found; that catches
 /// upstream release layouts shifting before they bite a user mid-write.
 fn extract_named(zip_path: &Path, candidates: &[&str], dest: &Path) -> Result<()> {
     let f =

@@ -4,19 +4,19 @@
 //! ISO copy has landed every file on the USB, this module walks the mount
 //! point and applies whatever rewrites the detected family is known to
 //! need. Every fix is idempotent: re-running it on an already-patched
-//! filesystem changes nothing. Failures are non-fatal — a missing config
+//! filesystem changes nothing. Failures are non-fatal; a missing config
 //! file just means the quirk doesn't apply here.
 //!
 //! The set of fixes implemented:
 //!
-//! - **Arch / Manjaro / EndeavourOS / CachyOS / Bazzite / GeckoLinux** —
+//! - **Arch / Manjaro / EndeavourOS / CachyOS / Bazzite / GeckoLinux**:
 //!   write a fallback `/EFI/BOOT/grub.cfg` that uses `search` + `configfile`
 //!   to locate the real config by volume label. archiso variants and
 //!   several openSUSE-derived distros ship a `grubx64.efi` compiled with a
 //!   hardcoded `prefix=` that breaks when the ISO is copied onto a USB with
 //!   a different partition layout (Rufus #691, #2105, GeckoLinux issue).
 //!
-//! - **Knoppix** — append `vga=normal nodma` to the isolinux append lines.
+//! - **Knoppix**: append `vga=normal nodma` to the isolinux append lines.
 //!   Older Knoppix releases default to a high-resolution vesa mode that
 //!   hangs on several modern Intel GPUs; the safer defaults match what
 //!   Knoppix's own `failsafe` menu entry uses.
@@ -45,7 +45,7 @@ pub fn apply(mount: &Path, family: DistroFamily, volume_label: &str) {
     for fix in fixes {
         if let Err(e) = fix(mount, volume_label) {
             // A best-effort fix that fails is logged but does not abort the
-            // job — the ISO is still bootable in the common case, the user
+            // job; the ISO is still bootable in the common case, the user
             // just loses the workaround.
             emit::log(format!("Distro fix skipped: {e:#}"));
         }
@@ -86,7 +86,7 @@ fn fixes_for(family: DistroFamily) -> Vec<fn(&Path, &str) -> Result<()>> {
 
 /// Write a generic `/EFI/BOOT/grub.cfg` that searches every partition for
 /// the real config by volume label and chainloads it. Only runs when the
-/// file is missing — distros that ship their own EFI fallback config are
+/// file is missing; distros that ship their own EFI fallback config are
 /// left untouched.
 fn write_efi_grub_redirect(mount: &Path, volume_label: &str) -> Result<()> {
     let efi_boot = mount.join("EFI").join("BOOT");
@@ -98,7 +98,7 @@ fn write_efi_grub_redirect(mount: &Path, volume_label: &str) -> Result<()> {
         if lower.is_dir() {
             return write_efi_grub_redirect_at(&lower, volume_label);
         }
-        anyhow::bail!("no /EFI/BOOT directory found — skipping grub redirect");
+        anyhow::bail!("no /EFI/BOOT directory found; skipping grub redirect");
     }
     write_efi_grub_redirect_at(&efi_boot, volume_label)
 }

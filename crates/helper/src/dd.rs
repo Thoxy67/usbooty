@@ -91,7 +91,7 @@ pub fn run(
     emit::progress("Writing", img.compressed_size, img.compressed_size);
 
     emit::phase("Flushing");
-    emit::log("Flushing buffers to the device — this can take a while");
+    emit::log("Flushing buffers to the device; this can take a while");
     dev.flush().context("flushing the target device")?;
     nix::unistd::fsync(&dev).context("fsync on the target device")?;
 
@@ -102,17 +102,17 @@ pub fn run(
     blockdev::reread_partition_table(&dev);
     if img.compressed {
         emit::log(format!(
-            "Done — wrote {decompressed} decompressed bytes (from {} compressed)",
+            "Done: wrote {decompressed} decompressed bytes (from {} compressed)",
             img.compressed_size
         ));
     } else {
-        emit::log(format!("Done — wrote {decompressed} bytes"));
+        emit::log(format!("Done: wrote {decompressed} bytes"));
     }
     Ok(())
 }
 
 /// Read the first `total` bytes back from `device` and confirm they hash to
-/// `expected` — catching a silent bad write or failing flash.
+/// `expected`, catching a silent bad write or failing flash.
 fn verify(device: &Path, total: u64, expected: blake3::Hash, abort: &AtomicBool) -> Result<()> {
     emit::phase("Verifying");
     let mut dev =
@@ -140,7 +140,7 @@ fn verify(device: &Path, total: u64, expected: blake3::Hash, abort: &AtomicBool)
     emit::progress("Verifying", total, total);
 
     if hash.finalize() != expected {
-        bail!("verification failed — the data read back does not match the ISO");
+        bail!("verification failed; the data read back does not match the ISO");
     }
     emit::log("Verification passed");
     Ok(())

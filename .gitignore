@@ -1,5 +1,7 @@
 /target
 /rufus
+/BCD-SYS
+/win
 *.img
 *.iso
 

@@ -15,7 +15,7 @@
 # The AppImage carries the Qt 6 runtime + the QML modules usbooty uses,
 # so it Just Works on any glibc-2.31+ host (Ubuntu 20.04 LTS or newer).
 # Host-side optional dependencies (mkfs.*, ventoy, smartctl, …) still need
-# to be installed on the target machine — see packaging/appimage/README.md.
+# to be installed on the target machine; see packaging/appimage/README.md.
 
 set -euo pipefail
 
@@ -92,7 +92,7 @@ export LD_LIBRARY_PATH=""
 export QML_SOURCES_PATHS="$REPO_ROOT/crates/gui/qml"
 
 # linuxdeploy-plugin-qt picks qmake from $QMAKE first, falling back to
-# whatever `qmake` is on $PATH — which on Arch is `qmake-qt5`, so without
+# whatever `qmake` is on $PATH, which on Arch is `qmake-qt5`, so without
 # this override the plugin tries to deploy Qt-5 modules against our Qt-6
 # binary and bails with "Could not find Qt modules to deploy".
 if [[ -z "${QMAKE:-}" ]]; then
@@ -139,8 +139,8 @@ QMAKE_WRAPPER="$BUILD_DIR/qmake-wrapper"
 cat >"$QMAKE_WRAPPER" <<EOF
 #!/bin/sh
 # Two forms of qmake invocation matter to linuxdeploy-plugin-qt:
-#   * \`qmake -query QT_INSTALL_PLUGINS\` — specific lookup
-#   * \`qmake -query\`                    — bulk dump that callers grep
+#   * \`qmake -query QT_INSTALL_PLUGINS\`: specific lookup
+#   * \`qmake -query\`                   : bulk dump that callers grep
 # Both have to surface the mirror so the scanner walks our filtered tree.
 case "\$*" in
     "-query QT_INSTALL_PLUGINS")

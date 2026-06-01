@@ -35,7 +35,7 @@ makedepends=(
 optdepends=(
     # Filesystem formatters — one per FS the user can pick in the GUI.
     'dosfstools: FAT16/FAT32 formatting (DD-fallback, Ventoy data partition)'
-    'ntfs-3g: NTFS formatting (Windows install media, UEFI:NTFS layout)'
+    'ntfs-3g: NTFS formatting (Windows install media, UEFI:NTFS layout, Windows To Go)'
     'exfatprogs: exFAT formatting (cross-platform large-file FS)'
     'e2fsprogs: ext2/ext3/ext4 formatting (Linux persistence overlay)'
     'udftools: UDF formatting'
@@ -48,7 +48,8 @@ optdepends=(
     # missing only when the matching feature is selected.
     'ventoy: Ventoy multi-boot USB creation'
     'mtools: FreeDOS bootable USB (mformat / mcopy)'
-    'wimlib: split install.wim chunks for Windows installers on FAT32'
+    'wimlib: split install.wim on FAT32 / apply it for Windows To Go'
+    'hivex: build the portable BCD boot store for Windows To Go'
     'syslinux: BIOS / legacy MBR bootloader install for Linux ISOs on FAT/ext4'
     'libisoburn: xorriso for advanced ISO inspection / repair'
     'qemu-full: boot-test a device in a VM (Device → Verify boot device)'

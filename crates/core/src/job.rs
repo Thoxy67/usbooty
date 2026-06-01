@@ -1,7 +1,7 @@
 //! The fully-resolved description of a write job.
 //!
 //! The GUI builds a [`Job`], serializes it to JSON, and feeds it to the
-//! privileged helper on stdin. The helper executes it verbatim — it makes no
+//! privileged helper on stdin. The helper executes it verbatim; it makes no
 //! policy decisions of its own, so every choice is pinned down here.
 
 use serde::{Deserialize, Serialize};
@@ -13,9 +13,9 @@ use crate::iso_report::{DistroFamily, PersistenceKind};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PartitionTable {
-    /// GUID Partition Table — for UEFI booting.
+    /// GUID Partition Table, for UEFI booting.
     Gpt,
-    /// Master Boot Record — for legacy BIOS booting.
+    /// Master Boot Record, for legacy BIOS booting.
     Mbr,
     /// MBR with the data partition flagged bootable, intended for *both*
     /// legacy BIOS and UEFI (firmware loads `/EFI/BOOT/BOOT*.EFI` from the
@@ -27,7 +27,7 @@ pub enum PartitionTable {
     /// partition as a real bootable entry so legacy BIOSes find it, slot 2
     /// is the protective `0xEE` entry covering the GPT areas. UEFI follows
     /// the GPT as normal. Apple-style. Some buggy firmwares dislike hybrid
-    /// MBRs — see the warning in [`crate::plan`].
+    /// MBRs; see the warning in [`crate::plan`].
     HybridMbrGpt,
 }
 
@@ -47,31 +47,31 @@ impl PartitionTable {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileSystem {
-    /// FAT32 — universal, but a 4 GiB per-file limit.
+    /// FAT32: universal, but a 4 GiB per-file limit.
     Fat32,
-    /// FAT16 — legacy, for tiny media (≤ 4 GiB).
+    /// FAT16: legacy, for tiny media (≤ 4 GiB).
     Fat16,
-    /// NTFS — Windows-native, no practical file-size limit.
+    /// NTFS: Windows-native, no practical file-size limit.
     Ntfs,
-    /// exFAT — FAT successor, no 4 GiB limit, broad support.
+    /// exFAT: FAT successor, no 4 GiB limit, broad support.
     ExFat,
-    /// ext4 — Linux-native, modern.
+    /// ext4: Linux-native, modern.
     Ext4,
-    /// ext3 — Linux, older journaled.
+    /// ext3: Linux, older journaled.
     Ext3,
-    /// ext2 — Linux, non-journaled.
+    /// ext2: Linux, non-journaled.
     Ext2,
-    /// UDF — cross-platform, no FAT size limits, needs udftools.
+    /// UDF: cross-platform, no FAT size limits, needs udftools.
     Udf,
-    /// Btrfs — copy-on-write, snapshots; needs btrfs-progs.
+    /// Btrfs: copy-on-write, snapshots; needs btrfs-progs.
     Btrfs,
-    /// XFS — high-throughput Linux filesystem; needs xfsprogs.
+    /// XFS: high-throughput Linux filesystem; needs xfsprogs.
     Xfs,
-    /// F2FS — flash-friendly Linux filesystem; needs f2fs-tools.
+    /// F2FS: flash-friendly Linux filesystem; needs f2fs-tools.
     F2fs,
-    /// JFS — IBM journaled FS; needs jfsutils.
+    /// JFS: IBM journaled FS; needs jfsutils.
     Jfs,
-    /// NILFS2 — log-structured with continuous snapshots; needs nilfs-utils.
+    /// NILFS2: log-structured with continuous snapshots; needs nilfs-utils.
     Nilfs2,
 }
 
@@ -142,7 +142,7 @@ impl FileSystem {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WimStrategy {
-    /// No oversized image — a single partition holds everything as-is.
+    /// No oversized image: a single partition holds everything as-is.
     None,
     /// The UEFI:NTFS two-partition layout: a large NTFS partition keeps
     /// `install.wim` intact, plus a tiny FAT partition with a signed bootloader.
@@ -184,7 +184,7 @@ pub struct Persistence {
 /// Every field is independent and emits its own block in the XML; an empty
 /// [`WindowsSetup`] produces an unattend file with no `<settings>` elements,
 /// which Windows ignores. The whole struct is designed for cross-version
-/// compatibility — registry keys that exist only on Windows 11 (TPM bypass,
+/// compatibility; registry keys that exist only on Windows 11 (TPM bypass,
 /// Copilot disable) are silently ignored on Windows 10, and the OOBE settings
 /// used here are valid across all supported versions back to Windows 10 1809.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -216,11 +216,11 @@ pub struct WindowsSetup {
     /// Disable every network adapter during the `specialize` pass, then
     /// re-enable them in `FirstLogonCommands`. With no network during OOBE,
     /// Windows 11 24H2+ falls back to local-account creation even when
-    /// `BypassNRO` and `HideOnlineAccountScreens` are silently ignored — the
+    /// `BypassNRO` and `HideOnlineAccountScreens` are silently ignored, the
     /// most robust local-account workaround currently known.
     #[serde(default)]
     pub disable_network_during_oobe: bool,
-    /// Skip the forced Wi-Fi connection screen during OOBE — the Windows 11
+    /// Skip the forced Wi-Fi connection screen during OOBE, the Windows 11
     /// "Let's connect you to a network" page.
     #[serde(default)]
     pub hide_wireless_setup: bool,
@@ -239,7 +239,7 @@ pub struct WindowsSetup {
     #[serde(default)]
     pub accept_eula: bool,
     /// Enable the legacy .NET Framework 3.5 component from the Windows
-    /// installation media's `sources\sxs` folder — needed by many older apps
+    /// installation media's `sources\sxs` folder, needed by many older apps
     /// and not installed by default since Windows 8.
     #[serde(default)]
     pub enable_dotnet35: bool,
@@ -255,7 +255,7 @@ pub struct WindowsSetup {
     #[serde(default)]
     pub computer_name: Option<String>,
     /// Locale tag applied to setup UI, system locale, UI language, user
-    /// locale, and the default keyboard input layout — e.g. `"en-US"`.
+    /// locale, and the default keyboard input layout, e.g. `"en-US"`.
     #[serde(default)]
     pub locale: Option<String>,
     /// Microsoft time-zone identifier (e.g. `"UTC"`, `"Pacific Standard Time"`,
@@ -304,6 +304,22 @@ pub struct WindowsSetup {
     /// activation-key prompt as well.
     #[serde(default)]
     pub force_edition_picker: bool,
+    /// Windows To Go only: keep the host machine's internal disks **offline**
+    /// when the portable OS boots (`partmgr` `SanPolicy=4`). This is Rufus's
+    /// "Prevent Windows To Go from accessing internal disks" option, on by
+    /// default, and the Linux-side equivalent of its `offlineServicing`
+    /// `SanPolicy=4` step. Protects the host's volumes and stops the host's
+    /// internal Windows disk being brought online during OOBE (which drives the
+    /// 24H2/25H2 reseal loop). Defaults to `true` (hence the `default_true`
+    /// serde default); irrelevant outside Windows To Go.
+    #[serde(default = "default_true")]
+    pub wtg_offline_internal_disks: bool,
+}
+
+/// serde default for [`WindowsSetup::wtg_offline_internal_disks`]: Rufus checks
+/// "Prevent Windows To Go from accessing internal disks" by default.
+fn default_true() -> bool {
+    true
 }
 
 impl WindowsSetup {
@@ -380,7 +396,7 @@ pub enum Job {
         #[serde(default)]
         opts: JobOptions,
     },
-    /// Partition and format `device_path` with no payload — a blank, usable
+    /// Partition and format `device_path` with no payload: a blank, usable
     /// (non-bootable) drive.
     Format {
         device_path: PathBuf,
@@ -404,7 +420,7 @@ pub enum Job {
         #[serde(default)]
         iso_path: Option<PathBuf>,
     },
-    /// Snapshot a device into an image file — the inverse of [`Job::Dd`].
+    /// Snapshot a device into an image file, the inverse of [`Job::Dd`].
     /// The output is compressed transparently when `image_path` ends in
     /// `.gz` / `.xz` / `.zst` / `.bz2`; otherwise the bytes are written raw.
     Backup {
@@ -419,7 +435,7 @@ pub enum Job {
         device_path: PathBuf,
         mode: CheckMode,
     },
-    /// Create a FreeDOS-bootable USB stick. No source ISO — the helper
+    /// Create a FreeDOS-bootable USB stick. No source ISO; the helper
     /// formats the device as FAT (16 or 32, user's choice), installs the
     /// FreeDOS boot sector, drops `KERNEL.SYS` + `COMMAND.COM` at the
     /// FAT root, and stamps a generic MBR. The GUI downloads the upstream
@@ -440,13 +456,35 @@ pub enum Job {
         #[serde(default)]
         opts: JobOptions,
     },
+    /// Lay a full, directly-bootable Windows installation onto `device_path`
+    /// (Windows To Go), a portable Windows that boots from the USB itself,
+    /// not an installer. UEFI/GPT only: an EFI System Partition (FAT32) plus a
+    /// main NTFS partition. The chosen edition is applied out of the ISO's
+    /// `install.wim`/`install.esd` with `wimlib-imagex`, a portable BCD boot
+    /// store is generated on the ESP with `hivex` (locate-by-path, so the
+    /// drive boots on any machine regardless of disk signature), and an
+    /// optional `specialize`+`oobeSystem` `unattend.xml` customizes first boot.
+    WindowsToGo {
+        iso_path: PathBuf,
+        device_path: PathBuf,
+        /// 1-based WIM image index to apply (the edition the user picked).
+        image_index: u32,
+        /// Optional first-boot customization. Only the `specialize` and
+        /// `oobeSystem` passes apply; Windows Setup never runs in WTG, so the
+        /// `windowsPE`-only fields (hardware bypasses, product key, EULA,
+        /// `ei.cfg`) are silently ignored by the helper.
+        #[serde(default)]
+        windows_setup: Option<WindowsSetup>,
+        #[serde(default)]
+        opts: JobOptions,
+    },
 }
 
 /// Intensity of a [`Job::Check`] run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckMode {
-    /// F3-style sampling check — finishes in seconds; catches counterfeit drives.
+    /// F3-style sampling check: finishes in seconds; catches counterfeit drives.
     Quick,
     /// Two-pattern destructive bad-blocks scan over every sector.
     Full,
@@ -462,14 +500,17 @@ impl Job {
             | Job::Ventoy { device_path, .. }
             | Job::Backup { device_path, .. }
             | Job::Check { device_path, .. }
-            | Job::Freedos { device_path, .. } => device_path,
+            | Job::Freedos { device_path, .. }
+            | Job::WindowsToGo { device_path, .. } => device_path,
         }
     }
 
     /// The source ISO for this job, if it has one.
     pub fn iso_path(&self) -> Option<&PathBuf> {
         match self {
-            Job::Dd { iso_path, .. } | Job::Partitioned { iso_path, .. } => Some(iso_path),
+            Job::Dd { iso_path, .. }
+            | Job::Partitioned { iso_path, .. }
+            | Job::WindowsToGo { iso_path, .. } => Some(iso_path),
             Job::Ventoy { iso_path, .. } => iso_path.as_ref(),
             Job::Format { .. } | Job::Backup { .. } | Job::Check { .. } | Job::Freedos { .. } => {
                 None
@@ -502,6 +543,29 @@ mod tests {
             },
         };
         let json = serde_json::to_string(&job).unwrap();
+        let back: Job = serde_json::from_str(&json).unwrap();
+        assert_eq!(job, back);
+    }
+
+    #[test]
+    fn windows_to_go_job_roundtrips() {
+        let job = Job::WindowsToGo {
+            iso_path: "/tmp/win11.iso".into(),
+            device_path: "/dev/sdb".into(),
+            image_index: 6,
+            windows_setup: Some(WindowsSetup {
+                local_account: Some("user".into()),
+                locale: Some("en-US".into()),
+                ..WindowsSetup::default()
+            }),
+            opts: JobOptions {
+                label: "WINTOGO".into(),
+                full_format: false,
+                verify: true,
+            },
+        };
+        let json = serde_json::to_string(&job).unwrap();
+        assert!(json.contains("\"kind\":\"windows_to_go\""));
         let back: Job = serde_json::from_str(&json).unwrap();
         assert_eq!(job, back);
     }

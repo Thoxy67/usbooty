@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn fat_label_is_short_and_upper_case() {
-        // The dots are dropped — not in FAT32's safe label charset.
+        // The dots are dropped, not in FAT32's safe label charset.
         assert_eq!(fat("Ubuntu 24.04.1 LTS amd64"), "UBUNTU 2404");
         assert_eq!(fat("CCCOMA_X64FRE_EN-US_DV9"), "CCCOMA_X64F");
         assert_eq!(fat(""), "USBOOTY");

@@ -9,17 +9,17 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PersistenceKind {
-    /// Ubuntu / casper-based live systems — a `casper-rw` (or `writable`) partition.
+    /// Ubuntu / casper-based live systems: a `casper-rw` (or `writable`) partition.
     CasperRw,
-    /// Debian-live — a `persistence` partition carrying a `persistence.conf` file.
+    /// Debian-live: a `persistence` partition carrying a `persistence.conf` file.
     DebianLive,
-    /// Fedora / RHEL-family live — an ext4 partition with the fixed label
+    /// Fedora / RHEL-family live: an ext4 partition with the fixed label
     /// `OVERLAY` holding a sparse `overlay.img` COW file. dracut's dmsquash-live
     /// loop-mounts that file as a dm-snapshot when
     /// `rd.live.overlay=LABEL=OVERLAY:/overlay.img` is on the kernel command
     /// line (which we add when patching configs).
     FedoraOverlay,
-    /// openSUSE live (kiwi-live) — an ext4 partition labelled `cow`, picked up
+    /// openSUSE live (kiwi-live): an ext4 partition labelled `cow`, picked up
     /// automatically by the live system; no kernel parameter required.
     OpenSuseCow,
     /// archiso-based live systems (Arch Linux, CachyOS, etc.): an ext4 partition
@@ -27,11 +27,11 @@ pub enum PersistenceKind {
     /// when `cow_label=PERSISTENCE` is on the kernel command line (see the
     /// archiso `README.bootparams` `cow_label` / `cow_device` options).
     ArchOverlay,
-    /// Slax — *no separate partition*. Slax 9+ persists into `/slax/changes/`
+    /// Slax: *no separate partition*. Slax 9+ persists into `/slax/changes/`
     /// at the data partition's root; the helper creates the directory and
     /// patches `perch` onto the kernel command line so the boot menu's
     /// "Persistent Changes" path is taken by default. Unlike every other
-    /// variant the size slider is ignored — Slax just keeps writing into the
+    /// variant the size slider is ignored; Slax just keeps writing into the
     /// folder until the partition fills.
     SlaxChanges,
     /// Alpine "diskless" mode. No overlay partition: Alpine runs from RAM and
@@ -59,7 +59,7 @@ impl PersistenceKind {
 /// Used for two things: routing persistence to the right scheme (so a
 /// Mint ISO uses CasperRw, an LMDE ISO uses DebianLive, etc.) and applying
 /// per-distro post-copy fixes that mirror Rufus's `iso.c` quirk table.
-/// `Unknown` is the polite default — usbooty still writes the ISO with the
+/// `Unknown` is the polite default; usbooty still writes the ISO with the
 /// generic flow, it just doesn't add distro-specific patches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -103,9 +103,9 @@ pub enum DistroFamily {
     /// writable media), not an overlay partition, so no persistence partition
     /// is offered.
     Alpine,
-    /// Slax — own `/slax/changes/` scheme.
+    /// Slax: own `/slax/changes/` scheme.
     Slax,
-    /// Knoppix — own scheme, very old isolinux defaults.
+    /// Knoppix: own scheme, very old isolinux defaults.
     Knoppix,
 }
 
@@ -116,7 +116,7 @@ impl DistroFamily {
     /// Detection follows a most-specific-first cascade so a derivative
     /// (Bazzite, Nobara, Mint, LMDE, GeckoLinux) always wins over its parent
     /// (Fedora, Ubuntu, Debian, openSUSE). Root markers cover ISOs whose
-    /// labels were customised away from the upstream default — e.g. a `slax/`
+    /// labels were customised away from the upstream default, e.g. a `slax/`
     /// directory or a `knoppix*` directory pin the family even on a renamed
     /// ISO.
     ///
@@ -136,7 +136,7 @@ impl DistroFamily {
                 .any(|(name, is_dir, _)| *is_dir && name.starts_with(prefix))
         };
 
-        // Root-marker overrides — these beat the label entirely, because
+        // Root-marker overrides; these beat the label entirely, because
         // these distros put a hard-named directory at the ISO root.
         if has_dir("slax") || dir_starts_with("slax-") {
             return DistroFamily::Slax;
@@ -145,7 +145,7 @@ impl DistroFamily {
             return DistroFamily::Knoppix;
         }
 
-        // Label-based detection — most specific first. Needles are pre-lowered
+        // Label-based detection, most specific first. Needles are pre-lowered
         // so each iteration is just a substring scan over the already-lowered
         // label, with no per-needle allocation.
         for (needle, family) in [
@@ -235,7 +235,7 @@ impl DistroFamily {
 
     /// The persistence scheme this family uses, if any. Returning `None`
     /// means usbooty doesn't yet know how to set up a writable overlay for
-    /// this distro — the user is offered the DD method and no slider.
+    /// this distro; the user is offered the DD method and no slider.
     pub fn persistence(self) -> Option<PersistenceKind> {
         match self {
             DistroFamily::Ubuntu | DistroFamily::Mint => Some(PersistenceKind::CasperRw),
@@ -268,9 +268,9 @@ pub enum OsKind {
     Windows,
     /// A Linux ISO (isolinux or GRUB present).
     Linux,
-    /// A BSD ISO (FreeBSD / OpenBSD / NetBSD / …) — written with the DD method.
+    /// A BSD ISO (FreeBSD / OpenBSD / NetBSD / …), written with the DD method.
     Bsd,
-    /// Something else — still writable with the DD method.
+    /// Something else, still writable with the DD method.
     Other,
 }
 

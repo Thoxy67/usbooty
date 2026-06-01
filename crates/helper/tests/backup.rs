@@ -51,7 +51,7 @@ fn dd_then_backup_reproduces_the_source_image() {
 
     // 3. The first `SIZE` bytes of the snapshot must match the original
     //    pattern. (The loop device is larger; only the front section was
-    //    written, the rest is whatever the sparse backing held — which is
+    //    written, the rest is whatever the sparse backing held, which is
     //    why we compare only the leading `SIZE` bytes.)
     let snap_bytes = std::fs::read(&snap).expect("reading the snapshot");
     assert!(snap_bytes.len() >= SIZE as usize);

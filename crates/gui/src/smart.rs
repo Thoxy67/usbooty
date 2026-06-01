@@ -11,7 +11,7 @@
 //!
 //! The probe is fire-and-forget: a missing `smartctl`, a USB enclosure that
 //! doesn't expose SMART (most cheap sticks), or a permission error all return
-//! `None` and the UI shows nothing — same outcome as a healthy device.
+//! `None` and the UI shows nothing, the same outcome as a healthy device.
 
 use std::process::Command;
 
@@ -20,7 +20,7 @@ use serde_json::Value;
 /// Run `smartctl` and return a one-line warning, or `None` when the device
 /// looks healthy / SMART isn't available / smartmontools isn't installed.
 ///
-/// Returns immediately (no progress reporting) — the typical probe takes
+/// Returns immediately (no progress reporting); the typical probe takes
 /// 50-200 ms on a USB SSD. Run from a worker thread.
 pub fn probe(device_path: &str) -> Option<String> {
     let output = Command::new("smartctl")
@@ -34,7 +34,7 @@ pub fn probe(device_path: &str) -> Option<String> {
     let json: Value = serde_json::from_slice(&output.stdout).ok()?;
 
     // If SMART is unsupported, the `device` block carries no `smart_support`
-    // or `smart_status` — skip silently.
+    // or `smart_status`; skip silently.
     let smart_supported = json
         .get("smart_support")
         .and_then(|v| v.get("available"))
@@ -63,7 +63,7 @@ pub fn probe(device_path: &str) -> Option<String> {
         warnings.push(format!("{reallocated} reallocated sector(s)"));
     }
 
-    // 3. Current pending sectors (Attribute 197) — sectors the disk is about
+    // 3. Current pending sectors (Attribute 197): sectors the disk is about
     //    to reallocate. Treat any non-zero count as a warning.
     if let Some(pending) = attribute_raw(&json, 197)
         && pending > 0
@@ -79,7 +79,7 @@ pub fn probe(device_path: &str) -> Option<String> {
     }
 
     // 5. Temperature warning (smartctl exposes a normalised `temperature`
-    //    block on modern outputs). Flag anything over 60 °C — well below the
+    //    block on modern outputs). Flag anything over 60 °C, well below the
     //    typical 70-85 °C critical threshold but enough to alert the user.
     if let Some(temp) = json
         .get("temperature")

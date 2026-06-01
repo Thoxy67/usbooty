@@ -8,6 +8,12 @@ import com.usbooty
 ApplicationWindow {
     id: window
     visible: true
+    // Rufus-style version gating for the Windows customization options, keyed
+    // off the loaded ISO's install.wim build number (app.windowsBuild). 0 means
+    // unknown (parse failed / not a Windows ISO), in which case we show the
+    // option rather than hide something the user might need.
+    readonly property bool isWin11: app.windowsBuild === 0 || app.windowsBuild >= 22000
+    readonly property bool isWin11_22500: app.windowsBuild === 0 || app.windowsBuild >= 22500
     width: 660
     // Height is content-driven (see binding below). Keep a generous floor
     // so a freshly-launched window doesn't snap to a sliver while QML is
@@ -104,7 +110,7 @@ ApplicationWindow {
     // runner / bridge. The phases come from Rust as fixed English
     // identifiers, so we map them to static qsTr() literals here. That
     // lets lupdate extract them and the QTranslator actually find a
-    // translation at runtime — `qsTr(app.phase)` would never match,
+    // translation at runtime; `qsTr(app.phase)` would never match,
     // because lupdate only sees the dynamic argument as a variable.
     function trPhase(p) {
         switch (p) {
@@ -180,7 +186,7 @@ ApplicationWindow {
         id: card
         property int step: 0
         property string heading: ""
-        // Per-step accent — colours the round step badge and the card's left
+        // Per-step accent: colours the round step badge and the card's left
         // edge so the three cards have a quick visual rhythm.
         property color accent: card.palette.highlight
         default property alias body: bodyColumn.data
@@ -449,7 +455,7 @@ ApplicationWindow {
     // Label that:
     //   * sets wrapMode: WordWrap;
     //   * binds its width to the control width so WordWrap actually
-    //     triggers — without an explicit width the Label measures its
+    //     triggers; without an explicit width the Label measures its
     //     own desired width and Qt never gives WordWrap a box to break
     //     against.
     // Layout.fillWidth + minimumWidth: 0 lets the control take the cell
@@ -580,7 +586,7 @@ ApplicationWindow {
     // ---- Expanding side-by-side layout ---------------------------------
     // The activity log lives on the right and only appears when there is
     // something to read. The first log line auto-widens the window so the
-    // controls keep their full width and the log gets its own column —
+    // controls keep their full width and the log gets its own column,
     // less disruptive than pushing the action button off-screen.
     readonly property int compactWidth: 660
     readonly property int expandedWidth: 1080
@@ -757,7 +763,7 @@ ApplicationWindow {
         Banner {
             // SBAT / DBX revocation hits from scanning the ISO's EFI
             // binaries. Promoted to "error" so it stands out as a real
-            // boot risk — modern Secure-Boot-enforcing firmware will
+            // boot risk; modern Secure-Boot-enforcing firmware will
             // *refuse* to load a revoked bootloader. Legacy BIOS or
             // firmware with stale SbatLevel still boots, so it's a
             // warning the user can ignore deliberately.
@@ -1069,7 +1075,7 @@ ApplicationWindow {
                                 font.pointSize: 9
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
-                                // Red token regardless of theme — internal-disk
+                                // Red token regardless of theme; internal-disk
                                 // warnings should never blend into the row.
                                 // Brightened a bit for dark themes via Qt.tint.
                                 color: text.indexOf("Internal disk") >= 0
@@ -1150,6 +1156,27 @@ ApplicationWindow {
                         + "BIOS flashing utilities and legacy DOS tools.")
                 }
 
+                // ---- Windows To Go edition picker --------------------------
+                // Shown when the "Windows To Go" checkbox (below the format
+                // options) is ticked for a Windows ISO.
+                Label {
+                    text: qsTr("Windows edition")
+                    visible: app.windowsIso && app.windowsToGo
+                }
+                FormCombo {
+                    Layout.fillWidth: true
+                    visible: app.windowsIso && app.windowsToGo
+                    enabled: !app.busy && app.wtgEditions !== ""
+                    model: app.wtgEditions === "" ? [qsTr("(no editions found)")]
+                                                  : app.wtgEditions.split("\n")
+                    currentIndex: app.wtgEditionIndex
+                    onActivated: function(index) { app.wtgEditionIndex = index }
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Which Windows edition from the ISO's install.wim to "
+                        + "apply to the drive.")
+                }
+
                 Label { text: qsTr("Filesystem") }
                 FormCombo {
                     Layout.fillWidth: true
@@ -1158,7 +1185,7 @@ ApplicationWindow {
                     // or for the FreeDOS method (which needs FAT16/FAT32).
                     enabled: !app.busy && (app.method === 2 || app.method === 4)
                     // Bound to the list of filesystems whose mkfs tools are
-                    // installed on this host — keeps the user from picking a
+                    // installed on this host, keeps the user from picking a
                     // variant that would fail at format time. Filesystem
                     // names stay in their canonical form across every
                     // language, so no qsTr wrapping is needed.
@@ -1178,7 +1205,7 @@ ApplicationWindow {
                     // DD copy keeps the ISO's own embedded table.
                     enabled: !app.busy && app.method !== 0
                     // Order is mirrored by `filesystem_kind_from_index` on
-                    // the Rust side — keep them aligned when adding entries.
+                    // the Rust side; keep them aligned when adding entries.
                     model: [
                         qsTr("GPT (UEFI)"),
                         qsTr("MBR (BIOS)"),
@@ -1205,7 +1232,7 @@ ApplicationWindow {
                              + "doesn't boot on a specific machine.")
                 }
 
-                // Ventoy names its own data partition — no label field for it.
+                // Ventoy names its own data partition, no label field for it.
                 Label {
                     text: qsTr("Volume label")
                     visible: app.method !== 3
@@ -1253,11 +1280,36 @@ ApplicationWindow {
             }
 
             WrapCheckBox {
+                // Only meaningful for a Windows ISO written with the partition
+                // method: turns the installer write into a Windows To Go build
+                // (a full, portable Windows that boots from the stick itself).
+                visible: app.windowsIso && app.method === 1
+                text: qsTr("Windows To Go: install a portable Windows that boots from this drive (UEFI only)")
+                enabled: !app.busy
+                checked: app.windowsToGo
+                onToggled: {
+                    app.windowsToGo = checked
+                    // Populate the edition picker on first enable.
+                    if (checked)
+                        app.refreshWtgEditions()
+                }
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Instead of a Windows installer, lay a full, already-installed "
+                    + "Windows onto the drive that boots directly from the USB on any UEFI PC. "
+                    + "Applies one edition from the ISO (chosen above) to an NTFS partition, with a "
+                    + "FAT32 EFI partition and a portable boot configuration. Needs a large, fast "
+                    + "drive (32 GB+, USB 3 / SSD strongly recommended) and wimlib + hivex installed. "
+                    + "First boot still runs the Windows setup experience (OOBE).")
+            }
+
+            WrapCheckBox {
                 // Windows ISO with oversized install.wim, partition method.
                 // The default is the UEFI:NTFS two-partition layout; ticking
                 // this asks USBooty to split install.wim into <4 GiB chunks
                 // via wimlib-imagex and keep a single FAT32 partition.
-                visible: app.windowsIso && app.method === 1
+                // Irrelevant for Windows To Go (which applies the image to NTFS).
+                visible: app.windowsIso && app.method === 1 && !app.windowsToGo
                 text: qsTr("Split install.wim onto FAT32 (needs wimlib-imagex): broader firmware support than UEFI:NTFS")
                 enabled: !app.busy
                 checked: app.splitWim
@@ -1284,7 +1336,7 @@ ApplicationWindow {
                     + "time but catches counterfeit / failing flash that silently corrupts data.")
             }
 
-            // Ventoy options — only for the Ventoy write method.
+            // Ventoy options, only for the Ventoy write method.
             ColumnLayout {
                 Layout.fillWidth: true
                 visible: app.method === 3
@@ -1321,12 +1373,12 @@ ApplicationWindow {
                 }
             }
 
-            // Persistence — only for Linux live ISOs that support it.
+            // Persistence, only for Linux live ISOs that support it.
             // Partition-based variants show a size slider; inline-folder
             // variants (Slax) show a simple on/off checkbox because the
             // changes directory lives inside the main data partition.
             // The slider section also disappears when no device is plugged
-            // in / selected — there is nothing meaningful to slide against
+            // in / selected; there is nothing meaningful to slide against
             // until the user picks the target drive.
             ColumnLayout {
                 Layout.fillWidth: true
@@ -1358,7 +1410,7 @@ ApplicationWindow {
                         enabled: !app.busy && app.persistenceMaxMib > 0
                         from: 0
                         // Always exactly the room the selected device has
-                        // left — recomputed by AppController whenever the
+                        // left, recomputed by AppController whenever the
                         // device or ISO changes.
                         to: app.persistenceMaxMib
                         // 256 MiB steps below 1 GiB (fine-grained for small
@@ -1432,7 +1484,7 @@ ApplicationWindow {
             }
 
             // Persistence is available but the user hasn't picked a device
-            // yet — explain why the slider isn't there so it doesn't look
+            // yet; explain why the slider isn't there so it doesn't look
             // like the feature is missing.
             Label {
                 Layout.fillWidth: true
@@ -1477,7 +1529,7 @@ ApplicationWindow {
                     app.cancel()
                 } else if (app.windowsIso && app.method === 1) {
                     // Windows installer, partition method: offer the setup
-                    // options first. (DD is a raw copy — it cannot apply an
+                    // options first. (DD is a raw copy; it cannot apply an
                     // autounattend.xml, so no setup dialog there.)
                     windowsSetupDialog.open()
                 } else {
@@ -1717,7 +1769,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                     }
                     Button {
-                        // Freedesktop theme name — Breeze / Adwaita /
+                        // Freedesktop theme name: Breeze / Adwaita /
                         // Papirus all ship `document-save`. When the icon
                         // is available we hide the text label so the
                         // button stays compact; on icon-less themes the
@@ -1750,7 +1802,7 @@ ApplicationWindow {
                         ToolTip.text: qsTr("Empty the activity log panel.")
                         onClicked: {
                             app.clearLog()
-                            // Collapsing back also shrinks the window —
+                            // Collapsing back also shrinks the window;
                             // the user explicitly asked for the screen
                             // estate back, so honour that. Unless they
                             // turned on "always show logs", in which
@@ -2000,7 +2052,7 @@ ApplicationWindow {
         }
     }
 
-    // Shown when Start is pressed on a Windows ISO — optional install tweaks.
+    // Shown when Start is pressed on a Windows ISO, optional install tweaks.
     // All settings flow into a generated `autounattend.xml` on the USB root.
     Dialog {
         id: windowsSetupDialog
@@ -2031,7 +2083,7 @@ ApplicationWindow {
         onAccepted: confirmDialog.open()
         // The Windows-setup ScrollView contains ~25 checkboxes + text
         // fields and is only opened when the user starts a Windows ISO
-        // job. Defer everything until visible — the biggest single win
+        // job. Defer everything until visible, the biggest single win
         // in this file.
         contentItem: Loader {
             active: windowsSetupDialog.visible
@@ -2053,10 +2105,51 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
 
-            // --- Setup-time tweaks --------------------------------------
-            Label { text: qsTr("Setup"); font.bold: true; Layout.topMargin: 6 }
-            Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
+            // --- Windows To Go ------------------------------------------
+            // Options specific to a portable Windows To Go install, mirroring
+            // Rufus's Windows To Go dialog. The Microsoft-account, data-
+            // collection, local-account and regional options live in the groups
+            // below (shared with the install path); this group holds the one
+            // WTG-only toggle Rufus shows.
+            Label {
+                text: qsTr("Windows To Go"); font.bold: true; Layout.topMargin: 6
+                visible: app.windowsToGo
+            }
+            Rectangle {
+                Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5
+                visible: app.windowsToGo
+            }
             WrapCheckBox {
+                visible: app.windowsToGo
+                text: qsTr("Prevent Windows To Go from accessing internal disks")
+                checked: app.wtgOfflineInternalDisks
+                onToggled: app.wtgOfflineInternalDisks = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Keeps the host PC's internal disks offline while the portable "
+                    + "Windows boots (partmgr SanPolicy=4), so the running system can't mount or "
+                    + "alter the host's own volumes, and the host's internal Windows disk isn't "
+                    + "brought online during first-boot setup (which can trigger a reboot loop on "
+                    + "Windows 11 24H2/25H2). Recommended; leave on unless you specifically need "
+                    + "the portable Windows to see the host's drives.")
+            }
+
+            // --- Setup-time tweaks --------------------------------------
+            // These act during Windows Setup, which never runs for Windows To
+            // Go (method 5) (an applied image boots straight to OOBE) so the
+            // whole group is hidden in that mode.
+            Label {
+                text: qsTr("Setup"); font.bold: true; Layout.topMargin: 6
+                visible: !app.windowsToGo
+            }
+            Rectangle {
+                Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5
+                visible: !app.windowsToGo
+            }
+            WrapCheckBox {
+                // Win 11-only (Rufus gates this to Win 11 too); Setup-time, so
+                // never for Windows To Go.
+                visible: !app.windowsToGo && window.isWin11
                 text: qsTr("Bypass Windows 11 hardware checks: TPM, Secure Boot, RAM, Storage, CPU, Disk")
                 checked: app.bypassTpm
                 onToggled: {
@@ -2075,6 +2168,7 @@ ApplicationWindow {
                     + "registry flags during Setup. Has no effect on Windows 10 (which doesn't check any of these).")
             }
             WrapCheckBox {
+                visible: !app.windowsToGo
                 text: qsTr("Auto-accept the Setup EULA")
                 checked: app.acceptEula
                 onToggled: app.acceptEula = checked
@@ -2085,6 +2179,7 @@ ApplicationWindow {
                     + "scroll and tick the box.")
             }
             WrapCheckBox {
+                visible: !app.windowsToGo
                 text: qsTr("Enable .NET Framework 3.5 from the install media")
                 checked: app.enableDotnet35
                 onToggled: app.enableDotnet35 = checked
@@ -2097,6 +2192,7 @@ ApplicationWindow {
             }
             RowLayout {
                 Layout.fillWidth: true
+                visible: !app.windowsToGo
                 Label { text: qsTr("Product key"); Layout.minimumWidth: 110 }
                 TextField {
                     Layout.fillWidth: true
@@ -2111,6 +2207,7 @@ ApplicationWindow {
                 }
             }
             WrapCheckBox {
+                visible: !app.windowsToGo
                 text: qsTr("Force the edition picker at boot (OEM PCs)")
                 checked: app.forceEditionPicker
                 onToggled: app.forceEditionPicker = checked
@@ -2142,6 +2239,10 @@ ApplicationWindow {
                     + "different mechanisms, this option applies whichever one is needed.")
             }
             WrapCheckBox {
+                // Hidden for Windows To Go: disabling adapters breaks 24H2 OOBE
+                // on a portable install (the update/servicing step stalls and
+                // OOBE loops). The local-account skip above covers WTG instead.
+                visible: !app.windowsToGo
                 text: qsTr("Disable network during OOBE: force local account on Win 11 24H2+")
                 checked: app.disableNetworkDuringOobe
                 onToggled: app.disableNetworkDuringOobe = checked
@@ -2197,8 +2298,18 @@ ApplicationWindow {
             }
 
             // --- Local account ------------------------------------------
-            Label { text: qsTr("Local account"); font.bold: true; Layout.topMargin: 6 }
-            Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
+            // For a normal install: name + optional password (a password also
+            // enables one-shot auto-logon). For Windows To Go: name only,
+            // matching Rufus, which pre-seeds an admin account with an empty
+            // password the user must change at first logon (no auto-logon, so
+            // the interactive first-sign-in still runs and the image doesn't
+            // reseal-loop on Win 11 24H2/25H2).
+            Label {
+                text: qsTr("Local account"); font.bold: true; Layout.topMargin: 6
+            }
+            Rectangle {
+                Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5
+            }
             RowLayout {
                 Layout.fillWidth: true
                 Label { text: qsTr("Name"); Layout.minimumWidth: 110 }
@@ -2209,12 +2320,15 @@ ApplicationWindow {
                     // and a long translated placeholder pushes the parent
                     // RowLayout past the dialog width.
                     Layout.minimumWidth: 0
-                    placeholderText: qsTr("Optional, leave empty to keep the OOBE prompt")
+                    placeholderText: app.windowsToGo
+                        ? qsTr("Optional admin account; empty password to set at first logon")
+                        : qsTr("Optional, leave empty to keep the OOBE prompt")
                     text: app.localAccount
                     onTextEdited: app.localAccount = text
                 }
             }
             RowLayout {
+                visible: !app.windowsToGo
                 Layout.fillWidth: true
                 Label { text: qsTr("Password"); Layout.minimumWidth: 110 }
                 TextField {
@@ -2331,6 +2445,9 @@ ApplicationWindow {
             Label { text: qsTr("Privacy & debloat"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             WrapCheckBox {
+                // Win 11-only: auto device-encryption is a Win 11 24H2+ behavior
+                // (Rufus also gates this to Win 11).
+                visible: window.isWin11
                 text: qsTr("Disable automatic BitLocker device encryption")
                 checked: app.disableBitlocker
                 onToggled: app.disableBitlocker = checked
@@ -2343,6 +2460,9 @@ ApplicationWindow {
                     + "Recommended for dual-boot, lab, and IT-imaged systems.")
             }
             WrapCheckBox {
+                // Reads from the install media; not applicable to an applied
+                // Windows To Go image.
+                visible: !app.windowsToGo
                 text: qsTr("Install Windows CA 2023 Secure Boot policy")
                 checked: app.windowsCa2023
                 onToggled: app.windowsCa2023 = checked
@@ -2356,6 +2476,9 @@ ApplicationWindow {
             }
             WrapCheckBox {
                 id: debloatBox
+                // Install path imports a .reg from the USB media during
+                // specialize; Windows To Go applies the same policy directly to
+                // the image's offline hives. Available in both modes.
                 text: qsTr("Apply debloat profile")
                 checked: app.applyDebloat
                 onToggled: app.applyDebloat = checked
@@ -2419,6 +2542,9 @@ ApplicationWindow {
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             WrapCheckBox {
                 id: desktopHelpersBox
+                // Install path stages these on the USB media and xcopies them at
+                // setup; Windows To Go copies them straight onto the applied
+                // image's Default Desktop. Available in both modes.
                 text: qsTr("Drop a USBooty folder on the user's Desktop with ready-to-run scripts")
                 checked: app.desktopHelpers
                 onToggled: app.desktopHelpers = checked
@@ -2448,7 +2574,7 @@ ApplicationWindow {
                 textFormat: Text.RichText
                 // Backslashes in literal Windows paths confuse lupdate's
                 // QML lexer (it eats `\U` from "C:\Users\" as an escape).
-                // Use the &#x5C; HTML entity — RichText renders it as `\`.
+                // Use the &#x5C; HTML entity; RichText renders it as `\`.
                 text: qsTr(
                     "Lands in <code>C:&#x5C;Users&#x5C;&lt;NewUser&gt;&#x5C;Desktop&#x5C;USBooty&#x5C;</code>:<br>"
                     + "&nbsp;• <b>1-Win11Debloat.bat</b>: Raphire's debloat (debloat.raphi.re)<br>"
@@ -2494,7 +2620,7 @@ ApplicationWindow {
         // The Rust invokables don't emit change signals, so a plain
         // binding to `app.selectedX()` would never refresh. Gating on
         // `visible` re-evaluates the binding every time the dialog
-        // opens — same effect as the imperative onOpened we used to run,
+        // opens, same effect as the imperative onOpened we used to run,
         // but free of an extra signal handler.
         property bool internalDisk: confirmDialog.visible && app.selectedIsInternal()
         property string busLabel: confirmDialog.visible ? app.selectedBus() : ""
@@ -2508,7 +2634,7 @@ ApplicationWindow {
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: app.start()
         // The card + the three labels carry no state at startup. Only
-        // build them when the dialog opens — the Loader re-instantiates
+        // build them when the dialog opens; the Loader re-instantiates
         // on each open so the text bindings to invokables re-evaluate
         // with the current selection.
         contentItem: Loader {
@@ -2590,7 +2716,7 @@ ApplicationWindow {
                     }
                 }
             }
-            // Secondary action — opens the read-only Inspect modal (lsblk /
+            // Secondary action: opens the read-only Inspect modal (lsblk /
             // udevadm / smartctl dump). Kept inside the contentItem rather
             // than the dialog footer because mixing custom footer buttons
             // with Dialog.Ok / Dialog.Cancel breaks the accept signal in
@@ -2627,7 +2753,7 @@ ApplicationWindow {
     }
 
     // Read-only dump of `lsblk -O` + `udevadm info` for the device that's
-    // about to be erased — opened from the confirm dialog so the user can
+    // about to be erased, opened from the confirm dialog so the user can
     // sanity-check what the system actually thinks the device is.
     Dialog {
         id: inspectDialog
@@ -2805,19 +2931,22 @@ ApplicationWindow {
         bottomPadding: 14
         leftPadding: 18
         rightPadding: 18
-        // Selectable RAM sizes (MiB) and the current pick.
-        readonly property var memValues: [1024, 2048, 4096, 8192]
-        property int memIndex: 1
-        // Default to UEFI when the firmware is available, else BIOS.
-        property bool uefi: app.qemuUefi
-        onAboutToShow: uefi = app.qemuUefi
+        // vCPU and memory picks, set by the sliders below. Defaults: half the
+        // host cores, and 4 GiB capped to host RAM.
+        property int cpus: Math.max(1, Math.floor(app.qemuCpusMax / 2))
+        property int memMb: Math.max(512, Math.min(4096, app.qemuRamMax))
+        // Firmware: 0 = BIOS (SeaBIOS), 1 = UEFI (OVMF), 2 = UEFI + Secure Boot.
+        // Default to UEFI when OVMF is available, else BIOS.
+        property int firmware: app.qemuUefi ? 1 : 0
+        readonly property bool isUefi: firmware !== 0
+        onAboutToShow: firmware = app.qemuUefi ? 1 : 0
         header: DialogHeader {
             // Teal, matching the "Ventoy" phase accent and distinct from the
             // blue (Microsoft), red (erase) and green/red (result) headers.
             tint: "#16A085"
             iconGlyph: "▶"
             title: qsTr("Verify boot device")
-            subtitle: qsTr("Boot the selected device in QEMU — it is not modified")
+            subtitle: qsTr("Boot the selected device in QEMU; it is not modified")
         }
         footer: DialogButtonBox {
             standardButtons: DialogButtonBox.Cancel
@@ -2826,9 +2955,14 @@ ApplicationWindow {
                 enabled: app.qemuAvailable
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                 onClicked: {
-                    app.verifyBoot(bootTestDialog.memValues[bootTestDialog.memIndex],
-                                   bootTestDialog.uefi,
-                                   kvmCheck.checked)
+                    app.verifyBoot(bootTestDialog.memMb,
+                                   bootTestDialog.cpus,
+                                   bootTestDialog.firmware,
+                                   machineCombo.currentIndex === 1,
+                                   audioCheck.checked,
+                                   kvmCheck.checked,
+                                   networkCheck.checked,
+                                   snapshotCheck.checked)
                     bootTestDialog.close()
                 }
             }
@@ -2861,25 +2995,45 @@ ApplicationWindow {
                 color: Qt.tint(window.palette.windowText, Qt.rgba(0.86, 0.21, 0.27, 0.85))
                 font.bold: true
             }
-            // Firmware: BIOS/MBR vs UEFI.
+            // Firmware: BIOS (SeaBIOS) / UEFI (OVMF) / UEFI + Secure Boot.
             RowLayout {
                 Layout.fillWidth: true
                 Label {
                     text: qsTr("Firmware")
                     Layout.preferredWidth: 90
                 }
-                RadioButton {
-                    text: qsTr("BIOS / MBR")
-                    checked: !bootTestDialog.uefi
-                    onClicked: bootTestDialog.uefi = false
+                ComboBox {
+                    id: fwCombo
+                    Layout.fillWidth: true
+                    textRole: "text"
+                    valueRole: "fw"
+                    model: {
+                        var m = [{ text: qsTr("BIOS / MBR (SeaBIOS)"), fw: 0 }]
+                        if (app.qemuUefi)
+                            m.push({ text: qsTr("UEFI (OVMF)"), fw: 1 })
+                        if (app.qemuSecureboot)
+                            m.push({ text: qsTr("UEFI + Secure Boot (OVMF)"), fw: 2 })
+                        return m
+                    }
+                    Component.onCompleted: currentIndex = indexOfValue(bootTestDialog.firmware)
+                    onActivated: bootTestDialog.firmware = currentValue
                 }
-                RadioButton {
-                    text: qsTr("UEFI")
-                    enabled: app.qemuUefi
-                    checked: bootTestDialog.uefi
-                    onClicked: bootTestDialog.uefi = true
+            }
+            // Machine type / chipset.
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    text: qsTr("Machine")
+                    Layout.preferredWidth: 90
                 }
-                Item { Layout.fillWidth: true }
+                ComboBox {
+                    id: machineCombo
+                    Layout.fillWidth: true
+                    // Index 0 = i440fx (legacy "pc"), 1 = q35 (modern). q35
+                    // default, better for Windows 11 and modern guests.
+                    model: ["i440fx (legacy)", "q35 (modern)"]
+                    currentIndex: 1
+                }
             }
             Label {
                 visible: !app.qemuUefi
@@ -2889,18 +3043,81 @@ ApplicationWindow {
                 color: palette.placeholderText
                 font.pointSize: 8
             }
-            // Memory.
+            // TPM status for UEFI boots; Windows 11 OOBE needs a TPM 2.0.
+            Label {
+                visible: bootTestDialog.isUefi
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: app.qemuTpm
+                    ? qsTr("✓ A virtual TPM 2.0 (swtpm) will be attached, needed for Windows 11 OOBE.")
+                    : qsTr("⚠ swtpm not installed: no TPM 2.0 will be attached, so Windows 11 OOBE may "
+                        + "loop on \"Why did my PC restart?\". Install the 'swtpm' package.")
+                color: app.qemuTpm
+                    ? palette.placeholderText
+                    : Qt.tint(window.palette.windowText, Qt.rgba(0.86, 0.21, 0.27, 0.85))
+                font.pointSize: 8
+            }
+            // Memory: slider from 512 MiB up to the host's total RAM.
             RowLayout {
                 Layout.fillWidth: true
                 Label {
                     text: qsTr("Memory")
                     Layout.preferredWidth: 90
                 }
-                FormCombo {
-                    id: memCombo
-                    model: ["1 GiB", "2 GiB", "4 GiB", "8 GiB"]
-                    currentIndex: bootTestDialog.memIndex
-                    onActivated: bootTestDialog.memIndex = currentIndex
+                Slider {
+                    id: memSlider
+                    Layout.fillWidth: true
+                    from: 512
+                    to: Math.max(1024, app.qemuRamMax)
+                    stepSize: 256
+                    snapMode: Slider.SnapAlways
+                    value: bootTestDialog.memMb
+                    onMoved: bootTestDialog.memMb = value
+                }
+                SpinBox {
+                    id: memSpin
+                    // Size to content (text + spin buttons) so longer values
+                    // like "32005 MiB" aren't clipped, with a sane floor.
+                    Layout.preferredWidth: Math.max(140, implicitWidth)
+                    editable: true
+                    from: 512
+                    to: Math.max(1024, app.qemuRamMax)
+                    stepSize: 256
+                    value: bootTestDialog.memMb
+                    onValueModified: bootTestDialog.memMb = value
+                    textFromValue: function(v) { return v + " MiB" }
+                    valueFromText: function(t) { return parseInt(t) }
+                }
+            }
+            // Processors: slider from 1 up to the host's logical CPU count.
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    text: qsTr("Processors")
+                    Layout.preferredWidth: 90
+                }
+                Slider {
+                    id: cpuSlider
+                    Layout.fillWidth: true
+                    from: 1
+                    to: Math.max(1, app.qemuCpusMax)
+                    stepSize: 1
+                    snapMode: Slider.SnapAlways
+                    value: bootTestDialog.cpus
+                    onMoved: bootTestDialog.cpus = value
+                }
+                SpinBox {
+                    id: cpuSpin
+                    // Size to content (text + spin buttons), with a sane floor.
+                    Layout.preferredWidth: Math.max(130, implicitWidth)
+                    editable: true
+                    from: 1
+                    to: Math.max(1, app.qemuCpusMax)
+                    stepSize: 1
+                    value: bootTestDialog.cpus
+                    onValueModified: bootTestDialog.cpus = value
+                    textFromValue: function(v) { return v + qsTr(" vCPU") }
+                    valueFromText: function(t) { return parseInt(t) }
                 }
             }
             // Hardware acceleration.
@@ -2919,11 +3136,56 @@ ApplicationWindow {
                 color: palette.placeholderText
                 font.pointSize: 8
             }
+            // Networking.
+            CheckBox {
+                id: networkCheck
+                text: qsTr("Network access (user-mode networking)")
+                checked: false
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Attach a virtual network card with QEMU user-mode networking "
+                    + "(no root or bridge needed) so the guest can reach the internet, useful "
+                    + "for testing Windows OOBE / activation. Off runs the VM with no network.")
+            }
+            // Guest audio.
+            CheckBox {
+                id: audioCheck
+                text: qsTr("Guest audio (Intel HD Audio)")
+                checked: false
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Attach an emulated Intel HD Audio device routed to your host's "
+                    + "PipeWire/PulseAudio, so the guest can play sound. Off runs the VM silently.")
+            }
+            // Snapshot mode. On (default) discards all writes; off persists them
+            // so a multi-reboot flow like Windows OOBE can run to completion.
+            CheckBox {
+                id: snapshotCheck
+                text: qsTr("Snapshot mode (discard writes, device not modified)")
+                checked: true
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("On: every write goes to a throwaway overlay and the real device "
+                    + "is never touched. Off: writes persist to the device, needed to run Windows "
+                    + "OOBE to completion across its reboots (and to keep the logs it writes), but it "
+                    + "WILL modify the drive.")
+            }
+            Label {
+                visible: !snapshotCheck.checked
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: qsTr("⚠ Snapshot is off: this boot test will write to and modify the real device.")
+                color: Qt.tint(window.palette.windowText, Qt.rgba(0.86, 0.21, 0.27, 0.85))
+                font.bold: true
+                font.pointSize: 8
+            }
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                text: qsTr("Opens in snapshot mode, so nothing is written back to the device. "
-                    + "Admin rights are required to read the raw device.")
+                text: snapshotCheck.checked
+                    ? qsTr("Opens in snapshot mode, so nothing is written back to the device. "
+                        + "Admin rights are required to read the raw device.")
+                    : qsTr("Admin rights are required to read the raw device.")
                 color: palette.placeholderText
                 font.pointSize: 8
             }
@@ -2982,7 +3244,7 @@ ApplicationWindow {
         leftPadding: 18
         rightPadding: 18
         header: DialogHeader {
-            // Deep blurple — close to Discord's brand mark (#5865F2) but a
+            // Deep blurple, close to Discord's brand mark (#5865F2) but a
             // few shades darker, so the white USBooty logo + title pop
             // without competing with the Microsoft-blue / red Erase headers.
             tint: "#4752C4"
@@ -3053,7 +3315,7 @@ ApplicationWindow {
                 }
             }
 
-            // Single-line "what it does" — replaces the four-column
+            // Single-line "what it does", replaces the four-column
             // feature grid that was overflowing the compact window.
             Label {
                 Layout.fillWidth: true
@@ -3067,7 +3329,7 @@ ApplicationWindow {
                     + "BLAKE3 verify · SBAT + DBX revocation · SMART probe.")
             }
 
-            // Quick action row — Docs / Source-code / Report-issue.
+            // Quick action row: Docs / Source-code / Report-issue.
             RowLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 2
@@ -3138,14 +3400,14 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
 
-            // Step 1 — choose the Windows release.
+            // Step 1: choose the Windows release.
             RowLayout {
                 Layout.fillWidth: true
                 FormCombo {
                     id: winVersion
                     Layout.fillWidth: true
                     enabled: !app.busy
-                    // Windows release names are brand identifiers — leave untranslated.
+                    // Windows release names are brand identifiers; leave untranslated.
                     model: ["Windows 11", "Windows 10"]
                 }
                 Button {
@@ -3155,7 +3417,7 @@ ApplicationWindow {
                 }
             }
 
-            // Step 2 — choose a language.
+            // Step 2: choose a language.
             RowLayout {
                 Layout.fillWidth: true
                 FormCombo {
@@ -3171,7 +3433,7 @@ ApplicationWindow {
                 }
             }
 
-            // Step 3 — choose an edition/architecture and download.
+            // Step 3: choose an edition/architecture and download.
             RowLayout {
                 Layout.fillWidth: true
                 FormCombo {

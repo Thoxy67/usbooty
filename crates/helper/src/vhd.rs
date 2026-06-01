@@ -114,7 +114,7 @@ impl VhdReader {
         })
     }
 
-    /// The virtual disk size (in bytes) — i.e., the size of the output stream.
+    /// The virtual disk size (in bytes), i.e., the size of the output stream.
     pub fn virtual_size(&self) -> u64 {
         self.virtual_size
     }
@@ -132,9 +132,9 @@ fn parse_dynamic(file: &mut File, data_offset: u64, virtual_size: u64) -> Result
     }
 
     // Dynamic-header fields (big-endian):
-    //   offset 16: TableOffset      — file offset of the BAT (8 bytes)
-    //   offset 28: MaxTableEntries  — count of BAT entries (4 bytes)
-    //   offset 32: BlockSize        — block size in bytes (4 bytes, typ. 2 MiB)
+    //   offset 16: TableOffset,       file offset of the BAT (8 bytes)
+    //   offset 28: MaxTableEntries,   count of BAT entries (4 bytes)
+    //   offset 32: BlockSize,         block size in bytes (4 bytes, typ. 2 MiB)
     let table_offset = read_u64_be(&hdr, 16);
     let max_entries = read_u32_be(&hdr, 28);
     let block_size = read_u32_be(&hdr, 32);

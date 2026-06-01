@@ -12,7 +12,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Locales we ship — add new ones here; the qrc/translations.qrc must also
+# Locales we ship; add new ones here. The qrc/translations.qrc must also
 # gain a matching <file alias="usbooty_<loc>.qm"> entry.
 LOCALES=(fr)
 

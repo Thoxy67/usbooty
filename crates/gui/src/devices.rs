@@ -77,7 +77,7 @@ struct UsbDescriptor {
 }
 
 /// Walk up from `start` (typically the canonical path of `/sys/block/sdX`)
-/// looking for a directory with `idVendor` + `idProduct` — that's the USB
+/// looking for a directory with `idVendor` + `idProduct`, that's the USB
 /// device node and where the human-readable descriptor fields live.
 fn usb_descriptor(start: &Path) -> Option<UsbDescriptor> {
     let mut cur = start.parent()?;
@@ -103,7 +103,7 @@ fn pick_name(base: &Path, usb: Option<&UsbDescriptor>) -> (String, Option<String
     let scsi_vendor =
         read_trimmed(&base.join("device/vendor")).filter(|v| !v.eq_ignore_ascii_case("ATA"));
 
-    // Prefer USB descriptor strings — they're the names a user recognises.
+    // Prefer USB descriptor strings; they're the names a user recognises.
     let usb_product = usb.and_then(|u| u.product.clone());
     let usb_vendor = usb.and_then(|u| u.manufacturer.clone());
 

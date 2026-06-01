@@ -18,7 +18,7 @@ pub struct DeviceInfo {
     /// when the enumerator couldn't classify it.
     #[serde(default)]
     pub bus: Option<String>,
-    /// USB / SCSI serial number — useful for telling two identical sticks apart.
+    /// USB / SCSI serial number, useful for telling two identical sticks apart.
     #[serde(default)]
     pub serial: Option<String>,
     /// USB vendor name as reported by the device descriptor (separate from

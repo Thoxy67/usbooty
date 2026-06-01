@@ -3,7 +3,7 @@
 //! A *fixed* VHD is byte-for-byte raw disk data followed by a 512-byte footer.
 //! Stripping the footer turns the file back into a plain `.img` the rest of
 //! usbooty already knows how to write. Dynamic and differencing VHDs use a
-//! sparse block-allocation table and are out of scope for this round — users
+//! sparse block-allocation table and are out of scope for this round; users
 //! can pre-convert with `qemu-img convert -O raw`.
 //!
 //! Reference: Microsoft's `Virtual Hard Disk Image Format Specification`,
@@ -34,7 +34,7 @@ pub enum VhdKind {
         /// Bytes of payload before the footer (i.e. file size − 512).
         data_size: u64,
     },
-    /// Sparse format — not supported without a full BAT walker.
+    /// Sparse format, not supported without a full BAT walker.
     DynamicOrDifferencing,
     /// File doesn't look like a VHD at all.
     NotVhd,
@@ -129,7 +129,7 @@ pub fn strip_footer_to_cache(src: &Path) -> Result<PathBuf> {
     Ok(out_path)
 }
 
-/// `~/.cache/usbooty/decompressed/` — shared with the decompressor's cache,
+/// `~/.cache/usbooty/decompressed/`, shared with the decompressor's cache,
 /// since both modules produce ready-to-use `.img` files and a single TTL +
 /// prune policy covers them all.
 fn cache_dir() -> Result<PathBuf> {

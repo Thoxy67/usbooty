@@ -11,18 +11,18 @@ use std::time::{Duration, Instant};
 
 use crate::emit;
 
-/// Zero-write chunk size — matches the DD path.
+/// Zero-write chunk size, matches the DD path.
 const ZERO_BUF: usize = 4 * 1024 * 1024;
 
-// BLKGETSIZE64: `_IOR(0x12, 114, size_t)` — device size in bytes.
+// BLKGETSIZE64: `_IOR(0x12, 114, size_t)`, device size in bytes.
 nix::ioctl_read!(blkgetsize64, 0x12, 114, u64);
-// BLKRRPART: `_IO(0x12, 95)` — ask the kernel to re-read the partition table.
+// BLKRRPART: `_IO(0x12, 95)`, ask the kernel to re-read the partition table.
 nix::ioctl_none!(blkrrpart, 0x12, 95);
 
 /// Open a whole-disk block device read/write with `O_EXCL`.
 ///
 /// On a block device (Linux 2.6+), `O_EXCL` makes `open` fail with `EBUSY` if
-/// the device — or any of its partitions — is mounted or otherwise claimed.
+/// the device, or any of its partitions, is mounted or otherwise claimed.
 /// This closes the race between [`unmount_all`] and the first write: if the
 /// target gets re-mounted (e.g. by a desktop automounter) in that window, the
 /// job fails loudly here instead of silently corrupting an in-use disk.
@@ -35,7 +35,7 @@ pub fn open_exclusive(device: &Path) -> Result<File> {
         .open(device)
         .with_context(|| {
             format!(
-                "opening {} exclusively — it may still be mounted or in use; \
+                "opening {} exclusively; it may still be mounted or in use; \
                  close anything using the device and try again",
                 device.display()
             )
@@ -88,7 +88,7 @@ pub fn partition_path(base: &Path, index: u32) -> String {
     }
 }
 
-/// Write zeros across the whole `device` — a "full format" erase that wipes
+/// Write zeros across the whole `device`: a "full format" erase that wipes
 /// every stale filesystem and residual data before the new layout is written.
 /// Reports an `Erasing` progress phase and honours `abort`.
 pub fn zero_device(device: &Path, abort: &AtomicBool) -> Result<()> {

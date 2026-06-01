@@ -14,7 +14,7 @@
 //! `getskuinformationbyproductedition` call with a Type-9 Sentinel error.
 //!
 //! Those endpoints and the product-edition IDs are reverse-engineered and
-//! change over time, so this module is isolated and fails gracefully — API
+//! change over time, so this module is isolated and fails gracefully; API
 //! breakage never affects the core USB-writing paths. When Microsoft's
 //! anti-bot still rejects the request (common on VPNs / flagged ISPs), the UI
 //! falls back to opening the official download page in a browser.
@@ -35,7 +35,7 @@ const PROFILE: &str = "606624d44113";
 const ORG_ID: &str = "y6jn8c31";
 /// The (currently constant) `instanceId` for the `ov-df.microsoft.com` challenge.
 const INSTANCE_ID: &str = "560dc9f3-1aa5-4a2f-b63c-9e18f8d0e175";
-/// The public download page — loaded to seed cookies, and used as the Referer.
+/// The public download page, loaded to seed cookies, and used as the Referer.
 const DOWNLOAD_PAGE: &str = "https://www.microsoft.com/software-download/windows11";
 
 /// Selectable Windows releases: `(display name, Microsoft product-edition ID)`.
@@ -61,7 +61,7 @@ pub struct DownloadOption {
 }
 
 /// The languages for one release, bound to the cookie-jar session that fetched
-/// them — the very same `Agent` must be reused to request download links.
+/// them; the very same `Agent` must be reused to request download links.
 #[derive(Clone)]
 pub struct Catalog {
     /// HTTP agent carrying the session cookies.

@@ -218,7 +218,7 @@ pub(crate) fn run_tool(tool: &str, args: &[&str], doing: &str) -> Result<()> {
     let output = Command::new(tool)
         .args(args)
         .output()
-        .with_context(|| format!("could not run {tool} — is it installed?"))?;
+        .with_context(|| format!("could not run {tool}. Is it installed?"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         bail!("{doing} failed: {}", stderr.trim());
@@ -267,13 +267,50 @@ impl Mount {
         Ok(Mount { mountpoint, what })
     }
 
-    /// Mount an NTFS volume, preferring the in-kernel `ntfs3` driver and
-    /// falling back to the older `ntfs` filesystem name.
+    /// Mount an NTFS volume. Tries the in-kernel drivers first (`ntfs3`, then
+    /// the legacy read-only `ntfs`), and finally the FUSE `ntfs-3g` helper for
+    /// kernels built without any in-kernel NTFS support (e.g. some CachyOS /
+    /// custom kernels expose only FUSE). The `mount(2)` syscall cannot use a
+    /// FUSE filesystem, so that last step must shell out to `ntfs-3g`.
     pub fn new_ntfs(device: &str) -> Result<Self> {
-        match Self::new(device, "ntfs3") {
-            Ok(mount) => Ok(mount),
-            Err(_) => Self::new(device, "ntfs"),
+        if let Ok(mount) = Self::new(device, "ntfs3") {
+            return Ok(mount);
         }
+        if let Ok(mount) = Self::new(device, "ntfs") {
+            return Ok(mount);
+        }
+        Self::new_fuse_ntfs(device)
+    }
+
+    /// Mount NTFS via the FUSE `ntfs-3g` helper. Used when the kernel has no
+    /// in-kernel NTFS driver. Unmounting still goes through the `umount(2)`
+    /// path in [`Drop`], which works for FUSE mounts owned by root.
+    fn new_fuse_ntfs(device: &str) -> Result<Self> {
+        let mountpoint = PathBuf::from(format!("/run/usbooty-{}-ntfs", std::process::id()));
+        std::fs::create_dir_all(&mountpoint)
+            .with_context(|| format!("creating mountpoint {}", mountpoint.display()))?;
+
+        let output = Command::new("ntfs-3g")
+            .arg(device)
+            .arg(&mountpoint)
+            .output()
+            .with_context(|| {
+                format!(
+                    "running ntfs-3g for {device}; install the `ntfs-3g` package \
+                     (this kernel has no in-kernel NTFS driver)"
+                )
+            })?;
+        if !output.status.success() {
+            let _ = std::fs::remove_dir(&mountpoint);
+            bail!(
+                "mounting {device} via ntfs-3g failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+
+        let what = format!("{device} (ntfs-3g)");
+        emit::log(format!("Mounted {what} at {}", mountpoint.display()));
+        Ok(Mount { mountpoint, what })
     }
 
     /// Mount a partition holding `filesystem`, choosing the right driver.
@@ -341,7 +378,7 @@ impl LoopMount {
                 .arg(iso)
                 .arg(&mountpoint)
                 .output()
-                .context("running mount — is util-linux installed?")?;
+                .context("running mount. Is util-linux installed?")?;
             if output.status.success() {
                 emit::log(format!("Mounted source ISO ({fstype})"));
                 return Ok(LoopMount {

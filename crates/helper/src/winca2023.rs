@@ -6,7 +6,7 @@
 //! "Windows UEFI CA 2023" signs current Windows bootloaders). Firmwares
 //! that don't pick up the new CA via Windows Update refuse the signed
 //! `.efi` files. The `SkuSiPolicy.p7b` policy file *vouches for* the new
-//! CA without needing a UEFI variable update — drop it at the canonical
+//! CA without needing a UEFI variable update; drop it at the canonical
 //! `EFI\Microsoft\Boot\SkuSiPolicy.p7b` path and the firmware accepts the
 //! chain on first boot.
 //!
@@ -42,7 +42,7 @@ const DEST_RELATIVE: &str = "EFI/Microsoft/Boot/SkuSiPolicy.p7b";
 pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
     if !fsutil::wimlib_available() {
         emit::log(
-            "wimlib-imagex not installed — skipping Windows CA 2023 \
+            "wimlib-imagex not installed; skipping Windows CA 2023 \
              policy install. Install `wimtools` / `wimlib` to enable it.",
         );
         return Ok(());
@@ -77,10 +77,10 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
         let stderr = stderr.trim();
         // `SkuSiPolicy.p7b` is only in Windows builds that ship the CA 2023
         // assets (Win 11 23H2 onwards, recent Win 10 servicing). Older WIMs
-        // just don't have the file — that's a soft-skip, not a failure.
+        // just don't have the file; that's a soft-skip, not a failure.
         if stderr.contains("Path not found") || stderr.contains("file not found") {
             emit::log(format!(
-                "{SOURCE_PATH} not found inside install.wim — skipping \
+                "{SOURCE_PATH} not found inside install.wim; skipping \
                  Windows CA 2023 policy (older Windows build)."
             ));
             let _ = fs::remove_dir_all(&staging);
@@ -96,7 +96,7 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
         .join("SecureBootUpdates")
         .join("SkuSiPolicy.p7b");
     if !staged_file.is_file() {
-        emit::log("wimlib reported success but produced no SkuSiPolicy.p7b — skipping.");
+        emit::log("wimlib reported success but produced no SkuSiPolicy.p7b; skipping.");
         let _ = fs::remove_dir_all(&staging);
         return Ok(());
     }

@@ -8,7 +8,7 @@
 //!
 //! Progress is byte-accurate: a pre-pass sums the sizes of exactly the files
 //! that will be copied, and large files are streamed in chunks so the progress
-//! bar — and the GUI's speed/ETA readout — keep moving even mid-file.
+//! bar, and the GUI's speed/ETA readout, keep moving even mid-file.
 
 use anyhow::{Context, Result, bail};
 use std::fs;
@@ -33,7 +33,7 @@ struct Ctx<'a> {
     copied: u64,
     /// Files processed so far.
     files: u64,
-    /// Total bytes that will be processed — the sum of every non-skipped file.
+    /// Total bytes that will be processed: the sum of every non-skipped file.
     total: u64,
     /// Reused I/O buffer.
     buf: Vec<u8>,

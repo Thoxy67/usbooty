@@ -1,4 +1,4 @@
-//! `usbooty` — the unprivileged Qt/QML front-end.
+//! `usbooty`: the unprivileged Qt/QML front-end.
 //!
 //! This process never touches a block device itself. It enumerates devices,
 //! analyzes ISOs, builds a [`Job`](usbooty_core::Job), and delegates the actual
@@ -37,16 +37,16 @@ fn main() {
     // the Wayland app-id (xdg-toplevel) against an installed `.desktop` file.
     // Setting the desktop file name here tells Qt to advertise that app-id, so
     // compositors find `org.usbooty.Usbooty.desktop` and use its Icon= entry.
-    // Without this, Wayland falls back to a generic icon — even though the
+    // Without this, Wayland falls back to a generic icon, even though the
     // `ApplicationWindow.icon` set in QML is honoured by X11 and as a backup.
     QGuiApplication::set_desktop_file_name(&QString::from("org.usbooty.Usbooty"));
     if let Some(app) = app.as_mut() {
         app.set_application_name(&QString::from("usbooty"));
     }
 
-    // Load persisted settings. `set_force_english` handles both branches
-    // — install the system .qm when false, leave the English baseline
-    // alone when true — so it's the only translation call we need here.
+    // Load persisted settings. `set_force_english` handles both branches:
+    // install the system .qm when false, leave the English baseline
+    // alone when true, so it's the only translation call we need here.
     let prefs = usbooty_gui::settings::Settings::load();
     translations::set_force_english(prefs.force_english);
 

@@ -3,7 +3,7 @@
 //! Driven by `tests/decompress-test.sh`, which generates a known ISO and
 //! compresses it with every supported algorithm before invoking
 //! `cargo test --include-ignored --test decompress_smoke`. The shell wrapper
-//! exists so we don't add `xorriso`/`xz`/`zstd`/etc as test-time Rust deps —
+//! exists so we don't add `xorriso`/`xz`/`zstd`/etc as test-time Rust deps;
 //! shelling out is the natural way to get golden fixtures here.
 //!
 //! Each subtest:
@@ -36,7 +36,7 @@ fn assert_roundtrip(compressed_name: &str) {
         eprintln!("skipping {compressed_name}: fixture missing (compressor not installed?)");
         return;
     };
-    // Re-export the GUI crate's modules — these tests live in the crate's
+    // Re-export the GUI crate's modules; these tests live in the crate's
     // own `tests/` so they only see the public surface.
     let out = usbooty_gui::decompress::decompress_to_cache(&src, |_, _| {})
         .unwrap_or_else(|e| panic!("decompress {compressed_name}: {e:#}"));
@@ -90,7 +90,7 @@ fn z_roundtrip() {
     assert_roundtrip("test.iso.Z");
 }
 
-/// Self-contained `.Z` round-trip — encode a small payload via `weezl` with
+/// Self-contained `.Z` round-trip: encode a small payload via `weezl` with
 /// the same parameters our `DotZAdapter` expects (Unix-compress framing,
 /// LSB-first packing, 8-bit alphabet), then decompress it through the
 /// real public API. Runs without needing `ncompress` installed.

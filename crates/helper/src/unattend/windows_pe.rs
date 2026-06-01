@@ -1,4 +1,4 @@
-//! `windowsPE` pass — settings consumed before Windows is installed: the
+//! `windowsPE` pass, settings consumed before Windows is installed: the
 //! Win 11 LabConfig hardware-check bypasses, the product key and EULA
 //! accept, and the Setup-UI / system locale used by the installer itself.
 

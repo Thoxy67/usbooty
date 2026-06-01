@@ -2,7 +2,7 @@
 //!
 //! Stores a tiny JSON document at `~/.config/usbooty/settings.json`. Today
 //! it only carries the *Force English* toggle, but the shape is
-//! intentionally extensible — anything that wants to survive a restart
+//! intentionally extensible: anything that wants to survive a restart
 //! (last-used filesystem, last-used write method, beta channel flag, …)
 //! drops a new field on the struct here.
 //!
@@ -34,7 +34,7 @@ pub struct Settings {
 
 impl Settings {
     /// Load `settings.json` from the user's config dir. Any failure (file
-    /// missing, parse error, IO error) yields a default Settings — start-up
+    /// missing, parse error, IO error) yields a default Settings; start-up
     /// must never be blocked by a corrupt preferences file.
     pub fn load() -> Self {
         let Some(path) = settings_path() else {
@@ -60,7 +60,7 @@ impl Settings {
     }
 }
 
-/// `~/.config/usbooty/settings.json` — `directories::ProjectDirs` picks the
+/// `~/.config/usbooty/settings.json`: `directories::ProjectDirs` picks the
 /// right per-OS path. Returns `None` only on hosts so unusual we can't
 /// figure out a config location at all.
 fn settings_path() -> Option<PathBuf> {

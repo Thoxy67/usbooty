@@ -8,7 +8,7 @@
 //! with a clean message naming the conflict, before any of the destructive
 //! steps run.
 //!
-//! Released automatically on drop — the kernel drops `flock`s when the last
+//! Released automatically on drop; the kernel drops `flock`s when the last
 //! reference to the open file is closed, so even an unclean helper exit
 //! cannot leave a stale lock behind.
 
@@ -24,7 +24,7 @@ use crate::emit;
 ///
 /// The lockfile itself is never written to; only its `flock` state matters.
 /// Dropping this releases the lock (and on most Linux systems leaves the
-/// empty lockfile behind in `/run`, which is fine — `/run` is tmpfs).
+/// empty lockfile behind in `/run`, which is fine; `/run` is tmpfs).
 pub struct DeviceLock {
     /// Hold the underlying open file alive; the lock dies with this.
     _lock: Flock<std::fs::File>,
@@ -59,7 +59,7 @@ impl DeviceLock {
                 Ok(Self { _lock: lock })
             }
             Err((_file, _err)) => bail!(
-                "another usbooty job is already running on {} — refusing to start a second one",
+                "another usbooty job is already running on {}, refusing to start a second one",
                 device.display()
             ),
         }

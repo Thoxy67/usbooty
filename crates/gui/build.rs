@@ -20,7 +20,7 @@ fn main() {
     // files are gitignored, so a fresh clone never has them; doing the
     // lrelease step here means `cargo build` works on its own, with no
     // separate setup step in the AUR PKGBUILD, AppImage script, or for
-    // contributors. Missing `lrelease6` is fatal — we *need* the .qm
+    // contributors. Missing `lrelease6` is fatal; we *need* the .qm
     // for the qrc embed to succeed.
     compile_translations(Path::new("../../data/translations"));
 
@@ -29,7 +29,7 @@ fn main() {
 
     CxxQtBuilder::new_qml_module(QmlModule::new("com.usbooty").qml_file("qml/main.qml"))
         .file("src/bridge.rs")
-        // Compile the QTranslator C++ shim *through cxx-qt-build* — using
+        // Compile the QTranslator C++ shim *through cxx-qt-build*, using
         // a separate cc::Build invocation works locally with stale
         // incremental artefacts but fails in a clean build because the
         // two builders overwrite each other's link-arg state in OUT_DIR.
@@ -97,7 +97,7 @@ fn compile_translations(dir: &Path) {
 
     // Locate lrelease6. Arch ships it in /usr/bin (qt6-tools); some
     // distros use /usr/lib/qt6/bin/lrelease. The plain `lrelease` is
-    // sometimes Qt 5 — prefer the explicit Qt 6 name.
+    // sometimes Qt 5; prefer the explicit Qt 6 name.
     let lrelease = ["lrelease6", "/usr/lib/qt6/bin/lrelease"]
         .into_iter()
         .find(|bin| {

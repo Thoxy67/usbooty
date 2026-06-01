@@ -11,13 +11,13 @@
 //! Coverage scope (deliberately narrow):
 //!
 //! * UDF block size 2048 (the only value used on optical / install media).
-//! * Anchor Volume Descriptor Pointer at sector 256 only — the spec also
+//! * Anchor Volume Descriptor Pointer at sector 256 only; the spec also
 //!   permits last-sector and last-256, but every UDF-formatted Windows ISO
 //!   in the wild carries the canonical anchor.
 //! * Short-AD and long-AD allocation descriptors; no allocation extents
 //!   (indirect descriptors), no metadata partitions, no virtual partitions.
 //! * Multi-extent files (so install.wim larger than 4 GiB is read correctly).
-//! * No CRC verification — kernel `mount -t udf` already failed by then if
+//! * No CRC verification; kernel `mount -t udf` already failed by then if
 //!   the disc is corrupt; we just want best-effort analysis here.
 //!
 //! All fields on disk are little-endian.
@@ -101,7 +101,7 @@ impl<R: Read + Seek> UdfFs<R> {
                     partition_start = Some(u32::from_le_bytes(buf[188..192].try_into().ok()?));
                 }
                 Some(TAG_LVD) => {
-                    // Logical Volume Descriptor (ECMA-167 3/10.6) — the File
+                    // Logical Volume Descriptor (ECMA-167 3/10.6), the File
                     // Set Descriptor location is a long_ad at offset 248.
                     fsd_extent = Some(read_long_ad(&buf[248..264])?);
                 }
@@ -158,6 +158,20 @@ impl<R: Read + Seek> UdfFs<R> {
             .into_iter()
             .find(|e| !e.is_dir && e.name.eq_ignore_ascii_case(name))?;
         self.read_file_data(entry.icb).ok()
+    }
+
+    /// Read up to `len` bytes of a file starting at byte `start`, reading only
+    /// the extents that overlap the requested window. Cheap even for a window
+    /// near the end of a multi-gigabyte file (e.g. a WIM's trailing XML
+    /// metadata), unlike [`read_file`] which materializes the whole file.
+    /// Returns `None` if the file does not exist.
+    pub fn read_file_range(&mut self, segments: &[&str], start: u64, len: u64) -> Option<Vec<u8>> {
+        let (name, dir_segs) = segments.split_last()?;
+        let parent = self.list(dir_segs)?;
+        let entry = parent
+            .into_iter()
+            .find(|e| !e.is_dir && e.name.eq_ignore_ascii_case(name))?;
+        self.read_file_data_range(entry.icb, start, len).ok()
     }
 
     /// Information length of the file at the segmented path, by reading just
@@ -249,6 +263,57 @@ impl<R: Read + Seek> UdfFs<R> {
 
     /// Read the data bytes of a file whose File Entry lives at `icb`.
     fn read_file_data(&mut self, icb: ExtentRef) -> IoResult<Vec<u8>> {
+        let (ad_type, ads, information_length) = self.file_entry_ads(icb)?;
+        let mut out = Vec::with_capacity(information_length.min(64 * 1024 * 1024) as usize);
+        match ad_type {
+            // Inline / embedded data: the file's bytes live where the
+            // allocation descriptors would be. Common for very small files.
+            3 => {
+                let take = (information_length as usize).min(ads.len());
+                out.extend_from_slice(&ads[..take]);
+            }
+            // Short_ad (8 bytes each) / long_ad (16 bytes each) extent lists.
+            0 => self.read_extents(&ads, 8, information_length, &mut out)?,
+            1 => self.read_extents(&ads, 16, information_length, &mut out)?,
+            other => {
+                return Err(std::io::Error::other(format!(
+                    "unsupported allocation type {other}"
+                )));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Read the bytes of the file at `icb` in the window `[start, start+len)`,
+    /// reading only the overlapping extents. See [`Self::read_file_range`].
+    fn read_file_data_range(&mut self, icb: ExtentRef, start: u64, len: u64) -> IoResult<Vec<u8>> {
+        let (ad_type, ads, information_length) = self.file_entry_ads(icb)?;
+        let end = start.saturating_add(len).min(information_length);
+        if start >= end {
+            return Ok(Vec::new());
+        }
+        let mut out = Vec::with_capacity((end - start).min(64 * 1024 * 1024) as usize);
+        match ad_type {
+            3 => {
+                let s = (start as usize).min(ads.len());
+                let e = (end as usize).min(ads.len());
+                out.extend_from_slice(&ads[s..e]);
+            }
+            0 => self.read_extents_range(&ads, 8, information_length, start, end, &mut out)?,
+            1 => self.read_extents_range(&ads, 16, information_length, start, end, &mut out)?,
+            other => {
+                return Err(std::io::Error::other(format!(
+                    "unsupported allocation type {other}"
+                )));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Read a File Entry / Extended File Entry sector and return its allocation
+    /// descriptor type, the raw descriptor bytes (or inline data for embedded
+    /// files), and the file's information length.
+    fn file_entry_ads(&mut self, icb: ExtentRef) -> IoResult<(u16, Vec<u8>, u64)> {
         let buf = read_sector(
             &mut self.reader,
             self.partition_start as u64 + icb.block as u64,
@@ -295,36 +360,13 @@ impl<R: Read + Seek> UdfFs<R> {
         if ad_end > buf.len() {
             return Err(std::io::Error::other("allocation descriptors out of range"));
         }
-
-        let mut out = Vec::with_capacity(information_length.min(64 * 1024 * 1024) as usize);
-        match ad_type {
-            3 => {
-                // Inline / embedded data: the file's bytes live inline where
-                // the allocation descriptors would be. Common for very small
-                // files (boot configs etc.).
-                let take = (information_length as usize).min(l_ad);
-                out.extend_from_slice(&buf[ad_offset..ad_offset + take]);
-            }
-            0 => {
-                // Short_ad entries: each is 8 bytes: u32 length, u32 position.
-                self.read_extents(&buf[ad_offset..ad_end], 8, information_length, &mut out)?;
-            }
-            1 => {
-                // Long_ad entries: each is 16 bytes (length, position, then a
-                // partition reference + implementation-use field we ignore).
-                self.read_extents(&buf[ad_offset..ad_end], 16, information_length, &mut out)?;
-            }
-            other => {
-                return Err(std::io::Error::other(format!(
-                    "unsupported allocation type {other}"
-                )));
-            }
-        }
-        Ok(out)
+        // For embedded files (ad_type 3) this slice is the inline data; for
+        // short/long_ad it is the descriptor list.
+        Ok((ad_type, buf[ad_offset..ad_end].to_vec(), information_length))
     }
 
     /// Walk a buffer of allocation descriptors with the given `stride`
-    /// (8 bytes per short_ad, 16 bytes per long_ad — the trailing partition
+    /// (8 bytes per short_ad, 16 bytes per long_ad; the trailing partition
     /// reference and implementation-use bytes of a long_ad are not used by
     /// this reader, so the parse only cares about the leading length + block
     /// position fields, which match in both layouts).
@@ -366,6 +408,76 @@ impl<R: Read + Seek> UdfFs<R> {
     /// Read `len` bytes starting at sector `block` into `out`.
     fn read_extent_into(&mut self, block: u64, len: usize, out: &mut Vec<u8>) -> IoResult<()> {
         self.reader.seek(SeekFrom::Start(block * BLOCK))?;
+        let start = out.len();
+        out.resize(start + len, 0);
+        self.reader.read_exact(&mut out[start..start + len])?;
+        Ok(())
+    }
+
+    /// Like [`Self::read_extents`], but appends only the bytes in the file
+    /// window `[start, end)`, seeking past extents that fall entirely before
+    /// `start` and stopping once `end` is reached.
+    fn read_extents_range(
+        &mut self,
+        descriptors: &[u8],
+        stride: usize,
+        info_len: u64,
+        start: u64,
+        end: u64,
+        out: &mut Vec<u8>,
+    ) -> IoResult<()> {
+        let mut pos: u64 = 0; // byte position within the file
+        let mut remaining = info_len;
+        for ad in descriptors.chunks_exact(stride) {
+            if remaining == 0 || pos >= end {
+                break;
+            }
+            let raw_len = u32::from_le_bytes(ad[0..4].try_into().unwrap());
+            let block = u32::from_le_bytes(ad[4..8].try_into().unwrap()) as u64;
+            let kind = raw_len >> 30;
+            let length = (raw_len & 0x3FFF_FFFF) as u64;
+            if length == 0 {
+                break;
+            }
+            let take = length.min(remaining);
+            let ext_start = pos;
+            let ext_end = pos + take;
+            let ov_start = start.max(ext_start);
+            let ov_end = end.min(ext_end);
+            if ov_start < ov_end {
+                let intra = ov_start - ext_start;
+                let ov_len = (ov_end - ov_start) as usize;
+                if kind == 0 {
+                    self.read_extent_partial(
+                        self.partition_start as u64 + block,
+                        intra,
+                        ov_len,
+                        out,
+                    )?;
+                } else if kind == 1 || kind == 2 {
+                    out.resize(out.len() + ov_len, 0); // sparse → zeros
+                } else {
+                    break; // unsupported AD-chain
+                }
+            } else if kind > 2 {
+                break;
+            }
+            pos = ext_end;
+            remaining -= take;
+        }
+        Ok(())
+    }
+
+    /// Read `len` bytes starting `intra` bytes into the extent at sector
+    /// `block` (a byte-granular read within one extent).
+    fn read_extent_partial(
+        &mut self,
+        block: u64,
+        intra: u64,
+        len: usize,
+        out: &mut Vec<u8>,
+    ) -> IoResult<()> {
+        self.reader.seek(SeekFrom::Start(block * BLOCK + intra))?;
         let start = out.len();
         out.resize(start + len, 0);
         self.reader.read_exact(&mut out[start..start + len])?;
@@ -419,7 +531,7 @@ fn read_dstring(buf: &[u8]) -> String {
         8 => String::from_utf8_lossy(payload).trim().to_string(),
         16 => {
             // chunks(2) (not chunks_exact) so a malformed odd-length payload
-            // doesn't silently lose its final byte — the lone trailing byte
+            // doesn't silently lose its final byte; the lone trailing byte
             // is just ignored here, same end-result for well-formed data.
             let mut s = String::with_capacity(payload.len() / 2);
             for pair in payload.chunks(2) {

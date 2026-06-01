@@ -6,7 +6,7 @@
 //! benefits from compression (Partitioned mode loop-mounts the ISO, which the
 //! kernel does not do for compressed images), so the streaming lives here.
 //!
-//! Progress is reported in compressed-input bytes — that is the value the
+//! Progress is reported in compressed-input bytes; that is the value the
 //! kernel actually reads from disk, so reporting it gives a smooth, accurate
 //! bar regardless of how the data unpacks. The decompressed size is generally
 //! unknown until we are done (gzip's ISIZE field is mod 2^32, xz/zstd carry it
@@ -26,7 +26,7 @@ use crate::vhd;
 pub struct Image {
     /// Stream of *decompressed* bytes; for a raw image this is just the file.
     pub reader: Box<dyn Read + Send>,
-    /// Size of the file on disk (compressed or not) — the basis for progress.
+    /// Size of the file on disk (compressed or not), the basis for progress.
     pub compressed_size: u64,
     /// How many bytes the reader has pulled from the underlying file so far.
     /// Distinct from "bytes produced": for a compressed image, this advances
@@ -39,7 +39,7 @@ pub struct Image {
 
 /// Open `path` for streaming, transparently decompressing if the extension is
 /// one of the supported compressed formats. The extension is taken from the
-/// *outermost* part of the filename only — `linux.iso.xz` is xz-decompressed
+/// *outermost* part of the filename only; `linux.iso.xz` is xz-decompressed
 /// once, yielding the raw ISO bytes.
 pub fn open(path: &Path) -> Result<Image> {
     let file = File::open(path).with_context(|| format!("opening image {}", path.display()))?;
@@ -118,7 +118,7 @@ impl<R: Read> Read for ByteCounter<R> {
 
 /// A `Read` wrapper that records how many bytes have been *produced* (not
 /// just read from disk) into a shared counter. Used for VHD, where the
-/// virtual disk size — not the file size — is what the user expects the
+/// virtual disk size, not the file size, is what the user expects the
 /// progress bar to track against.
 struct VirtualSizeCounter<R: Read> {
     inner: R,

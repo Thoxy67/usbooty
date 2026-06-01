@@ -2,7 +2,7 @@
 //!
 //! The image is a fixed-size 1 MiB FAT boot image fetched at runtime from the
 //! Rufus repository. It deliberately tracks Rufus `master`, so a pinned content
-//! hash would go stale; callers validate its *structure* instead — the exact
+//! hash would go stale; callers validate its *structure* instead: the exact
 //! size, a sane jump instruction at offset 0, and the boot-sector signature.
 //! This catches a truncated or corrupted download before it is ever written to
 //! a USB drive's boot partition.

@@ -1,4 +1,4 @@
-//! `specialize` pass — post-image, pre-OOBE machine settings: the BypassNRO
+//! `specialize` pass, post-image, pre-OOBE machine settings: the BypassNRO
 //! fallback, the no-network-during-OOBE trick, the .NET 3.5 enabler, the
 //! computer name, the time zone, and the debloat-policy / desktop-helpers
 //! imports staged onto the USB by [`super::write`].

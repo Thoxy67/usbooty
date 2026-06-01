@@ -2,7 +2,7 @@
 //! back onto the Qt thread.
 //!
 //! This runs entirely on a worker thread. It never touches QObject state
-//! directly — every UI mutation is marshalled through [`CxxQtThread::queue`],
+//! directly; every UI mutation is marshalled through [`CxxQtThread::queue`],
 //! which runs the closure on the Qt main thread.
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -36,7 +36,7 @@ fn helper_path() -> PathBuf {
 
 /// A smoothed transfer-rate estimator shared by the writer and the downloader.
 struct RateMeter {
-    /// When the transfer began — the basis for elapsed time and average rate.
+    /// When the transfer began, the basis for elapsed time and average rate.
     start: Instant,
     /// The most recent `(timestamp, bytes)` anchor for the windowed rate.
     anchor: (Instant, u64),
@@ -54,8 +54,17 @@ impl RateMeter {
         }
     }
 
+    /// Forget the windowed estimate for a new phase, keeping `start` so the
+    /// job-wide elapsed time in the final summary stays intact. Called on every
+    /// phase boundary so a previous phase's speed/ETA never lingers on screen.
+    fn reset(&mut self) {
+        let now = Instant::now();
+        self.anchor = (now, 0);
+        self.rate = 0.0;
+    }
+
     /// Feed the latest cumulative byte count and return the smoothed rate.
-    /// A drop in `done` — a new phase that restarts at zero — resets the
+    /// A drop in `done`, a new phase that restarts at zero, resets the
     /// estimate so one phase's speed never leaks into the next.
     fn sample(&mut self, done: u64) -> f64 {
         let now = Instant::now();
@@ -152,7 +161,7 @@ pub fn run_job(
 
     // FreeDOS: download the kernel + command-shell zips (latest GitHub
     // release per repo), extract the three files we need, and hand the
-    // helper the cached paths. Same justification as UEFI:NTFS — the
+    // helper the cached paths. Same justification as UEFI:NTFS: the
     // helper has no network access.
     if let Job::Freedos {
         filesystem,
@@ -220,7 +229,11 @@ pub fn run_job(
     let mut last_error: Option<String> = None;
     let mut saw_done = false;
     let mut meter = RateMeter::new();
-    let mut moved = 0u64;
+    // Bytes moved in the current phase, and the sum of completed phases' peaks,
+    // so the final-summary average reflects the whole job rather than a single
+    // phase's count divided by the whole-job elapsed time.
+    let mut phase_peak = 0u64;
+    let mut job_total = 0u64;
     for line in BufReader::new(stdout).lines() {
         let Ok(line) = line else { break };
         let Ok(msg) = serde_json::from_str::<ProgressMsg>(&line) else {
@@ -229,8 +242,18 @@ pub fn run_job(
         match &msg {
             ProgressMsg::Done => saw_done = true,
             ProgressMsg::Error { text } => last_error = Some(text.clone()),
+            ProgressMsg::Phase { .. } => {
+                // A new phase: bank this phase's bytes, reset the rate estimate
+                // and clear the stale speed/ETA so they don't freeze on screen
+                // through phases that report no byte progress (Formatting,
+                // Flushing, boot-file copy, …).
+                job_total += phase_peak;
+                phase_peak = 0;
+                meter.reset();
+                push_stats(&qt, 0.0, 0, 0);
+            }
             ProgressMsg::Progress { done, total, .. } => {
-                moved = moved.max(*done);
+                phase_peak = phase_peak.max(*done);
                 let rate = meter.sample(*done);
                 push_stats(&qt, rate, *done, *total);
             }
@@ -240,7 +263,7 @@ pub fn run_job(
     }
 
     let (success, message) = outcome(&mut child, saw_done, last_error);
-    let message = finish_summary(success, message, &meter, moved);
+    let message = finish_summary(success, message, &meter, job_total + phase_peak);
 
     // Post-job convenience: a freshly-prepared Ventoy stick with no source
     // ISO is most useful with the data partition open, so the user can drop
@@ -265,7 +288,7 @@ pub fn run_job(
 
 /// Mount the first (data) partition of a freshly-prepared Ventoy device and
 /// open it in the user's file manager. All steps are best-effort and
-/// silent on failure — if `udisksctl` or `xdg-open` are missing, or the
+/// silent on failure; if `udisksctl` or `xdg-open` are missing, or the
 /// kernel hasn't re-read the partition table yet, the user just doesn't
 /// get the auto-open and can mount manually.
 fn open_ventoy_data_partition(device_path: &std::path::Path) {
@@ -280,7 +303,7 @@ fn open_ventoy_data_partition(device_path: &std::path::Path) {
 
     // Try to mount via udisksctl (the freedesktop way). When the partition
     // is already mounted (Ventoy's own update path often auto-mounts), the
-    // call fails — fall back to findmnt to discover where it ended up.
+    // call fails; fall back to findmnt to discover where it ended up.
     let mount_output = Command::new("udisksctl")
         .args(["mount", "-b"])
         .arg(&part)
@@ -540,7 +563,7 @@ pub fn download_windows_url(
                 ctrl.as_mut().set_speed(QString::default());
                 ctrl.as_mut().set_eta(QString::default());
                 ctrl.as_mut().set_status(QString::from(&summary));
-                // Every digest was computed during the download — use them
+                // Every digest was computed during the download; use them
                 // directly instead of re-reading the whole ISO.
                 ctrl.as_mut().set_downloaded_iso(&path, &hashes);
                 ctrl.as_mut().job_finished(true, QString::from(&summary));

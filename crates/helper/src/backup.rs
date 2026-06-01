@@ -1,4 +1,4 @@
-//! Snapshot a block device into an image file — the inverse of the DD path.
+//! Snapshot a block device into an image file, the inverse of the DD path.
 //!
 //! Useful for capturing a working USB stick so it can be restored later, or
 //! sent off as a bug report. The output is compressed transparently when the
@@ -33,7 +33,7 @@ pub fn run(
         ));
     }
 
-    // Open read-only — no need for O_EXCL, since we are not changing anything.
+    // Open read-only; no need for O_EXCL, since we are not changing anything.
     let dev =
         File::open(device_path).with_context(|| format!("opening {}", device_path.display()))?;
     let total = blockdev::device_size(&dev)?;
@@ -61,7 +61,7 @@ pub fn run(
     use std::io::Read;
     while done < total {
         if abort.load(Ordering::SeqCst) {
-            // Drop the partial output before bailing — half-written backups
+            // Drop the partial output before bailing; half-written backups
             // are confusing and easy to mistake for complete ones.
             drop(writer);
             let _ = std::fs::remove_file(image_path);
@@ -100,7 +100,7 @@ pub fn run(
     }
 
     emit::log(format!(
-        "Done — saved {done} bytes to {}",
+        "Done: saved {done} bytes to {}",
         image_path.display()
     ));
     Ok(())
@@ -149,7 +149,7 @@ fn verify(
 
     let _ = device; // device hash is computed during the read pass above
     if hasher.finalize() != expected_device_hash {
-        bail!("verification failed — the image read back does not match the device");
+        bail!("verification failed; the image read back does not match the device");
     }
     emit::log("Verification passed");
     Ok(())

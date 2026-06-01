@@ -1,7 +1,7 @@
 //! ISO image analysis.
 //!
 //! Reads the ISO9660 filesystem directly (via `cdfs`, with Joliet/Rock Ridge
-//! support) — no mounting, no root — and classifies the image the way Rufus's
+//! support) (no mounting, no root) and classifies the image the way Rufus's
 //! `iso.c` does: Windows vs Linux, and whether `install.wim` is too large for
 //! plain FAT32.
 
@@ -35,7 +35,7 @@ pub fn analyze(path: &Path) -> IsoReport {
         return report;
     };
     let Ok(iso) = ISO9660::new(file) else {
-        return report; // not an ISO9660 image — DD is still fine
+        return report; // not an ISO9660 image; DD is still fine
     };
 
     // Root-level marker files.
@@ -84,7 +84,7 @@ pub fn analyze(path: &Path) -> IsoReport {
 
     report.os_kind = classify(&report);
 
-    // Linux distro family — drives persistence routing and the per-distro
+    // Linux distro family: drives persistence routing and the per-distro
     // post-copy fix table. Mirrors Rufus's `iso.c` quirk table; see
     // `DistroFamily::detect` in `usbooty-core` for the full cascade.
     if report.os_kind == OsKind::Linux {
@@ -132,7 +132,7 @@ pub fn analyze(path: &Path) -> IsoReport {
     // failures (unreadable file, not a PE, no .sbat section) are silent.
     if report.has_efi_boot_dir {
         report.revocation_warnings = scan_efi_revocations(&iso);
-        // ISO9660 pass missed the EFI dir on a UDF image — try UDF for SBAT.
+        // ISO9660 pass missed the EFI dir on a UDF image; try UDF for SBAT.
         if report.revocation_warnings.is_empty()
             && let Ok(file) = File::open(path)
             && let Some(mut udf) = usbooty_core::udf::UdfFs::open(file)
@@ -324,6 +324,135 @@ fn scan_efi_revocations(iso: &ISO9660<File>) -> Vec<String> {
         }
     }
     warnings
+}
+
+/// One selectable Windows edition inside an `install.wim` / `install.esd`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WimEdition {
+    /// 1-based WIM image index, as passed to `wimlib-imagex apply`.
+    pub index: u32,
+    /// Display name (`<DISPLAYNAME>`, falling back to `<NAME>`).
+    pub name: String,
+    /// `<WINDOWS><EDITIONID>` (e.g. "Professional"); empty if absent.
+    pub edition_id: String,
+    /// Applied (uncompressed) footprint, used for the fit check; 0 if unknown.
+    pub total_bytes: u64,
+    /// `<WINDOWS><VERSION><BUILD>` (e.g. 26100); 0 if absent. All images in one
+    /// `install.wim` share a build, so it doubles as the drive's Windows build,
+    /// used to gate version-specific customization options the way Rufus does.
+    pub build: u32,
+}
+
+/// Enumerate the Windows editions in the ISO's `sources/install.wim` (or
+/// `install.esd`) by reading just the WIM header and its trailing XML metadata
+/// (no full extraction, cheap even on a multi-gigabyte image). Returns an empty
+/// vector when the ISO is not UDF, has no install image, or the metadata can't
+/// be parsed; the caller then falls back to a default index.
+pub fn list_wim_editions(path: &Path) -> Vec<WimEdition> {
+    let Ok(file) = File::open(path) else {
+        return Vec::new();
+    };
+    let Some(mut udf) = usbooty_core::udf::UdfFs::open(file) else {
+        return Vec::new();
+    };
+    let segs: &[&str] = if udf.file_size(&["sources", "install.wim"]).is_some() {
+        &["sources", "install.wim"]
+    } else if udf.file_size(&["sources", "install.esd"]).is_some() {
+        &["sources", "install.esd"]
+    } else {
+        return Vec::new();
+    };
+
+    // WIM header (WIMHEADER_V1_PACKED): the XML-data resource header sits at
+    // byte 0x48: 24 bytes of { size+flags (u64), offset (i64), originalSize }.
+    let header = udf.read_file_range(segs, 0, 208).unwrap_or_default();
+    if header.len() < 0x60 || &header[0..5] != b"MSWIM" {
+        return Vec::new();
+    }
+    let size =
+        u64::from_le_bytes(header[0x48..0x50].try_into().unwrap()) & 0x00FF_FFFF_FFFF_FFFF;
+    let offset = u64::from_le_bytes(header[0x50..0x58].try_into().unwrap());
+    // WIM XML data is stored uncompressed; cap the read defensively.
+    if size == 0 || size > 64 * 1024 * 1024 {
+        return Vec::new();
+    }
+    let xml_bytes = udf.read_file_range(segs, offset, size).unwrap_or_default();
+    parse_wim_editions(&decode_utf16le(&xml_bytes))
+}
+
+/// The Windows build number of the ISO's `install.wim` (e.g. 26100), or 0 when
+/// it can't be determined. All images in one `install.wim` share a build, so the
+/// drive build is the first non-zero per-image build. Used to gate
+/// version-specific customization options the way Rufus does (Win 11 ≥ 22000;
+/// the Microsoft-account-bypass option ≥ 22500).
+pub fn windows_build(path: &Path) -> u32 {
+    list_wim_editions(path)
+        .into_iter()
+        .map(|e| e.build)
+        .find(|&b| b != 0)
+        .unwrap_or(0)
+}
+
+/// Decode a UTF-16LE byte buffer (with an optional leading BOM) to a `String`,
+/// replacing invalid units rather than failing.
+fn decode_utf16le(bytes: &[u8]) -> String {
+    let start = if bytes.starts_with(&[0xFF, 0xFE]) { 2 } else { 0 };
+    let units: Vec<u16> = bytes[start..]
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    char::decode_utf16(units)
+        .map(|r| r.unwrap_or('\u{FFFD}'))
+        .collect()
+}
+
+/// Parse the WIM `<WIM>` XML metadata into one [`WimEdition`] per `<IMAGE>`.
+/// Deliberately lightweight string scanning; the document is small, flat, and
+/// machine-generated, so a full XML parser would be overkill.
+fn parse_wim_editions(xml: &str) -> Vec<WimEdition> {
+    let mut out = Vec::new();
+    for chunk in xml.split("<IMAGE ").skip(1) {
+        let block = chunk.split("</IMAGE>").next().unwrap_or(chunk);
+        let Some(index) = attr_value(block, "INDEX").and_then(|v| v.parse().ok()) else {
+            continue;
+        };
+        let name = tag_text(block, "DISPLAYNAME")
+            .or_else(|| tag_text(block, "NAME"))
+            .unwrap_or_else(|| format!("Image {index}"));
+        let edition_id = tag_text(block, "EDITIONID").unwrap_or_default();
+        let total_bytes = tag_text(block, "TOTALBYTES")
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(0);
+        let build = tag_text(block, "BUILD")
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(0);
+        out.push(WimEdition {
+            index,
+            name,
+            edition_id,
+            total_bytes,
+            build,
+        });
+    }
+    out.sort_by_key(|e| e.index);
+    out
+}
+
+/// Extract `name="value"` (double-quoted) from an opening-tag fragment.
+fn attr_value(s: &str, name: &str) -> Option<String> {
+    let key = format!("{name}=\"");
+    let start = s.find(&key)? + key.len();
+    let end = s[start..].find('"')? + start;
+    Some(s[start..end].to_string())
+}
+
+/// Extract the text between `<tag>` and `</tag>`.
+fn tag_text(s: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = s.find(&open)? + open.len();
+    let end = s[start..].find(&close)? + start;
+    Some(s[start..end].trim().to_string())
 }
 
 /// The set of digests usbooty computes for a source ISO.
@@ -530,7 +659,7 @@ fn read_volume_label(path: &Path) -> String {
     String::new()
 }
 
-/// Detect a UDF filesystem by scanning the ISO Volume Recognition Sequence —
+/// Detect a UDF filesystem by scanning the ISO Volume Recognition Sequence:
 /// a run of 2048-byte descriptors starting at sector 16. An `NSR0x` descriptor
 /// means UDF is present; `TEA01` terminates the sequence.
 fn detect_udf(path: &Path) -> bool {
@@ -618,6 +747,38 @@ fn detect_isohybrid(path: &Path) -> bool {
 mod tests {
     use super::*;
     use std::process::Command;
+
+    #[test]
+    fn parses_wim_xml_editions() {
+        let xml = r#"<WIM><TOTALBYTES>1</TOTALBYTES>
+            <IMAGE INDEX="1"><NAME>Windows 11 Home</NAME>
+              <WINDOWS><EDITIONID>Core</EDITIONID>
+                <VERSION><MAJOR>10</MAJOR><MINOR>0</MINOR><BUILD>26100</BUILD></VERSION></WINDOWS>
+              <DISPLAYNAME>Windows 11 Home</DISPLAYNAME>
+              <TOTALBYTES>15000000000</TOTALBYTES></IMAGE>
+            <IMAGE INDEX="6"><NAME>Windows 11 Pro</NAME>
+              <WINDOWS><EDITIONID>Professional</EDITIONID>
+                <VERSION><MAJOR>10</MAJOR><MINOR>0</MINOR><BUILD>26100</BUILD></VERSION></WINDOWS>
+              <DISPLAYNAME>Windows 11 Pro</DISPLAYNAME></IMAGE></WIM>"#;
+        let eds = parse_wim_editions(xml);
+        assert_eq!(eds.len(), 2);
+        assert_eq!(eds[0].index, 1);
+        assert_eq!(eds[0].name, "Windows 11 Home");
+        assert_eq!(eds[0].edition_id, "Core");
+        assert_eq!(eds[0].total_bytes, 15_000_000_000);
+        assert_eq!(eds[0].build, 26100);
+        assert_eq!(eds[1].index, 6);
+        assert_eq!(eds[1].edition_id, "Professional");
+        assert_eq!(eds[1].total_bytes, 0); // no per-image TOTALBYTES
+        assert_eq!(eds[1].build, 26100);
+    }
+
+    #[test]
+    fn decodes_utf16le_with_bom() {
+        // BOM + "Hi"
+        let bytes = [0xFF, 0xFE, b'H', 0x00, b'i', 0x00];
+        assert_eq!(decode_utf16le(&bytes), "Hi");
+    }
 
     /// Build an ISO from `(relative_path, contents)` pairs using `xorriso`.
     /// Returns `None` if `xorriso` is not installed (so CI without it skips).

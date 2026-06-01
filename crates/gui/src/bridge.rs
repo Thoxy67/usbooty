@@ -1,4 +1,4 @@
-//! The `AppController` QObject — the single object QML binds to.
+//! The `AppController` QObject: the single object QML binds to.
 //!
 //! Properties hold all UI state; invokables are the actions QML triggers. The
 //! heavy lifting (device enumeration, running the privileged helper) lives in
@@ -46,7 +46,7 @@ pub mod qobject {
         // True while digests are being computed; the panel shows a spinner
         // per hash until each value lands.
         #[qproperty(bool, hashing)]
-        // Cross-check result from the rg-adguard SHA-1 database — when the
+        // Cross-check result from the rg-adguard SHA-1 database: when the
         // computed SHA-1 matches a known retail Microsoft ISO, the upstream
         // service returns a canonical filename + category which the UI
         // surfaces as a green "verified" badge. Empty when no match (the
@@ -79,12 +79,12 @@ pub mod qobject {
         // swaps the size slider for a simple on/off checkbox in that case.
         #[qproperty(bool, persistence_inline)]
         #[qproperty(i32, persistence_size)]
-        // Maximum slider value in MiB — derived from the *currently selected*
+        // Maximum slider value in MiB, derived from the *currently selected*
         // device's free space minus the ISO and a small filesystem margin.
         // Updates reactively whenever the device or the ISO changes, so the
         // slider always reflects what will actually fit on the target.
         #[qproperty(i32, persistence_max_mib)]
-        // Recognised distribution family — surfaced in the UI so the user
+        // Recognised distribution family, surfaced in the UI so the user
         // can see why a particular persistence scheme was selected.
         #[qproperty(QString, distro_label)]
         // Windows 11 installer customization (applied via autounattend.xml).
@@ -94,6 +94,9 @@ pub mod qobject {
         // For Windows ISOs with install.wim larger than 4 GiB, choose between
         // UEFI:NTFS (false, default) and wimlib-imagex split onto FAT32 (true).
         #[qproperty(bool, split_wim)]
+        // For Windows ISOs: lay a full, directly-bootable portable Windows onto
+        // the drive (Windows To Go) instead of a Windows installer.
+        #[qproperty(bool, windows_to_go)]
         #[qproperty(bool, bypass_tpm)]
         #[qproperty(bool, bypass_secureboot)]
         #[qproperty(bool, bypass_ram)]
@@ -168,23 +171,40 @@ pub mod qobject {
         // the user opens the dialog; set to a "Loading…" placeholder when
         // `request_inspect` fires, then overwritten with the worker output.
         #[qproperty(QString, inspect_text)]
-        // Persistent flag — when true the activity-log column stays open
+        // Persistent flag: when true the activity-log column stays open
         // even with an empty buffer, instead of auto-expanding only when
         // the first log line arrives. Saved in `settings.json`.
         #[qproperty(bool, show_logs_always)]
         // Newline-separated labels of the filesystems whose mkfs tools are
-        // actually installed on the host — the QML combo binds to this so
+        // actually installed on the host; the QML combo binds to this so
         // a user only sees variants that will succeed.
         #[qproperty(QString, available_filesystems)]
         // Windows-download dialog: newline-separated language / option lists.
         #[qproperty(QString, win_languages)]
         #[qproperty(QString, win_options)]
+        // Windows To Go edition picker: newline-joined combo labels, plus the
+        // selected combo index (mapped to a WIM image index Rust-side).
+        #[qproperty(QString, wtg_editions)]
+        #[qproperty(i32, wtg_edition_index)]
+        // Windows build number of the loaded ISO's install.wim (e.g. 26100), 0
+        // if unknown. Drives Rufus-style version gating of the customization
+        // options in QML (Win 11 ≥ 22000; Microsoft-account bypass ≥ 22500).
+        #[qproperty(i32, windows_build)]
+        // Windows To Go: keep the host machine's internal disks offline
+        // (partmgr SanPolicy=4). Rufus's "Prevent Windows To Go from accessing
+        // internal disks", default on.
+        #[qproperty(bool, wtg_offline_internal_disks)]
         // QEMU boot-test capabilities, probed once at startup: whether
         // qemu-system-x86_64 is installed, whether /dev/kvm offers hardware
         // acceleration, and whether OVMF firmware is present for UEFI boot.
         #[qproperty(bool, qemu_available)]
         #[qproperty(bool, qemu_kvm)]
         #[qproperty(bool, qemu_uefi)]
+        #[qproperty(bool, qemu_secureboot)]
+        #[qproperty(bool, qemu_tpm)]
+        // Host limits for the boot-test dialog's vCPU and memory sliders.
+        #[qproperty(i32, qemu_cpus_max)]
+        #[qproperty(i32, qemu_ram_max)]
         type AppController = super::AppControllerRust;
     }
 
@@ -219,6 +239,9 @@ pub mod qobject {
         /// Fetch the download options for a language (by index).
         #[qinvokable]
         fn win_fetch_options(self: Pin<&mut AppController>, language_index: i32);
+        /// Enumerate the Windows To Go editions in the loaded ISO's install.wim.
+        #[qinvokable]
+        fn refresh_wtg_editions(self: Pin<&mut AppController>);
         /// Download a Windows ISO option (by index) and select it as the source.
         #[qinvokable]
         fn win_download(self: Pin<&mut AppController>, option_index: i32);
@@ -231,7 +254,7 @@ pub mod qobject {
         #[qinvokable]
         fn compute_hashes(self: Pin<&mut AppController>);
         /// Read the selected device into the given image file (a snapshot /
-        /// backup — the inverse of writing). The output is compressed when
+        /// backup, the inverse of writing). The output is compressed when
         /// the path ends in `.gz`, `.xz`, `.zst`, or `.bz2`.
         #[qinvokable]
         fn start_backup(self: Pin<&mut AppController>, image_path: &QString);
@@ -278,7 +301,7 @@ pub mod qobject {
         #[qinvokable]
         fn request_inspect(self: Pin<&mut AppController>);
         /// Force the UI into English (true) or back to the system locale
-        /// (false). Live-switches via QTranslator — no restart needed.
+        /// (false). Live-switches via QTranslator; no restart needed.
         #[qinvokable]
         fn apply_force_english(self: Pin<&mut AppController>, force: bool);
         /// Copy the host's locale (from `$LANG` / `$LC_ALL`) into `locale`
@@ -313,10 +336,22 @@ pub mod qobject {
         fn clear_log(self: Pin<&mut AppController>);
         /// Boot the selected device in QEMU to verify it boots, in BIOS/MBR
         /// mode (`uefi = false`) or UEFI mode (`uefi = true`), with `mem_mb`
-        /// of RAM and optional KVM acceleration. The device is opened in
-        /// snapshot mode, so the test never modifies it.
+        /// of RAM and optional KVM acceleration. With `snapshot = true` the
+        /// device is opened in snapshot mode so the test never modifies it;
+        /// `snapshot = false` persists writes (needed to run Windows OOBE to
+        /// completion), mutating the real device.
         #[qinvokable]
-        fn verify_boot(self: Pin<&mut AppController>, mem_mb: i32, uefi: bool, kvm: bool);
+        fn verify_boot(
+            self: Pin<&mut AppController>,
+            mem_mb: i32,
+            cpus: i32,
+            firmware: i32,
+            q35: bool,
+            audio: bool,
+            kvm: bool,
+            network: bool,
+            snapshot: bool,
+        );
         /// Live status of every dependency (required and optional) for the
         /// Dependencies dialog. One line per dependency, fields separated by
         /// the unit-separator byte (U+001F): present(0/1), group key, name,
@@ -346,7 +381,7 @@ pub mod qobject {
 /// a plain worker thread instead, with no helper, so it uses an atomic flag
 /// that the download loop polls.
 pub struct JobHandle {
-    /// The helper's stdin — writing `cancel` here aborts it.
+    /// The helper's stdin; writing `cancel` here aborts it.
     pub stdin: Arc<Mutex<Option<std::process::ChildStdin>>>,
     /// Cancellation flag for the Windows-ISO download.
     pub download_abort: Option<Arc<AtomicBool>>,
@@ -384,6 +419,7 @@ pub struct AppControllerRust {
     windows_iso: bool,
     linux_iso: bool,
     split_wim: bool,
+    windows_to_go: bool,
     bypass_tpm: bool,
     bypass_secureboot: bool,
     bypass_ram: bool,
@@ -432,9 +468,17 @@ pub struct AppControllerRust {
     available_filesystem_kinds: Vec<FileSystem>,
     win_languages: QString,
     win_options: QString,
+    wtg_editions: QString,
+    wtg_edition_index: i32,
+    windows_build: i32,
+    wtg_offline_internal_disks: bool,
     qemu_available: bool,
     qemu_kvm: bool,
     qemu_uefi: bool,
+    qemu_secureboot: bool,
+    qemu_tpm: bool,
+    qemu_cpus_max: i32,
+    qemu_ram_max: i32,
     /// Enumerated devices, parallel to the `devices` display strings.
     device_list: Vec<DeviceInfo>,
     /// Analysis of the currently selected ISO.
@@ -443,9 +487,12 @@ pub struct AppControllerRust {
     pub win_catalog: Option<crate::windisco::Catalog>,
     /// Download options fetched for the selected language.
     pub win_option_list: Vec<crate::windisco::DownloadOption>,
+    /// Editions enumerated from the loaded ISO's install.wim, parallel to the
+    /// `wtg_editions` combo labels. Maps the combo index to a WIM image index.
+    pub wtg_edition_list: Vec<crate::iso::WimEdition>,
     /// Present while a job runs; cleared by the runner when it finishes.
     pub job: Option<JobHandle>,
-    /// Plain-text activity log — the source of truth for "Save log".
+    /// Plain-text activity log: the source of truth for "Save log".
     pub full_log: String,
     /// The same log accumulated as HTML, handed to the QML view via
     /// `log_html_snapshot` when its lazily-loaded panel (re)appears.
@@ -497,6 +544,7 @@ impl Default for AppControllerRust {
             windows_iso: false,
             linux_iso: false,
             split_wim: false,
+            windows_to_go: false,
             bypass_tpm: false,
             bypass_secureboot: false,
             bypass_ram: false,
@@ -542,13 +590,24 @@ impl Default for AppControllerRust {
             available_filesystem_kinds: fs_kinds,
             win_languages: QString::default(),
             win_options: QString::default(),
+            wtg_editions: QString::default(),
+            wtg_edition_index: 0,
+            windows_build: 0,
+            // Rufus's "Prevent Windows To Go from accessing internal disks" is
+            // checked by default.
+            wtg_offline_internal_disks: true,
             qemu_available: qemu_caps.qemu,
             qemu_kvm: qemu_caps.kvm,
             qemu_uefi: qemu_caps.uefi,
+            qemu_secureboot: crate::qemu::secureboot_available(),
+            qemu_tpm: qemu_caps.tpm,
+            qemu_cpus_max: crate::qemu::host_cpus() as i32,
+            qemu_ram_max: crate::qemu::host_ram_mb() as i32,
             device_list: Vec::new(),
             iso_report: None,
             win_catalog: None,
             win_option_list: Vec::new(),
+            wtg_edition_list: Vec::new(),
             job: None,
             full_log: String::new(),
             log_html: String::new(),
@@ -560,7 +619,7 @@ impl qobject::AppController {
     /// Record one activity-log line: keep the plain text for "Save log", keep
     /// the HTML for repopulating the lazily-loaded view, flip the non-empty
     /// flag on the first line, and emit the new line for the live view to
-    /// append. Each call is O(line length) — no whole-buffer rebuild.
+    /// append. Each call is O(line length); no whole-buffer rebuild.
     pub fn push_log_line(mut self: core::pin::Pin<&mut Self>, plain: &str, html: &str) {
         {
             let mut rust = self.as_mut().rust_mut();
@@ -651,7 +710,7 @@ impl qobject::AppController {
     /// Recompute the slider's max from the *currently selected* device's
     /// free space (size − ISO − 64 MiB filesystem margin) and clamp the
     /// current value if the new ceiling fell below it. Called whenever the
-    /// device selection, the device list, or the loaded ISO changes — that
+    /// device selection, the device list, or the loaded ISO changes, that
     /// way the slider's `to:` is always exactly what will fit on the chosen
     /// drive, never a stale 32 GiB hard-cap.
     fn refresh_persistence_max(mut self: core::pin::Pin<&mut Self>) {
@@ -689,7 +748,7 @@ impl qobject::AppController {
     }
 
     /// Recompute [`fit_warning`](Self::fit_warning) from the current ISO and
-    /// selected device — set to a message when the image cannot possibly fit.
+    /// selected device; set to a message when the image cannot possibly fit.
     fn refresh_fit_warning(mut self: core::pin::Pin<&mut Self>) {
         let iso_bytes = self.rust().iso_report.as_ref().map_or(0, |r| r.total_size);
         let device = self
@@ -861,6 +920,15 @@ impl qobject::AppController {
         self.as_mut().set_persistence_size(0);
         self.as_mut().set_windows_iso(is_windows);
         self.as_mut().set_linux_iso(is_linux);
+        // The install.wim build number gates the version-specific customization
+        // options in QML the way Rufus does, for both the install and the
+        // Windows To Go dialogs. 0 for non-Windows / unknown (= show all).
+        let build = if is_windows {
+            crate::iso::windows_build(std::path::Path::new(path))
+        } else {
+            0
+        };
+        self.as_mut().set_windows_build(build as i32);
 
         // Auto-pick the write method the image needs: the partition method for
         // a Windows/Linux installer, raw DD for a BSD/other image (DD is
@@ -876,7 +944,7 @@ impl qobject::AppController {
         self.as_mut().rust_mut().iso_report = Some(report);
 
         match hashes {
-            // Downloaded ISO — every digest was computed during the download.
+            // Downloaded ISO: every digest was computed during the download.
             Some(h) => {
                 self.as_mut().set_iso_md5(QString::from(&h.md5));
                 self.as_mut().set_iso_sha1(QString::from(&h.sha1));
@@ -884,7 +952,7 @@ impl qobject::AppController {
                 self.as_mut().set_iso_sha512(QString::from(&h.sha512));
                 self.as_mut().set_iso_blake3(QString::from(&h.blake3));
             }
-            // Local ISO — hashing a multi-gigabyte file is CPU-heavy (five
+            // Local ISO: hashing a multi-gigabyte file is CPU-heavy (five
             // hashers updated per chunk), so leave the digests blank until
             // the user explicitly asks for them via `compute_hashes()`.
             None => {
@@ -910,7 +978,7 @@ impl qobject::AppController {
             2 => true,
             // Ventoy: an ISO is optional, but if given it must fit.
             3 => self.fit_warning().to_string().is_empty(),
-            // FreeDOS bootable USB needs no ISO at all — just the device.
+            // FreeDOS bootable USB needs no ISO at all, just the device.
             4 => true,
             _ => {
                 !self.iso_path().to_string().is_empty() && self.fit_warning().to_string().is_empty()
@@ -944,7 +1012,7 @@ impl qobject::AppController {
 
         // Re-scan the system and confirm the chosen device still exists exactly
         // as it was enumerated. A USB drive swapped into this slot since the
-        // user picked it would reuse the same `/dev` node — writing to it would
+        // user picked it would reuse the same `/dev` node; writing to it would
         // destroy the wrong disk. Any mismatch aborts and forces a fresh scan.
         let Some(selected) = self.selected_info().cloned() else {
             self.as_mut()
@@ -1024,7 +1092,7 @@ impl qobject::AppController {
             4 => {
                 // FreeDOS bootable USB. The user can pick FAT16 or FAT32
                 // (anything else is rejected by the helper). The cached
-                // FreeDOS files get filled in by the runner — see
+                // FreeDOS files get filled in by the runner; see
                 // `crates/gui/src/runner.rs::run_job`.
                 let filesystem = match self.filesystem_kind_from_index(*self.filesystem()) {
                     fs @ (usbooty_core::FileSystem::Fat16 | usbooty_core::FileSystem::Fat32) => fs,
@@ -1039,6 +1107,32 @@ impl qobject::AppController {
                     kernel_sys: std::path::PathBuf::new(),
                     command_com: std::path::PathBuf::new(),
                     boot_bin: std::path::PathBuf::new(),
+                    opts: JobOptions {
+                        label,
+                        full_format,
+                        verify,
+                    },
+                }
+            }
+            // Windows To Go: a full, directly-bootable portable Windows. Chosen
+            // via the checkbox (only offered for Windows ISOs), so it short-
+            // circuits the normal partition-and-copy path below. The edition
+            // index comes from the picker (default to the first image). Only the
+            // offline-applicable customization subset is forwarded; the helper
+            // drops the rest (see `unattend::write_offline`).
+            _ if *self.windows_iso() && *self.windows_to_go() => {
+                let image_index = self
+                    .rust()
+                    .wtg_edition_list
+                    .get(*self.wtg_edition_index() as usize)
+                    .map(|e| e.index)
+                    .unwrap_or(1);
+                let setup = self.collect_windows_setup();
+                Job::WindowsToGo {
+                    iso_path: iso.into(),
+                    device_path: device.into(),
+                    image_index,
+                    windows_setup: setup.is_active().then_some(setup),
                     opts: JobOptions {
                         label,
                         full_format,
@@ -1065,7 +1159,7 @@ impl qobject::AppController {
                 // A persistent overlay, when the ISO supports it and the user
                 // asked for it. Partition-based schemes need a non-zero slider
                 // value (the partition size); inline-directory schemes
-                // (currently Slax) ignore the slider — the data partition
+                // (currently Slax) ignore the slider; the data partition
                 // itself absorbs writes, no separate partition to size.
                 let persistence = self
                     .rust()
@@ -1083,41 +1177,13 @@ impl qobject::AppController {
                     });
                 // Windows-installer customization, when the source is Windows.
                 let windows_setup = if *self.windows_iso() {
-                    let setup = WindowsSetup {
-                        bypass_tpm: *self.bypass_tpm(),
-                        bypass_secureboot: *self.bypass_secureboot(),
-                        bypass_ram: *self.bypass_ram(),
-                        bypass_storage: *self.bypass_storage(),
-                        bypass_cpu: *self.bypass_cpu(),
-                        bypass_disk: *self.bypass_disk(),
-                        skip_msaccount: *self.skip_msaccount(),
-                        disable_network_during_oobe: *self.disable_network_during_oobe(),
-                        hide_wireless_setup: *self.hide_wireless_setup(),
-                        hide_oem_registration: *self.hide_oem_registration(),
-                        network_location_work: *self.network_location_work(),
-                        disable_telemetry: *self.disable_telemetry(),
-                        accept_eula: *self.accept_eula(),
-                        enable_dotnet35: *self.enable_dotnet35(),
-                        apply_debloat: *self.apply_debloat(),
-                        disable_bitlocker: *self.disable_bitlocker(),
-                        windows_ca_2023: *self.windows_ca_2023(),
-                        desktop_helpers: *self.desktop_helpers(),
-                        force_edition_picker: *self.force_edition_picker(),
-                        local_account: trimmed_opt(&self.local_account().to_string()),
-                        local_account_password: non_empty_opt(
-                            &self.local_account_password().to_string(),
-                        ),
-                        computer_name: trimmed_opt(&self.computer_name().to_string()),
-                        locale: trimmed_opt(&self.locale().to_string()),
-                        timezone: trimmed_opt(&self.timezone().to_string()),
-                        product_key: trimmed_opt(&self.product_key().to_string()),
-                    };
+                    let setup = self.collect_windows_setup();
                     setup.is_active().then_some(setup)
                 } else {
                     None
                 };
                 // Offer the legacy-BIOS Syslinux/extlinux installer for Linux
-                // ISOs that ship an isolinux config — Windows ISOs already
+                // ISOs that ship an isolinux config; Windows ISOs already
                 // come with their own boot loader, so skip them.
                 let install_bootloader = *self.linux_iso()
                     && self
@@ -1208,6 +1274,70 @@ impl qobject::AppController {
         });
     }
 
+    /// Enumerate the Windows editions in the loaded ISO's install.wim for the
+    /// Windows To Go picker. Cheap (reads only the WIM header + XML), so it runs
+    /// synchronously; leaves the combo empty if the ISO has no install image.
+    pub fn refresh_wtg_editions(mut self: core::pin::Pin<&mut Self>) {
+        let iso = self.iso_path().to_string();
+        if iso.is_empty() {
+            return;
+        }
+        let editions = crate::iso::list_wim_editions(std::path::Path::new(&iso));
+        let labels = editions
+            .iter()
+            .map(|e| {
+                if e.edition_id.is_empty() {
+                    e.name.clone()
+                } else {
+                    format!("{} ({})", e.name, e.edition_id)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        // All images in one install.wim share a build; use the first non-zero
+        // one to gate version-specific options the way Rufus does.
+        let build = editions.iter().map(|e| e.build).find(|&b| b != 0).unwrap_or(0);
+        self.as_mut().set_windows_build(build as i32);
+        self.as_mut().set_wtg_editions(QString::from(&labels));
+        self.as_mut().set_wtg_edition_index(0);
+        self.as_mut().rust_mut().wtg_edition_list = editions;
+    }
+
+    /// Build a [`WindowsSetup`] from the current customization properties.
+    /// Shared by the partition-copy installer path and Windows To Go; each
+    /// caller decides which subset actually applies (WTG drops the windowsPE
+    /// and install-media-relative flags, see [`crate::unattend::write_offline`]).
+    fn collect_windows_setup(&self) -> WindowsSetup {
+        WindowsSetup {
+            bypass_tpm: *self.bypass_tpm(),
+            bypass_secureboot: *self.bypass_secureboot(),
+            bypass_ram: *self.bypass_ram(),
+            bypass_storage: *self.bypass_storage(),
+            bypass_cpu: *self.bypass_cpu(),
+            bypass_disk: *self.bypass_disk(),
+            skip_msaccount: *self.skip_msaccount(),
+            disable_network_during_oobe: *self.disable_network_during_oobe(),
+            hide_wireless_setup: *self.hide_wireless_setup(),
+            hide_oem_registration: *self.hide_oem_registration(),
+            network_location_work: *self.network_location_work(),
+            disable_telemetry: *self.disable_telemetry(),
+            accept_eula: *self.accept_eula(),
+            enable_dotnet35: *self.enable_dotnet35(),
+            apply_debloat: *self.apply_debloat(),
+            disable_bitlocker: *self.disable_bitlocker(),
+            windows_ca_2023: *self.windows_ca_2023(),
+            desktop_helpers: *self.desktop_helpers(),
+            force_edition_picker: *self.force_edition_picker(),
+            local_account: trimmed_opt(&self.local_account().to_string()),
+            local_account_password: non_empty_opt(&self.local_account_password().to_string()),
+            computer_name: trimmed_opt(&self.computer_name().to_string()),
+            locale: trimmed_opt(&self.locale().to_string()),
+            timezone: trimmed_opt(&self.timezone().to_string()),
+            product_key: trimmed_opt(&self.product_key().to_string()),
+            wtg_offline_internal_disks: *self.wtg_offline_internal_disks(),
+        }
+    }
+
     /// Download a previously-listed Windows ISO option and select it.
     pub fn win_download(mut self: core::pin::Pin<&mut Self>, option_index: i32) {
         if *self.busy() || option_index < 0 {
@@ -1224,7 +1354,7 @@ impl qobject::AppController {
         let abort_clone = abort.clone();
         std::thread::spawn(move || crate::runner::download_windows_url(qt, url, abort_clone));
 
-        // Park a JobHandle so cancel() can reach the download — the
+        // Park a JobHandle so cancel() can reach the download; the
         // stdin slot stays empty because there is no helper to talk to.
         self.as_mut().rust_mut().job = Some(JobHandle {
             stdin: Arc::new(Mutex::new(None)),
@@ -1232,7 +1362,7 @@ impl qobject::AppController {
         });
     }
 
-    /// Open Microsoft's official download page in the system browser — the
+    /// Open Microsoft's official download page in the system browser: the
     /// reliable fallback when Microsoft's anti-bot system blocks the in-app
     /// query (common on VPNs and some ISPs).
     pub fn open_microsoft_page(&self, version_index: i32) {
@@ -1398,7 +1528,7 @@ impl qobject::AppController {
 
     /// Resolve a filesystem-combo index against the list of filesystems
     /// whose mkfs tool is actually installed. Falls back to the first entry
-    /// (or FAT32) if the index is out of range — the QML side is responsible
+    /// (or FAT32) if the index is out of range; the QML side is responsible
     /// for keeping `filesystem` in `[0, available_filesystem_kinds.len())`,
     /// but a stale binding shouldn't crash the app.
     fn filesystem_kind_from_index(&self, index: i32) -> FileSystem {
@@ -1445,20 +1575,56 @@ impl qobject::AppController {
 
     /// Boot the selected device in QEMU (BIOS/MBR or UEFI) to verify it boots.
     /// Spawns QEMU and returns; outcome is surfaced on the status bar.
-    pub fn verify_boot(mut self: core::pin::Pin<&mut Self>, mem_mb: i32, uefi: bool, kvm: bool) {
+    pub fn verify_boot(
+        mut self: core::pin::Pin<&mut Self>,
+        mem_mb: i32,
+        cpus: i32,
+        firmware: i32,
+        q35: bool,
+        audio: bool,
+        kvm: bool,
+        network: bool,
+        snapshot: bool,
+    ) {
         let Some(path) = self.selected_info().map(|d| d.path.clone()) else {
             self.as_mut()
                 .set_status(QString::from("Select a device to boot-test first"));
             return;
         };
-        let mem = mem_mb.max(0) as u32;
-        match crate::qemu::launch(&path, mem, uefi, kvm) {
+        let cfg = crate::qemu::BootConfig {
+            mem_mb: mem_mb.max(0) as u32,
+            cpus: cpus.max(1) as u32,
+            firmware: firmware.clamp(0, 2) as u32,
+            q35,
+            audio,
+            kvm,
+            network,
+            snapshot,
+        };
+        // Collect QEMU's log lines (full command, env, swtpm, any startup
+        // error) during the call, then flush them to the activity log.
+        let mut lines: Vec<String> = Vec::new();
+        let result = crate::qemu::launch(&path, &cfg, &mut |line| lines.push(line.to_string()));
+        for line in &lines {
+            let html = crate::runner::log_html(usbooty_core::LogLevel::Info, line);
+            self.as_mut().push_log_line(line, &html);
+        }
+        match result {
             Ok(()) => self.as_mut().set_status(QString::from(&format!(
-                "Launched QEMU boot test for {path} (snapshot mode — the device is not modified)"
+                "Launched QEMU boot test for {path}{}",
+                if snapshot {
+                    " (snapshot mode: the device is not modified)"
+                } else {
+                    " (writes persist: the device IS modified)"
+                }
             ))),
-            Err(e) => self.as_mut().set_status(QString::from(&format!(
-                "Could not start the boot test: {e:#}"
-            ))),
+            Err(e) => {
+                let msg = format!("Boot test failed: {e:#}");
+                let html = crate::runner::log_html(usbooty_core::LogLevel::Error, &msg);
+                self.as_mut().push_log_line(&msg, &html);
+                self.as_mut()
+                    .set_status(QString::from(&format!("Could not start the boot test: {e:#}")));
+            }
         }
     }
 
@@ -1503,7 +1669,7 @@ impl qobject::AppController {
     /// 0 when the slider should stay disabled (no device, no ISO, no room).
     ///
     /// Kept as an invokable for the "Max" button, which wants the freshest
-    /// value at the moment of the click — and as a thin wrapper around the
+    /// value at the moment of the click, and as a thin wrapper around the
     /// same pure function `refresh_persistence_max` uses, so the property
     /// and the invokable can never drift apart.
     pub fn max_persistence_mib(&self) -> i32 {
@@ -1512,7 +1678,7 @@ impl qobject::AppController {
 
     /// Trim the current label down to whatever fits on the chosen filesystem,
     /// matching what the helper will end up writing. Pure preview, no state
-    /// change — surfaced as a tooltip on the volume-label field.
+    /// change, surfaced as a tooltip on the volume-label field.
     pub fn sanitized_label(&self) -> QString {
         let label = self.label().to_string();
         let cleaned = match *self.filesystem() {
@@ -1643,7 +1809,7 @@ impl qobject::AppController {
     /// Try to power off the currently-selected USB device. Best-effort: prefers
     /// `udisksctl power-off` (the desktop standard, handles unmount + safe
     /// removal in one call), falling back to `eject -F`. Either tool runs as
-    /// the user — no helper hop needed. The selection is cleared and the
+    /// the user; no helper hop needed. The selection is cleared and the
     /// device list refreshed on success so the now-detached device disappears
     /// from the combo.
     pub fn eject_device(mut self: core::pin::Pin<&mut Self>) {
@@ -1689,7 +1855,7 @@ fn trimmed_opt(s: &str) -> Option<String> {
     (!t.is_empty()).then(|| t.to_string())
 }
 
-/// `Some(s)` when `s` is non-empty *without* trimming — passwords keep their
+/// `Some(s)` when `s` is non-empty *without* trimming; passwords keep their
 /// leading and trailing whitespace because Windows compares them exactly.
 fn non_empty_opt(s: &str) -> Option<String> {
     (!s.is_empty()).then(|| s.to_string())
@@ -1776,7 +1942,7 @@ fn clean_udev(raw: &str) -> String {
         .join("\n")
 }
 
-/// Collect every mounted source under `device_path` from `/proc/mounts` —
+/// Collect every mounted source under `device_path` from `/proc/mounts`:
 /// the whole-disk node itself and any `sdc1`, `sdc12`, `nvme0n1p1`, …
 /// partition. Same prefix-then-digit / `p`-then-digit match the previous
 /// `is_device_mounted` used, just returning every hit instead of the first.

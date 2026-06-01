@@ -80,7 +80,7 @@ const DEPS: &[DepSpec] = &[
         purpose: "Privilege escalation for every device write",
         probe: Probe::Bin,
     },
-    // Filesystem formatters — one per FS the user can pick. mkfs.ext2/ext3
+    // Filesystem formatters: one per FS the user can pick. mkfs.ext2/ext3
     // ship with e2fsprogs alongside mkfs.ext4, so ext4 stands in for all three.
     DepSpec {
         kind: DepKind::Filesystem,
@@ -152,7 +152,7 @@ const DEPS: &[DepSpec] = &[
         purpose: "NILFS2 formatting",
         probe: Probe::Bin,
     },
-    // Feature backends — each sits behind a specific write method.
+    // Feature backends: each sits behind a specific write method.
     DepSpec {
         kind: DepKind::Feature,
         name: "ventoy",
@@ -164,7 +164,14 @@ const DEPS: &[DepSpec] = &[
         kind: DepKind::Feature,
         name: "wimlib-imagex",
         package: "wimlib",
-        purpose: "Split install.wim for Windows installers on FAT32",
+        purpose: "Split install.wim on FAT32 / apply it for Windows To Go",
+        probe: Probe::Bin,
+    },
+    DepSpec {
+        kind: DepKind::Feature,
+        name: "hivexsh",
+        package: "hivex",
+        purpose: "Build the portable BCD boot store for Windows To Go",
         probe: Probe::Bin,
     },
     DepSpec {
@@ -210,7 +217,7 @@ const DEPS: &[DepSpec] = &[
         purpose: "Hardware acceleration for the boot test",
         probe: Probe::Path("/dev/kvm"),
     },
-    // Quality-of-life integrations — attempted in-context, silent on absence.
+    // Quality-of-life integrations: attempted in-context, silent on absence.
     DepSpec {
         kind: DepKind::QualityOfLife,
         name: "smartctl",
@@ -299,7 +306,7 @@ pub fn warning() -> String {
     }
 }
 
-/// Return the filesystems usbooty can actually create on this host — i.e.
+/// Return the filesystems usbooty can actually create on this host, i.e.
 /// the ones whose `mkfs` tool is installed. The GUI binds its filesystem
 /// combo to this list so a user is never offered something that would fail
 /// at format time. FAT32 always appears even if `mkfs.vfat` is missing, so
