@@ -91,12 +91,13 @@ pub mod qobject {
         // `windows_iso` / `linux_iso` reflect the detected OS of the source ISO.
         #[qproperty(bool, windows_iso)]
         #[qproperty(bool, linux_iso)]
+        // Windows build number of the loaded ISO's install.wim (e.g. 26100), 0
+        // if unknown / not a Windows ISO. Gates version-specific installer
+        // options in QML (Windows 11 is build >= 22000).
+        #[qproperty(i32, windows_build)]
         // For Windows ISOs with install.wim larger than 4 GiB, choose between
         // UEFI:NTFS (false, default) and wimlib-imagex split onto FAT32 (true).
         #[qproperty(bool, split_wim)]
-        // For Windows ISOs: lay a full, directly-bootable portable Windows onto
-        // the drive (Windows To Go) instead of a Windows installer.
-        #[qproperty(bool, windows_to_go)]
         #[qproperty(bool, bypass_tpm)]
         #[qproperty(bool, bypass_secureboot)]
         #[qproperty(bool, bypass_ram)]
@@ -182,18 +183,6 @@ pub mod qobject {
         // Windows-download dialog: newline-separated language / option lists.
         #[qproperty(QString, win_languages)]
         #[qproperty(QString, win_options)]
-        // Windows To Go edition picker: newline-joined combo labels, plus the
-        // selected combo index (mapped to a WIM image index Rust-side).
-        #[qproperty(QString, wtg_editions)]
-        #[qproperty(i32, wtg_edition_index)]
-        // Windows build number of the loaded ISO's install.wim (e.g. 26100), 0
-        // if unknown. Drives Rufus-style version gating of the customization
-        // options in QML (Win 11 ≥ 22000; Microsoft-account bypass ≥ 22500).
-        #[qproperty(i32, windows_build)]
-        // Windows To Go: keep the host machine's internal disks offline
-        // (partmgr SanPolicy=4). Rufus's "Prevent Windows To Go from accessing
-        // internal disks", default on.
-        #[qproperty(bool, wtg_offline_internal_disks)]
         // QEMU boot-test capabilities, probed once at startup: whether
         // qemu-system-x86_64 is installed, whether /dev/kvm offers hardware
         // acceleration, and whether OVMF firmware is present for UEFI boot.
@@ -239,9 +228,6 @@ pub mod qobject {
         /// Fetch the download options for a language (by index).
         #[qinvokable]
         fn win_fetch_options(self: Pin<&mut AppController>, language_index: i32);
-        /// Enumerate the Windows To Go editions in the loaded ISO's install.wim.
-        #[qinvokable]
-        fn refresh_wtg_editions(self: Pin<&mut AppController>);
         /// Download a Windows ISO option (by index) and select it as the source.
         #[qinvokable]
         fn win_download(self: Pin<&mut AppController>, option_index: i32);
@@ -418,8 +404,8 @@ pub struct AppControllerRust {
     distro_label: QString,
     windows_iso: bool,
     linux_iso: bool,
+    windows_build: i32,
     split_wim: bool,
-    windows_to_go: bool,
     bypass_tpm: bool,
     bypass_secureboot: bool,
     bypass_ram: bool,
@@ -468,10 +454,6 @@ pub struct AppControllerRust {
     available_filesystem_kinds: Vec<FileSystem>,
     win_languages: QString,
     win_options: QString,
-    wtg_editions: QString,
-    wtg_edition_index: i32,
-    windows_build: i32,
-    wtg_offline_internal_disks: bool,
     qemu_available: bool,
     qemu_kvm: bool,
     qemu_uefi: bool,
@@ -487,9 +469,6 @@ pub struct AppControllerRust {
     pub win_catalog: Option<crate::windisco::Catalog>,
     /// Download options fetched for the selected language.
     pub win_option_list: Vec<crate::windisco::DownloadOption>,
-    /// Editions enumerated from the loaded ISO's install.wim, parallel to the
-    /// `wtg_editions` combo labels. Maps the combo index to a WIM image index.
-    pub wtg_edition_list: Vec<crate::iso::WimEdition>,
     /// Present while a job runs; cleared by the runner when it finishes.
     pub job: Option<JobHandle>,
     /// Plain-text activity log: the source of truth for "Save log".
@@ -543,8 +522,8 @@ impl Default for AppControllerRust {
             distro_label: QString::default(),
             windows_iso: false,
             linux_iso: false,
+            windows_build: 0,
             split_wim: false,
-            windows_to_go: false,
             bypass_tpm: false,
             bypass_secureboot: false,
             bypass_ram: false,
@@ -590,12 +569,6 @@ impl Default for AppControllerRust {
             available_filesystem_kinds: fs_kinds,
             win_languages: QString::default(),
             win_options: QString::default(),
-            wtg_editions: QString::default(),
-            wtg_edition_index: 0,
-            windows_build: 0,
-            // Rufus's "Prevent Windows To Go from accessing internal disks" is
-            // checked by default.
-            wtg_offline_internal_disks: true,
             qemu_available: qemu_caps.qemu,
             qemu_kvm: qemu_caps.kvm,
             qemu_uefi: qemu_caps.uefi,
@@ -607,7 +580,6 @@ impl Default for AppControllerRust {
             iso_report: None,
             win_catalog: None,
             win_option_list: Vec::new(),
-            wtg_edition_list: Vec::new(),
             job: None,
             full_log: String::new(),
             log_html: String::new(),
@@ -920,9 +892,8 @@ impl qobject::AppController {
         self.as_mut().set_persistence_size(0);
         self.as_mut().set_windows_iso(is_windows);
         self.as_mut().set_linux_iso(is_linux);
-        // The install.wim build number gates the version-specific customization
-        // options in QML the way Rufus does, for both the install and the
-        // Windows To Go dialogs. 0 for non-Windows / unknown (= show all).
+        // The install.wim build number gates version-specific installer options
+        // in QML (Windows 11 is build >= 22000). 0 for non-Windows / unknown.
         let build = if is_windows {
             crate::iso::windows_build(std::path::Path::new(path))
         } else {
@@ -1114,32 +1085,6 @@ impl qobject::AppController {
                     },
                 }
             }
-            // Windows To Go: a full, directly-bootable portable Windows. Chosen
-            // via the checkbox (only offered for Windows ISOs), so it short-
-            // circuits the normal partition-and-copy path below. The edition
-            // index comes from the picker (default to the first image). Only the
-            // offline-applicable customization subset is forwarded; the helper
-            // drops the rest (see `unattend::write_offline`).
-            _ if *self.windows_iso() && *self.windows_to_go() => {
-                let image_index = self
-                    .rust()
-                    .wtg_edition_list
-                    .get(*self.wtg_edition_index() as usize)
-                    .map(|e| e.index)
-                    .unwrap_or(1);
-                let setup = self.collect_windows_setup();
-                Job::WindowsToGo {
-                    iso_path: iso.into(),
-                    device_path: device.into(),
-                    image_index,
-                    windows_setup: setup.is_active().then_some(setup),
-                    opts: JobOptions {
-                        label,
-                        full_format,
-                        verify,
-                    },
-                }
-            }
             _ => {
                 // Filesystem and large-`install.wim` handling are decided
                 // automatically from the ISO analysis: NTFS + UEFI:NTFS for a
@@ -1274,39 +1219,8 @@ impl qobject::AppController {
         });
     }
 
-    /// Enumerate the Windows editions in the loaded ISO's install.wim for the
-    /// Windows To Go picker. Cheap (reads only the WIM header + XML), so it runs
-    /// synchronously; leaves the combo empty if the ISO has no install image.
-    pub fn refresh_wtg_editions(mut self: core::pin::Pin<&mut Self>) {
-        let iso = self.iso_path().to_string();
-        if iso.is_empty() {
-            return;
-        }
-        let editions = crate::iso::list_wim_editions(std::path::Path::new(&iso));
-        let labels = editions
-            .iter()
-            .map(|e| {
-                if e.edition_id.is_empty() {
-                    e.name.clone()
-                } else {
-                    format!("{} ({})", e.name, e.edition_id)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        // All images in one install.wim share a build; use the first non-zero
-        // one to gate version-specific options the way Rufus does.
-        let build = editions.iter().map(|e| e.build).find(|&b| b != 0).unwrap_or(0);
-        self.as_mut().set_windows_build(build as i32);
-        self.as_mut().set_wtg_editions(QString::from(&labels));
-        self.as_mut().set_wtg_edition_index(0);
-        self.as_mut().rust_mut().wtg_edition_list = editions;
-    }
-
-    /// Build a [`WindowsSetup`] from the current customization properties.
-    /// Shared by the partition-copy installer path and Windows To Go; each
-    /// caller decides which subset actually applies (WTG drops the windowsPE
-    /// and install-media-relative flags, see [`crate::unattend::write_offline`]).
+    /// Build a [`WindowsSetup`] from the current customization properties,
+    /// applied during the partition-copy installer path via `autounattend.xml`.
     fn collect_windows_setup(&self) -> WindowsSetup {
         WindowsSetup {
             bypass_tpm: *self.bypass_tpm(),
@@ -1334,7 +1248,6 @@ impl qobject::AppController {
             locale: trimmed_opt(&self.locale().to_string()),
             timezone: trimmed_opt(&self.timezone().to_string()),
             product_key: trimmed_opt(&self.product_key().to_string()),
-            wtg_offline_internal_disks: *self.wtg_offline_internal_disks(),
         }
     }
 

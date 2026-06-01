@@ -326,71 +326,41 @@ fn scan_efi_revocations(iso: &ISO9660<File>) -> Vec<String> {
     warnings
 }
 
-/// One selectable Windows edition inside an `install.wim` / `install.esd`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WimEdition {
-    /// 1-based WIM image index, as passed to `wimlib-imagex apply`.
-    pub index: u32,
-    /// Display name (`<DISPLAYNAME>`, falling back to `<NAME>`).
-    pub name: String,
-    /// `<WINDOWS><EDITIONID>` (e.g. "Professional"); empty if absent.
-    pub edition_id: String,
-    /// Applied (uncompressed) footprint, used for the fit check; 0 if unknown.
-    pub total_bytes: u64,
-    /// `<WINDOWS><VERSION><BUILD>` (e.g. 26100); 0 if absent. All images in one
-    /// `install.wim` share a build, so it doubles as the drive's Windows build,
-    /// used to gate version-specific customization options the way Rufus does.
-    pub build: u32,
-}
-
-/// Enumerate the Windows editions in the ISO's `sources/install.wim` (or
-/// `install.esd`) by reading just the WIM header and its trailing XML metadata
-/// (no full extraction, cheap even on a multi-gigabyte image). Returns an empty
-/// vector when the ISO is not UDF, has no install image, or the metadata can't
-/// be parsed; the caller then falls back to a default index.
-pub fn list_wim_editions(path: &Path) -> Vec<WimEdition> {
+/// The Windows build number of the ISO's `install.wim` / `install.esd` (e.g.
+/// 26100), or 0 when it can't be determined (not a Windows/UDF ISO, no install
+/// image, or unparseable metadata). Read cheaply from the WIM header + its
+/// trailing XML (no full extraction). Used to gate version-specific installer
+/// customization options by Windows version, the way Rufus does (Windows 11 is
+/// build >= 22000; the Microsoft-account-bypass option, build >= 22500).
+pub fn windows_build(path: &Path) -> u32 {
     let Ok(file) = File::open(path) else {
-        return Vec::new();
+        return 0;
     };
     let Some(mut udf) = usbooty_core::udf::UdfFs::open(file) else {
-        return Vec::new();
+        return 0;
     };
     let segs: &[&str] = if udf.file_size(&["sources", "install.wim"]).is_some() {
         &["sources", "install.wim"]
     } else if udf.file_size(&["sources", "install.esd"]).is_some() {
         &["sources", "install.esd"]
     } else {
-        return Vec::new();
+        return 0;
     };
 
     // WIM header (WIMHEADER_V1_PACKED): the XML-data resource header sits at
     // byte 0x48: 24 bytes of { size+flags (u64), offset (i64), originalSize }.
     let header = udf.read_file_range(segs, 0, 208).unwrap_or_default();
     if header.len() < 0x60 || &header[0..5] != b"MSWIM" {
-        return Vec::new();
+        return 0;
     }
     let size =
         u64::from_le_bytes(header[0x48..0x50].try_into().unwrap()) & 0x00FF_FFFF_FFFF_FFFF;
     let offset = u64::from_le_bytes(header[0x50..0x58].try_into().unwrap());
-    // WIM XML data is stored uncompressed; cap the read defensively.
     if size == 0 || size > 64 * 1024 * 1024 {
-        return Vec::new();
+        return 0;
     }
     let xml_bytes = udf.read_file_range(segs, offset, size).unwrap_or_default();
-    parse_wim_editions(&decode_utf16le(&xml_bytes))
-}
-
-/// The Windows build number of the ISO's `install.wim` (e.g. 26100), or 0 when
-/// it can't be determined. All images in one `install.wim` share a build, so the
-/// drive build is the first non-zero per-image build. Used to gate
-/// version-specific customization options the way Rufus does (Win 11 ≥ 22000;
-/// the Microsoft-account-bypass option ≥ 22500).
-pub fn windows_build(path: &Path) -> u32 {
-    list_wim_editions(path)
-        .into_iter()
-        .map(|e| e.build)
-        .find(|&b| b != 0)
-        .unwrap_or(0)
+    parse_windows_build(&decode_utf16le(&xml_bytes))
 }
 
 /// Decode a UTF-16LE byte buffer (with an optional leading BOM) to a `String`,
@@ -406,53 +376,17 @@ fn decode_utf16le(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// Parse the WIM `<WIM>` XML metadata into one [`WimEdition`] per `<IMAGE>`.
-/// Deliberately lightweight string scanning; the document is small, flat, and
-/// machine-generated, so a full XML parser would be overkill.
-fn parse_wim_editions(xml: &str) -> Vec<WimEdition> {
-    let mut out = Vec::new();
-    for chunk in xml.split("<IMAGE ").skip(1) {
-        let block = chunk.split("</IMAGE>").next().unwrap_or(chunk);
-        let Some(index) = attr_value(block, "INDEX").and_then(|v| v.parse().ok()) else {
-            continue;
-        };
-        let name = tag_text(block, "DISPLAYNAME")
-            .or_else(|| tag_text(block, "NAME"))
-            .unwrap_or_else(|| format!("Image {index}"));
-        let edition_id = tag_text(block, "EDITIONID").unwrap_or_default();
-        let total_bytes = tag_text(block, "TOTALBYTES")
-            .and_then(|v| v.trim().parse().ok())
-            .unwrap_or(0);
-        let build = tag_text(block, "BUILD")
-            .and_then(|v| v.trim().parse().ok())
-            .unwrap_or(0);
-        out.push(WimEdition {
-            index,
-            name,
-            edition_id,
-            total_bytes,
-            build,
-        });
-    }
-    out.sort_by_key(|e| e.index);
-    out
-}
-
-/// Extract `name="value"` (double-quoted) from an opening-tag fragment.
-fn attr_value(s: &str, name: &str) -> Option<String> {
-    let key = format!("{name}=\"");
-    let start = s.find(&key)? + key.len();
-    let end = s[start..].find('"')? + start;
-    Some(s[start..end].to_string())
-}
-
-/// Extract the text between `<tag>` and `</tag>`.
-fn tag_text(s: &str, tag: &str) -> Option<String> {
-    let open = format!("<{tag}>");
-    let close = format!("</{tag}>");
-    let start = s.find(&open)? + open.len();
-    let end = s[start..].find(&close)? + start;
-    Some(s[start..end].trim().to_string())
+/// Pull the first `<BUILD>NNNNN</BUILD>` value out of the WIM `<WIM>` XML
+/// metadata (every `<IMAGE>` in one `install.wim` shares the same build).
+fn parse_windows_build(xml: &str) -> u32 {
+    let Some(start) = xml.find("<BUILD>") else {
+        return 0;
+    };
+    let rest = &xml[start + "<BUILD>".len()..];
+    let Some(end) = rest.find("</BUILD>") else {
+        return 0;
+    };
+    rest[..end].trim().parse().unwrap_or(0)
 }
 
 /// The set of digests usbooty computes for a source ISO.
@@ -749,28 +683,13 @@ mod tests {
     use std::process::Command;
 
     #[test]
-    fn parses_wim_xml_editions() {
+    fn parses_windows_build_from_wim_xml() {
         let xml = r#"<WIM><TOTALBYTES>1</TOTALBYTES>
-            <IMAGE INDEX="1"><NAME>Windows 11 Home</NAME>
-              <WINDOWS><EDITIONID>Core</EDITIONID>
-                <VERSION><MAJOR>10</MAJOR><MINOR>0</MINOR><BUILD>26100</BUILD></VERSION></WINDOWS>
-              <DISPLAYNAME>Windows 11 Home</DISPLAYNAME>
-              <TOTALBYTES>15000000000</TOTALBYTES></IMAGE>
-            <IMAGE INDEX="6"><NAME>Windows 11 Pro</NAME>
-              <WINDOWS><EDITIONID>Professional</EDITIONID>
-                <VERSION><MAJOR>10</MAJOR><MINOR>0</MINOR><BUILD>26100</BUILD></VERSION></WINDOWS>
-              <DISPLAYNAME>Windows 11 Pro</DISPLAYNAME></IMAGE></WIM>"#;
-        let eds = parse_wim_editions(xml);
-        assert_eq!(eds.len(), 2);
-        assert_eq!(eds[0].index, 1);
-        assert_eq!(eds[0].name, "Windows 11 Home");
-        assert_eq!(eds[0].edition_id, "Core");
-        assert_eq!(eds[0].total_bytes, 15_000_000_000);
-        assert_eq!(eds[0].build, 26100);
-        assert_eq!(eds[1].index, 6);
-        assert_eq!(eds[1].edition_id, "Professional");
-        assert_eq!(eds[1].total_bytes, 0); // no per-image TOTALBYTES
-        assert_eq!(eds[1].build, 26100);
+            <IMAGE INDEX="1"><NAME>Windows 11 Pro</NAME>
+              <WINDOWS><VERSION><MAJOR>10</MAJOR><MINOR>0</MINOR><BUILD>26100</BUILD></VERSION></WINDOWS>
+            </IMAGE></WIM>"#;
+        assert_eq!(parse_windows_build(xml), 26100);
+        assert_eq!(parse_windows_build("<WIM></WIM>"), 0);
     }
 
     #[test]

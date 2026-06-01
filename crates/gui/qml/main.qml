@@ -8,12 +8,15 @@ import com.usbooty
 ApplicationWindow {
     id: window
     visible: true
-    // Rufus-style version gating for the Windows customization options, keyed
-    // off the loaded ISO's install.wim build number (app.windowsBuild). 0 means
-    // unknown (parse failed / not a Windows ISO), in which case we show the
-    // option rather than hide something the user might need.
+    // Version gating for the Windows installer options, keyed off the loaded
+    // ISO's install.wim build number (app.windowsBuild). 0 means unknown (parse
+    // failed / not a Windows ISO), in which case we show the option rather than
+    // hide something the user might need.
     readonly property bool isWin11: app.windowsBuild === 0 || app.windowsBuild >= 22000
     readonly property bool isWin11_22500: app.windowsBuild === 0 || app.windowsBuild >= 22500
+    // Windows 11 24H2 is build 26100; the forced-local-account network trick is
+    // only needed on 24H2+.
+    readonly property bool isWin11_24H2: app.windowsBuild === 0 || app.windowsBuild >= 26100
     width: 660
     // Height is content-driven (see binding below). Keep a generous floor
     // so a freshly-launched window doesn't snap to a sliver while QML is
@@ -1156,27 +1159,6 @@ ApplicationWindow {
                         + "BIOS flashing utilities and legacy DOS tools.")
                 }
 
-                // ---- Windows To Go edition picker --------------------------
-                // Shown when the "Windows To Go" checkbox (below the format
-                // options) is ticked for a Windows ISO.
-                Label {
-                    text: qsTr("Windows edition")
-                    visible: app.windowsIso && app.windowsToGo
-                }
-                FormCombo {
-                    Layout.fillWidth: true
-                    visible: app.windowsIso && app.windowsToGo
-                    enabled: !app.busy && app.wtgEditions !== ""
-                    model: app.wtgEditions === "" ? [qsTr("(no editions found)")]
-                                                  : app.wtgEditions.split("\n")
-                    currentIndex: app.wtgEditionIndex
-                    onActivated: function(index) { app.wtgEditionIndex = index }
-                    ToolTip.delay: 500
-                    ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Which Windows edition from the ISO's install.wim to "
-                        + "apply to the drive.")
-                }
-
                 Label { text: qsTr("Filesystem") }
                 FormCombo {
                     Layout.fillWidth: true
@@ -1280,36 +1262,11 @@ ApplicationWindow {
             }
 
             WrapCheckBox {
-                // Only meaningful for a Windows ISO written with the partition
-                // method: turns the installer write into a Windows To Go build
-                // (a full, portable Windows that boots from the stick itself).
-                visible: app.windowsIso && app.method === 1
-                text: qsTr("Windows To Go: install a portable Windows that boots from this drive (UEFI only)")
-                enabled: !app.busy
-                checked: app.windowsToGo
-                onToggled: {
-                    app.windowsToGo = checked
-                    // Populate the edition picker on first enable.
-                    if (checked)
-                        app.refreshWtgEditions()
-                }
-                ToolTip.delay: 500
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Instead of a Windows installer, lay a full, already-installed "
-                    + "Windows onto the drive that boots directly from the USB on any UEFI PC. "
-                    + "Applies one edition from the ISO (chosen above) to an NTFS partition, with a "
-                    + "FAT32 EFI partition and a portable boot configuration. Needs a large, fast "
-                    + "drive (32 GB+, USB 3 / SSD strongly recommended) and wimlib + hivex installed. "
-                    + "First boot still runs the Windows setup experience (OOBE).")
-            }
-
-            WrapCheckBox {
                 // Windows ISO with oversized install.wim, partition method.
                 // The default is the UEFI:NTFS two-partition layout; ticking
                 // this asks USBooty to split install.wim into <4 GiB chunks
                 // via wimlib-imagex and keep a single FAT32 partition.
-                // Irrelevant for Windows To Go (which applies the image to NTFS).
-                visible: app.windowsIso && app.method === 1 && !app.windowsToGo
+                visible: app.windowsIso && app.method === 1
                 text: qsTr("Split install.wim onto FAT32 (needs wimlib-imagex): broader firmware support than UEFI:NTFS")
                 enabled: !app.busy
                 checked: app.splitWim
@@ -2105,51 +2062,17 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
 
-            // --- Windows To Go ------------------------------------------
-            // Options specific to a portable Windows To Go install, mirroring
-            // Rufus's Windows To Go dialog. The Microsoft-account, data-
-            // collection, local-account and regional options live in the groups
-            // below (shared with the install path); this group holds the one
-            // WTG-only toggle Rufus shows.
-            Label {
-                text: qsTr("Windows To Go"); font.bold: true; Layout.topMargin: 6
-                visible: app.windowsToGo
-            }
-            Rectangle {
-                Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5
-                visible: app.windowsToGo
-            }
-            WrapCheckBox {
-                visible: app.windowsToGo
-                text: qsTr("Prevent Windows To Go from accessing internal disks")
-                checked: app.wtgOfflineInternalDisks
-                onToggled: app.wtgOfflineInternalDisks = checked
-                ToolTip.delay: 500
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Keeps the host PC's internal disks offline while the portable "
-                    + "Windows boots (partmgr SanPolicy=4), so the running system can't mount or "
-                    + "alter the host's own volumes, and the host's internal Windows disk isn't "
-                    + "brought online during first-boot setup (which can trigger a reboot loop on "
-                    + "Windows 11 24H2/25H2). Recommended; leave on unless you specifically need "
-                    + "the portable Windows to see the host's drives.")
-            }
-
             // --- Setup-time tweaks --------------------------------------
-            // These act during Windows Setup, which never runs for Windows To
-            // Go (method 5) (an applied image boots straight to OOBE) so the
-            // whole group is hidden in that mode.
+            // These act during Windows Setup.
             Label {
                 text: qsTr("Setup"); font.bold: true; Layout.topMargin: 6
-                visible: !app.windowsToGo
             }
             Rectangle {
                 Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5
-                visible: !app.windowsToGo
             }
             WrapCheckBox {
-                // Win 11-only (Rufus gates this to Win 11 too); Setup-time, so
-                // never for Windows To Go.
-                visible: !app.windowsToGo && window.isWin11
+                // Win 11-only: these hardware checks don't exist on Windows 10.
+                visible: window.isWin11
                 text: qsTr("Bypass Windows 11 hardware checks: TPM, Secure Boot, RAM, Storage, CPU, Disk")
                 checked: app.bypassTpm
                 onToggled: {
@@ -2168,7 +2091,6 @@ ApplicationWindow {
                     + "registry flags during Setup. Has no effect on Windows 10 (which doesn't check any of these).")
             }
             WrapCheckBox {
-                visible: !app.windowsToGo
                 text: qsTr("Auto-accept the Setup EULA")
                 checked: app.acceptEula
                 onToggled: app.acceptEula = checked
@@ -2179,7 +2101,6 @@ ApplicationWindow {
                     + "scroll and tick the box.")
             }
             WrapCheckBox {
-                visible: !app.windowsToGo
                 text: qsTr("Enable .NET Framework 3.5 from the install media")
                 checked: app.enableDotnet35
                 onToggled: app.enableDotnet35 = checked
@@ -2192,7 +2113,6 @@ ApplicationWindow {
             }
             RowLayout {
                 Layout.fillWidth: true
-                visible: !app.windowsToGo
                 Label { text: qsTr("Product key"); Layout.minimumWidth: 110 }
                 TextField {
                     Layout.fillWidth: true
@@ -2207,7 +2127,6 @@ ApplicationWindow {
                 }
             }
             WrapCheckBox {
-                visible: !app.windowsToGo
                 text: qsTr("Force the edition picker at boot (OEM PCs)")
                 checked: app.forceEditionPicker
                 onToggled: app.forceEditionPicker = checked
@@ -2239,10 +2158,8 @@ ApplicationWindow {
                     + "different mechanisms, this option applies whichever one is needed.")
             }
             WrapCheckBox {
-                // Hidden for Windows To Go: disabling adapters breaks 24H2 OOBE
-                // on a portable install (the update/servicing step stalls and
-                // OOBE loops). The local-account skip above covers WTG instead.
-                visible: !app.windowsToGo
+                // Win 11 24H2+ only: the forced-local-account network trick.
+                visible: window.isWin11_24H2
                 text: qsTr("Disable network during OOBE: force local account on Win 11 24H2+")
                 checked: app.disableNetworkDuringOobe
                 onToggled: app.disableNetworkDuringOobe = checked
@@ -2298,12 +2215,8 @@ ApplicationWindow {
             }
 
             // --- Local account ------------------------------------------
-            // For a normal install: name + optional password (a password also
-            // enables one-shot auto-logon). For Windows To Go: name only,
-            // matching Rufus, which pre-seeds an admin account with an empty
-            // password the user must change at first logon (no auto-logon, so
-            // the interactive first-sign-in still runs and the image doesn't
-            // reseal-loop on Win 11 24H2/25H2).
+            // Name + optional password; a password also enables one-shot
+            // auto-logon on first boot.
             Label {
                 text: qsTr("Local account"); font.bold: true; Layout.topMargin: 6
             }
@@ -2320,15 +2233,12 @@ ApplicationWindow {
                     // and a long translated placeholder pushes the parent
                     // RowLayout past the dialog width.
                     Layout.minimumWidth: 0
-                    placeholderText: app.windowsToGo
-                        ? qsTr("Optional admin account; empty password to set at first logon")
-                        : qsTr("Optional, leave empty to keep the OOBE prompt")
+                    placeholderText: qsTr("Optional, leave empty to keep the OOBE prompt")
                     text: app.localAccount
                     onTextEdited: app.localAccount = text
                 }
             }
             RowLayout {
-                visible: !app.windowsToGo
                 Layout.fillWidth: true
                 Label { text: qsTr("Password"); Layout.minimumWidth: 110 }
                 TextField {
@@ -2460,9 +2370,6 @@ ApplicationWindow {
                     + "Recommended for dual-boot, lab, and IT-imaged systems.")
             }
             WrapCheckBox {
-                // Reads from the install media; not applicable to an applied
-                // Windows To Go image.
-                visible: !app.windowsToGo
                 text: qsTr("Install Windows CA 2023 Secure Boot policy")
                 checked: app.windowsCa2023
                 onToggled: app.windowsCa2023 = checked
@@ -2476,9 +2383,7 @@ ApplicationWindow {
             }
             WrapCheckBox {
                 id: debloatBox
-                // Install path imports a .reg from the USB media during
-                // specialize; Windows To Go applies the same policy directly to
-                // the image's offline hives. Available in both modes.
+                // Imports a .reg from the USB media during the specialize pass.
                 text: qsTr("Apply debloat profile")
                 checked: app.applyDebloat
                 onToggled: app.applyDebloat = checked
@@ -2542,9 +2447,8 @@ ApplicationWindow {
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
             WrapCheckBox {
                 id: desktopHelpersBox
-                // Install path stages these on the USB media and xcopies them at
-                // setup; Windows To Go copies them straight onto the applied
-                // image's Default Desktop. Available in both modes.
+                // Staged on the USB media and xcopied onto the Default user's
+                // Desktop during the specialize pass.
                 text: qsTr("Drop a USBooty folder on the user's Desktop with ready-to-run scripts")
                 checked: app.desktopHelpers
                 onToggled: app.desktopHelpers = checked

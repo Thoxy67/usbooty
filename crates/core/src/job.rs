@@ -304,22 +304,6 @@ pub struct WindowsSetup {
     /// activation-key prompt as well.
     #[serde(default)]
     pub force_edition_picker: bool,
-    /// Windows To Go only: keep the host machine's internal disks **offline**
-    /// when the portable OS boots (`partmgr` `SanPolicy=4`). This is Rufus's
-    /// "Prevent Windows To Go from accessing internal disks" option, on by
-    /// default, and the Linux-side equivalent of its `offlineServicing`
-    /// `SanPolicy=4` step. Protects the host's volumes and stops the host's
-    /// internal Windows disk being brought online during OOBE (which drives the
-    /// 24H2/25H2 reseal loop). Defaults to `true` (hence the `default_true`
-    /// serde default); irrelevant outside Windows To Go.
-    #[serde(default = "default_true")]
-    pub wtg_offline_internal_disks: bool,
-}
-
-/// serde default for [`WindowsSetup::wtg_offline_internal_disks`]: Rufus checks
-/// "Prevent Windows To Go from accessing internal disks" by default.
-fn default_true() -> bool {
-    true
 }
 
 impl WindowsSetup {
@@ -456,28 +440,6 @@ pub enum Job {
         #[serde(default)]
         opts: JobOptions,
     },
-    /// Lay a full, directly-bootable Windows installation onto `device_path`
-    /// (Windows To Go), a portable Windows that boots from the USB itself,
-    /// not an installer. UEFI/GPT only: an EFI System Partition (FAT32) plus a
-    /// main NTFS partition. The chosen edition is applied out of the ISO's
-    /// `install.wim`/`install.esd` with `wimlib-imagex`, a portable BCD boot
-    /// store is generated on the ESP with `hivex` (locate-by-path, so the
-    /// drive boots on any machine regardless of disk signature), and an
-    /// optional `specialize`+`oobeSystem` `unattend.xml` customizes first boot.
-    WindowsToGo {
-        iso_path: PathBuf,
-        device_path: PathBuf,
-        /// 1-based WIM image index to apply (the edition the user picked).
-        image_index: u32,
-        /// Optional first-boot customization. Only the `specialize` and
-        /// `oobeSystem` passes apply; Windows Setup never runs in WTG, so the
-        /// `windowsPE`-only fields (hardware bypasses, product key, EULA,
-        /// `ei.cfg`) are silently ignored by the helper.
-        #[serde(default)]
-        windows_setup: Option<WindowsSetup>,
-        #[serde(default)]
-        opts: JobOptions,
-    },
 }
 
 /// Intensity of a [`Job::Check`] run.
@@ -500,8 +462,7 @@ impl Job {
             | Job::Ventoy { device_path, .. }
             | Job::Backup { device_path, .. }
             | Job::Check { device_path, .. }
-            | Job::Freedos { device_path, .. }
-            | Job::WindowsToGo { device_path, .. } => device_path,
+            | Job::Freedos { device_path, .. } => device_path,
         }
     }
 
@@ -509,8 +470,7 @@ impl Job {
     pub fn iso_path(&self) -> Option<&PathBuf> {
         match self {
             Job::Dd { iso_path, .. }
-            | Job::Partitioned { iso_path, .. }
-            | Job::WindowsToGo { iso_path, .. } => Some(iso_path),
+            | Job::Partitioned { iso_path, .. } => Some(iso_path),
             Job::Ventoy { iso_path, .. } => iso_path.as_ref(),
             Job::Format { .. } | Job::Backup { .. } | Job::Check { .. } | Job::Freedos { .. } => {
                 None
@@ -547,28 +507,6 @@ mod tests {
         assert_eq!(job, back);
     }
 
-    #[test]
-    fn windows_to_go_job_roundtrips() {
-        let job = Job::WindowsToGo {
-            iso_path: "/tmp/win11.iso".into(),
-            device_path: "/dev/sdb".into(),
-            image_index: 6,
-            windows_setup: Some(WindowsSetup {
-                local_account: Some("user".into()),
-                locale: Some("en-US".into()),
-                ..WindowsSetup::default()
-            }),
-            opts: JobOptions {
-                label: "WINTOGO".into(),
-                full_format: false,
-                verify: true,
-            },
-        };
-        let json = serde_json::to_string(&job).unwrap();
-        assert!(json.contains("\"kind\":\"windows_to_go\""));
-        let back: Job = serde_json::from_str(&json).unwrap();
-        assert_eq!(job, back);
-    }
 
     #[test]
     fn dd_job_roundtrips() {

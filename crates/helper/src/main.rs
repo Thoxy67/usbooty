@@ -18,7 +18,6 @@
 //! on purpose, since it is the only component that runs as root.
 
 mod backup;
-mod bcd;
 mod blockdev;
 mod check;
 mod dd;
@@ -39,10 +38,8 @@ mod uefi_ntfs;
 mod unattend;
 mod ventoy;
 mod vhd;
-mod wimapply;
 mod wimsplit;
 mod winca2023;
-mod windows_to_go;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -215,20 +212,6 @@ fn run() -> Result<()> {
             },
             &ABORT,
         ),
-        Job::WindowsToGo {
-            iso_path,
-            device_path,
-            image_index,
-            windows_setup,
-            opts,
-        } => windows_to_go::run(
-            &iso_path,
-            &device_path,
-            image_index,
-            windows_setup.as_ref(),
-            &opts,
-            &ABORT,
-        ),
     }
 }
 
@@ -292,14 +275,6 @@ fn describe_job(job: &Job) -> String {
             "Job: FreeDOS bootable USB → {} ({})",
             device_path.display(),
             filesystem.label()
-        ),
-        Job::WindowsToGo {
-            device_path,
-            image_index,
-            ..
-        } => format!(
-            "Job: Windows To Go → {} (image #{image_index})",
-            device_path.display(),
         ),
     }
 }

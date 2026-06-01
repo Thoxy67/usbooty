@@ -48,8 +48,7 @@ optdepends=(
     # missing only when the matching feature is selected.
     'ventoy: Ventoy multi-boot USB creation'
     'mtools: FreeDOS bootable USB (mformat / mcopy)'
-    'wimlib: split install.wim on FAT32 / apply it for Windows To Go'
-    'hivex: build the portable BCD boot store for Windows To Go'
+    'wimlib: split an oversized install.wim onto FAT32'
     'syslinux: BIOS / legacy MBR bootloader install for Linux ISOs on FAT/ext4'
     'libisoburn: xorriso for advanced ISO inspection / repair'
     'qemu-full: boot-test a device in a VM (Device → Verify boot device)'

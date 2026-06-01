@@ -12,7 +12,7 @@
 
 use anyhow::{Context, Result, bail};
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -261,21 +261,6 @@ fn hash_file(path: &Path, buf: &mut [u8], abort: &AtomicBool) -> Result<blake3::
         hasher.update(&buf[..n]);
     }
     Ok(hasher.finalize())
-}
-
-/// Extract a single file from the ISO to `dest`. `path` is the segment list
-/// from the ISO root, e.g. `["sources", "install.wim"]`. Each segment is
-/// matched case-insensitively. Returns the number of bytes written.
-// Used by the Windows To Go method (extracts install.wim before applying it).
-#[allow(dead_code)]
-pub fn extract_file(iso_path: &Path, path: &[&str], dest: &Path) -> Result<u64> {
-    let iso = fsutil::LoopMount::open_iso(iso_path, "src")?;
-    let src = fsutil::ci_path(iso.path(), path)?;
-
-    let mut reader = fs::File::open(&src).with_context(|| format!("opening {}", src.display()))?;
-    let mut writer =
-        fs::File::create(dest).with_context(|| format!("creating {}", dest.display()))?;
-    io::copy(&mut reader, &mut writer).with_context(|| format!("extracting {}", src.display()))
 }
 
 #[cfg(test)]

@@ -164,14 +164,7 @@ const DEPS: &[DepSpec] = &[
         kind: DepKind::Feature,
         name: "wimlib-imagex",
         package: "wimlib",
-        purpose: "Split install.wim on FAT32 / apply it for Windows To Go",
-        probe: Probe::Bin,
-    },
-    DepSpec {
-        kind: DepKind::Feature,
-        name: "hivexsh",
-        package: "hivex",
-        purpose: "Build the portable BCD boot store for Windows To Go",
+        purpose: "Split an oversized install.wim onto FAT32",
         probe: Probe::Bin,
     },
     DepSpec {
