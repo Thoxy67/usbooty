@@ -107,7 +107,14 @@ pub fn generate(setup: &WindowsSetup) -> String {
 fn write_helpers_into(dir: &Path) -> Result<()> {
     std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     for (name, body) in DESKTOP_HELPERS {
+        // `name` is a category-subfolder-relative path (e.g.
+        // "1 Debloat & Privacy/1-Win11Debloat.bat"); create the parent folder
+        // before writing the script into it.
         let path = dir.join(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
         let crlf = body.replace("\r\n", "\n").replace('\n', "\r\n");
         std::fs::write(&path, crlf).with_context(|| format!("writing {}", path.display()))?;
     }
@@ -469,8 +476,9 @@ mod tests {
         assert!(xml.contains("xcopy"));
         assert!(xml.contains("USBooty"));
         assert!(xml.contains("C:\\Users\\Default\\Desktop\\USBooty"));
-        // Sentinel guards against false-positive matches on non-USB drives.
-        assert!(xml.contains("1-Win11Debloat.bat"));
+        // Sentinel (a top-level file) guards against false-positive matches on
+        // non-USB drives; it lives at the USBooty root, not in a subfolder.
+        assert!(xml.contains("README.txt"));
     }
 
     #[test]
@@ -516,24 +524,31 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "1-Win11Debloat.bat",
-                "2-ChrisTitus-Winutil.bat",
-                "2.1-ChrisTitus-Winutil-Dev.bat",
-                "3-Massgravel-Activator.bat",
-                "4-Remove-OneDrive.bat",
-                "5-OfficeTool.bat",
-                "6-Install-Chocolatey.bat",
-                "7-Install-Scoop.bat",
-                "8-Install-Winget.bat",
-                "9-Remove-Windows-AI.bat",
-                "10-Winhance.bat",
-                "11-FR33THY-Ultimate.bat",
-                "12-Install-PowerToys.bat",
-                "13-Disable-FastStartup.bat",
-                "14-Enable-LongPaths.bat",
-                "15-Install-VCRedist.bat",
-                "16-Install-DirectX.bat",
-                "17-Install-Browser.bat",
+                "1 Debloat & Privacy/Win11Debloat.bat",
+                "1 Debloat & Privacy/ChrisTitus-Winutil.bat",
+                "1 Debloat & Privacy/ChrisTitus-Winutil-Dev.bat",
+                "1 Debloat & Privacy/Remove-OneDrive.bat",
+                "1 Debloat & Privacy/Remove-Windows-AI.bat",
+                "1 Debloat & Privacy/Winhance.bat",
+                "2 Tweaks & Performance/FR33THY-Ultimate.bat",
+                "2 Tweaks & Performance/Disable-FastStartup.bat",
+                "2 Tweaks & Performance/Enable-LongPaths.bat",
+                "2 Tweaks & Performance/Disable-GameBar-GameDVR.bat",
+                "2 Tweaks & Performance/Enable-GPU-Scheduling.bat",
+                "2 Tweaks & Performance/Enable-Ultimate-Performance.bat",
+                "2 Tweaks & Performance/Disable-Hibernation.bat",
+                "2 Tweaks & Performance/Enable-GodMode.bat",
+                "2 Tweaks & Performance/Restore-Classic-ContextMenu.bat",
+                "3 Install Apps/OfficeTool.bat",
+                "3 Install Apps/Install-PowerToys.bat",
+                "3 Install Apps/Install-VCRedist.bat",
+                "3 Install Apps/Install-DirectX.bat",
+                "3 Install Apps/Install-Browser.bat",
+                "3 Install Apps/Install-DotNet-Runtimes.bat",
+                "4 Package Managers/Install-Chocolatey.bat",
+                "4 Package Managers/Install-Scoop.bat",
+                "4 Package Managers/Install-Winget.bat",
+                "5 Activation/Massgravel-Activator.bat",
                 "README.txt",
             ]
         );

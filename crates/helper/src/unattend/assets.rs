@@ -15,88 +15,127 @@ pub(super) const DEBLOAT_REG: &str = include_str!("../debloat.reg");
 pub(super) const DEBLOAT_REG_NAME: &str = "usbooty-debloat.reg";
 
 /// Name of the folder on the USB that holds the post-install `.bat`
-/// helpers. The `specialize`-pass `for` loop scans drive letters for
-/// `<letter>:\<DESKTOP_HELPERS_DIR>\<DESKTOP_HELPERS_SENTINEL>` to find
-/// the install media and xcopies the whole folder to the Default user's
-/// Desktop so every new account inherits it.
+/// helpers (grouped into category subfolders, see [`DESKTOP_HELPERS`]). The
+/// `specialize`-pass `for` loop scans drive letters for
+/// `<letter>:\<DESKTOP_HELPERS_DIR>\<DESKTOP_HELPERS_SENTINEL>` to find the
+/// install media and xcopies the whole tree (`xcopy /E`, recursing the
+/// subfolders) to the Default user's Desktop so every new account inherits it.
 pub(super) const DESKTOP_HELPERS_DIR: &str = "USBooty";
-pub(super) const DESKTOP_HELPERS_SENTINEL: &str = "1-Win11Debloat.bat";
+/// The marker the specialize `for` loop checks to confirm it found the USBooty
+/// folder on the right drive. Kept at the folder *root* (not inside a category
+/// subfolder) so the `if exist` path has no spaces or `&` to trip up `cmd`.
+pub(super) const DESKTOP_HELPERS_SENTINEL: &str = "README.txt";
 
-/// Each entry is `(filename, contents)`. The files are written verbatim
-/// into `<mount>/USBooty/` when [`usbooty_core::WindowsSetup::desktop_helpers`]
-/// is set.
+/// Each entry is `(relative_path, contents)`. The path is written verbatim
+/// under `<mount>/USBooty/` (creating the category subfolder) when
+/// [`usbooty_core::WindowsSetup::desktop_helpers`] is set. The category
+/// subfolders carry a leading number so they sort in a sensible order in
+/// Explorer; the scripts themselves are unnumbered.
 pub(super) const DESKTOP_HELPERS: &[(&str, &str)] = &[
+    // --- 1 Debloat & Privacy ---
     (
-        "1-Win11Debloat.bat",
-        include_str!("../desktop_helpers/1-Win11Debloat.bat"),
+        "1 Debloat & Privacy/Win11Debloat.bat",
+        include_str!("../desktop_helpers/1 Debloat & Privacy/Win11Debloat.bat"),
     ),
     (
-        "2-ChrisTitus-Winutil.bat",
-        include_str!("../desktop_helpers/2-ChrisTitus-Winutil.bat"),
+        "1 Debloat & Privacy/ChrisTitus-Winutil.bat",
+        include_str!("../desktop_helpers/1 Debloat & Privacy/ChrisTitus-Winutil.bat"),
     ),
     (
-        "2.1-ChrisTitus-Winutil-Dev.bat",
-        include_str!("../desktop_helpers/2.1-ChrisTitus-Winutil-Dev.bat"),
+        "1 Debloat & Privacy/ChrisTitus-Winutil-Dev.bat",
+        include_str!("../desktop_helpers/1 Debloat & Privacy/ChrisTitus-Winutil-Dev.bat"),
     ),
     (
-        "3-Massgravel-Activator.bat",
-        include_str!("../desktop_helpers/3-Massgravel-Activator.bat"),
+        "1 Debloat & Privacy/Remove-OneDrive.bat",
+        include_str!("../desktop_helpers/1 Debloat & Privacy/Remove-OneDrive.bat"),
     ),
     (
-        "4-Remove-OneDrive.bat",
-        include_str!("../desktop_helpers/4-Remove-OneDrive.bat"),
+        "1 Debloat & Privacy/Remove-Windows-AI.bat",
+        include_str!("../desktop_helpers/1 Debloat & Privacy/Remove-Windows-AI.bat"),
     ),
     (
-        "5-OfficeTool.bat",
-        include_str!("../desktop_helpers/5-OfficeTool.bat"),
+        "1 Debloat & Privacy/Winhance.bat",
+        include_str!("../desktop_helpers/1 Debloat & Privacy/Winhance.bat"),
+    ),
+    // --- 2 Tweaks & Performance ---
+    (
+        "2 Tweaks & Performance/FR33THY-Ultimate.bat",
+        include_str!("../desktop_helpers/2 Tweaks & Performance/FR33THY-Ultimate.bat"),
     ),
     (
-        "6-Install-Chocolatey.bat",
-        include_str!("../desktop_helpers/6-Install-Chocolatey.bat"),
+        "2 Tweaks & Performance/Disable-FastStartup.bat",
+        include_str!("../desktop_helpers/2 Tweaks & Performance/Disable-FastStartup.bat"),
     ),
     (
-        "7-Install-Scoop.bat",
-        include_str!("../desktop_helpers/7-Install-Scoop.bat"),
+        "2 Tweaks & Performance/Enable-LongPaths.bat",
+        include_str!("../desktop_helpers/2 Tweaks & Performance/Enable-LongPaths.bat"),
     ),
     (
-        "8-Install-Winget.bat",
-        include_str!("../desktop_helpers/8-Install-Winget.bat"),
+        "2 Tweaks & Performance/Disable-GameBar-GameDVR.bat",
+        include_str!("../desktop_helpers/2 Tweaks & Performance/Disable-GameBar-GameDVR.bat"),
     ),
     (
-        "9-Remove-Windows-AI.bat",
-        include_str!("../desktop_helpers/9-Remove-Windows-AI.bat"),
+        "2 Tweaks & Performance/Enable-GPU-Scheduling.bat",
+        include_str!("../desktop_helpers/2 Tweaks & Performance/Enable-GPU-Scheduling.bat"),
     ),
     (
-        "10-Winhance.bat",
-        include_str!("../desktop_helpers/10-Winhance.bat"),
+        "2 Tweaks & Performance/Enable-Ultimate-Performance.bat",
+        include_str!("../desktop_helpers/2 Tweaks & Performance/Enable-Ultimate-Performance.bat"),
     ),
     (
-        "11-FR33THY-Ultimate.bat",
-        include_str!("../desktop_helpers/11-FR33THY-Ultimate.bat"),
+        "2 Tweaks & Performance/Disable-Hibernation.bat",
+        include_str!("../desktop_helpers/2 Tweaks & Performance/Disable-Hibernation.bat"),
     ),
     (
-        "12-Install-PowerToys.bat",
-        include_str!("../desktop_helpers/12-Install-PowerToys.bat"),
+        "2 Tweaks & Performance/Enable-GodMode.bat",
+        include_str!("../desktop_helpers/2 Tweaks & Performance/Enable-GodMode.bat"),
     ),
     (
-        "13-Disable-FastStartup.bat",
-        include_str!("../desktop_helpers/13-Disable-FastStartup.bat"),
+        "2 Tweaks & Performance/Restore-Classic-ContextMenu.bat",
+        include_str!("../desktop_helpers/2 Tweaks & Performance/Restore-Classic-ContextMenu.bat"),
+    ),
+    // --- 3 Install Apps ---
+    (
+        "3 Install Apps/OfficeTool.bat",
+        include_str!("../desktop_helpers/3 Install Apps/OfficeTool.bat"),
     ),
     (
-        "14-Enable-LongPaths.bat",
-        include_str!("../desktop_helpers/14-Enable-LongPaths.bat"),
+        "3 Install Apps/Install-PowerToys.bat",
+        include_str!("../desktop_helpers/3 Install Apps/Install-PowerToys.bat"),
     ),
     (
-        "15-Install-VCRedist.bat",
-        include_str!("../desktop_helpers/15-Install-VCRedist.bat"),
+        "3 Install Apps/Install-VCRedist.bat",
+        include_str!("../desktop_helpers/3 Install Apps/Install-VCRedist.bat"),
     ),
     (
-        "16-Install-DirectX.bat",
-        include_str!("../desktop_helpers/16-Install-DirectX.bat"),
+        "3 Install Apps/Install-DirectX.bat",
+        include_str!("../desktop_helpers/3 Install Apps/Install-DirectX.bat"),
     ),
     (
-        "17-Install-Browser.bat",
-        include_str!("../desktop_helpers/17-Install-Browser.bat"),
+        "3 Install Apps/Install-Browser.bat",
+        include_str!("../desktop_helpers/3 Install Apps/Install-Browser.bat"),
+    ),
+    (
+        "3 Install Apps/Install-DotNet-Runtimes.bat",
+        include_str!("../desktop_helpers/3 Install Apps/Install-DotNet-Runtimes.bat"),
+    ),
+    // --- 4 Package Managers ---
+    (
+        "4 Package Managers/Install-Chocolatey.bat",
+        include_str!("../desktop_helpers/4 Package Managers/Install-Chocolatey.bat"),
+    ),
+    (
+        "4 Package Managers/Install-Scoop.bat",
+        include_str!("../desktop_helpers/4 Package Managers/Install-Scoop.bat"),
+    ),
+    (
+        "4 Package Managers/Install-Winget.bat",
+        include_str!("../desktop_helpers/4 Package Managers/Install-Winget.bat"),
+    ),
+    // --- 5 Activation ---
+    (
+        "5 Activation/Massgravel-Activator.bat",
+        include_str!("../desktop_helpers/5 Activation/Massgravel-Activator.bat"),
     ),
     ("README.txt", include_str!("../desktop_helpers/README.txt")),
 ];

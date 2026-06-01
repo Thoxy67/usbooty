@@ -35,7 +35,7 @@ echo   0)  Quit
 echo.
 echo Press one key to start an install. Anything else just refreshes
 echo this menu. Every winget option needs winget — if it's missing,
-echo run 8-Install-Winget.bat first.
+echo run Install-Winget.bat first.
 echo.
 
 REM `choice` accepts one keystroke and only returns when it matches a

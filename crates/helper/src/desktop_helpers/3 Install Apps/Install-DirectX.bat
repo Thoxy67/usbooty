@@ -19,7 +19,7 @@ echo ships modern DirectX 11/12, but games built with the DirectX SDK
 echo from the 2000s/early 2010s expect these legacy libraries and crash
 echo without them.
 echo.
-echo This uses winget. If winget is missing, run 8-Install-Winget.bat
+echo This uses winget. If winget is missing, run Install-Winget.bat
 echo first and then come back to this one.
 echo.
 winget install --exact --id Microsoft.DirectX --accept-source-agreements --accept-package-agreements

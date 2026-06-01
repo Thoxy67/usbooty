@@ -17,7 +17,7 @@ echo Required by a large fraction of third-party software and games. The
 echo "2015-2022" Redistributable is one merged runtime package that covers
 echo every VC++ version from 2015 through 2022.
 echo.
-echo This uses winget. If winget is missing, run 8-Install-Winget.bat
+echo This uses winget. If winget is missing, run Install-Winget.bat
 echo first and then come back to this one.
 echo.
 echo Installing x64 ...

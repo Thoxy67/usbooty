@@ -18,7 +18,7 @@ echo The official Microsoft utility suite: FancyZones (window snapping),
 echo PowerRename (batch rename), Color Picker, PowerToys Run launcher,
 echo Always-On-Top, Keyboard Manager, Mouse Highlighter, and more.
 echo.
-echo This uses winget. If winget is missing, run 8-Install-Winget.bat
+echo This uses winget. If winget is missing, run Install-Winget.bat
 echo first and then come back to this one.
 echo.
 winget install --exact --id Microsoft.PowerToys --accept-source-agreements --accept-package-agreements
