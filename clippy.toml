@@ -1,0 +1,7 @@
+# AppController::verify_boot is a QML invokable that mirrors a row of QEMU knobs
+# (RAM, CPUs, firmware, q35, audio, KVM, network, snapshot). Each has to arrive
+# as an individual scalar argument because QML can't hand a Rust struct across
+# the cxx-qt bridge, so the 9-arg count (self + 8) is inherent, not a smell.
+# cxx-qt rejects #[allow] on bridge items, so the threshold is nudged here.
+# Default is 7; 9 is the smallest value that clears verify_boot.
+too-many-arguments-threshold = 9

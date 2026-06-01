@@ -29,7 +29,8 @@ pub type Hashes = HashMap<String, blake3::Hash>;
 /// Minimum interval between `Progress` messages, to avoid flooding the GUI.
 const REPORT_EVERY: Duration = Duration::from_millis(100);
 
-/// Files at least this large are named individually in the log.
+/// Files at least this large are named (with their size) in the log. Below it,
+/// a file is only named when the caller asks to log every file.
 const LOG_FILE_MIN: u64 = 16 * 1024 * 1024;
 
 /// Mutable state threaded through the recursive copy or verify walk.
@@ -45,6 +46,8 @@ struct Ctx<'a> {
     /// Reused I/O buffer.
     buf: Vec<u8>,
     last_report: Instant,
+    /// Name every copied file in the log, not just those past [`LOG_FILE_MIN`].
+    log_all_files: bool,
     abort: &'a AtomicBool,
     /// Called with a lowercased relative path; `true` means "skip".
     skip: &'a dyn Fn(&str) -> bool,
@@ -85,12 +88,16 @@ fn join_rel(rel: &str, name: &str) -> String {
 /// hashed as they stream through (no extra read), and the map of hashes is
 /// returned so a following [`verify_iso`] only has to read the destination.
 /// Pass the verify flag here; with it false an empty map is returned.
+///
+/// `log_all_files` names every copied file in the log; otherwise only files
+/// past [`LOG_FILE_MIN`] are logged so a small-file flood is avoided.
 pub fn copy_iso(
     iso_path: &Path,
     dest: &Path,
     abort: &AtomicBool,
     skip: &dyn Fn(&str) -> bool,
     collect_hashes: bool,
+    log_all_files: bool,
 ) -> Result<Hashes> {
     let iso = fsutil::LoopMount::open_iso(iso_path, "src")?;
 
@@ -109,6 +116,7 @@ pub fn copy_iso(
         total,
         buf: vec![0u8; fsutil::COPY_BUF],
         last_report: Instant::now(),
+        log_all_files,
         abort,
         skip,
         hash_source: collect_hashes,
@@ -168,13 +176,18 @@ fn copy_tree(src: &Path, dest: &Path, rel: &str, ctx: &mut Ctx) -> Result<()> {
         } else if file_type.is_file() {
             if !(ctx.skip)(&child_rel) {
                 // Name the genuinely large files (kernels, install.wim,
-                // squashfs, …) in the log; small files would just flood it.
+                // squashfs, …) with their size. With log_all_files on, name
+                // every file too (no size suffix on the small ones, so the
+                // manifest stays readable); otherwise small files are silent
+                // so they don't flood the log.
                 let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                 if size >= LOG_FILE_MIN {
                     emit::log(format!(
                         "  {child_rel}  ({})",
                         usbooty_core::device::format_size(size)
                     ));
+                } else if ctx.log_all_files {
+                    emit::log(format!("  {child_rel}"));
                 }
                 copy_file(&src_path, &dest_path, &child_rel, ctx)?;
             }
@@ -246,6 +259,7 @@ pub fn verify_iso(
         total,
         buf: vec![0u8; fsutil::COPY_BUF],
         last_report: Instant::now(),
+        log_all_files: false,
         abort,
         skip,
         hash_source: false,
@@ -332,7 +346,11 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
-    fn ctx<'a>(abort: &'a AtomicBool, skip: &'a dyn Fn(&str) -> bool, hash_source: bool) -> Ctx<'a> {
+    fn ctx<'a>(
+        abort: &'a AtomicBool,
+        skip: &'a dyn Fn(&str) -> bool,
+        hash_source: bool,
+    ) -> Ctx<'a> {
         Ctx {
             phase: "Test",
             copied: 0,
@@ -340,6 +358,7 @@ mod tests {
             total: 0,
             buf: vec![0u8; 64 * 1024],
             last_report: Instant::now(),
+            log_all_files: false,
             abort,
             skip,
             hash_source,
@@ -376,7 +395,10 @@ mod tests {
         fs::write(dst.join("a.txt"), b"HELLO WORLD").unwrap();
         let mut v = ctx(&abort, &noskip, false);
         v.expected = Some(&hashes);
-        assert!(verify_tree(&src, &dst, "", &mut v).is_err(), "tamper must be caught");
+        assert!(
+            verify_tree(&src, &dst, "", &mut v).is_err(),
+            "tamper must be caught"
+        );
 
         // Fallback: with no recorded hashes, verify re-reads the source. Restore
         // the file so the copy is faithful again, then verify with an empty map.

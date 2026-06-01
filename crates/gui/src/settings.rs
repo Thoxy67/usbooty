@@ -30,6 +30,11 @@ pub struct Settings {
     /// power users who tail every write prefer "always there".
     #[serde(default)]
     pub show_logs_always: bool,
+    /// Name every copied file in the activity log, not just the large ones.
+    /// Forwarded into each job's options so the helper lifts its per-file
+    /// size threshold; off keeps the default (only files past a few MiB).
+    #[serde(default)]
+    pub log_all_files: bool,
 }
 
 impl Settings {
@@ -83,11 +88,13 @@ mod tests {
         let s = Settings {
             force_english: true,
             show_logs_always: true,
+            log_all_files: true,
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
         assert!(back.force_english);
         assert!(back.show_logs_always);
+        assert!(back.log_all_files);
     }
 
     #[test]

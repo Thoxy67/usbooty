@@ -167,6 +167,11 @@ pub struct JobOptions {
     /// Read the written data back and verify it after the job completes.
     #[serde(default)]
     pub verify: bool,
+    /// Name every copied file in the activity log, not just the large ones.
+    /// Off keeps the default size threshold (only files past a few MiB are
+    /// logged individually); on lifts it so the log is a full file manifest.
+    #[serde(default)]
+    pub log_all_files: bool,
 }
 
 /// An optional persistent overlay partition for a Linux live USB.
@@ -506,6 +511,7 @@ mod tests {
                 label: "WIN11".into(),
                 full_format: false,
                 verify: true,
+                log_all_files: false,
             },
         };
         let json = serde_json::to_string(&job).unwrap();

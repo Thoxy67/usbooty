@@ -28,7 +28,7 @@ fn main() {
     println!("cargo:rerun-if-changed=include/translator_bridge.cpp");
 
     CxxQtBuilder::new_qml_module(QmlModule::new("com.usbooty").qml_file("qml/main.qml"))
-        .file("src/bridge.rs")
+        .file("src/bridge/mod.rs")
         // Compile the QTranslator C++ shim *through cxx-qt-build*, using
         // a separate cc::Build invocation works locally with stale
         // incremental artefacts but fails in a clean build because the

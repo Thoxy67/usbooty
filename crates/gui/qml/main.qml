@@ -708,6 +708,16 @@ ApplicationWindow {
                 checked: app.showLogsAlways
                 onTriggered: app.applyShowLogsAlways(checked)
             }
+            MenuItem {
+                text: qsTr("Log every copied file")
+                checkable: true
+                checked: app.logAllFiles
+                onTriggered: app.applyLogAllFiles(checked)
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("List every file copied to the target in the activity log, "
+                    + "not just the large ones. Useful to see exactly what was written; "
+                    + "produces a long log on big images.")
+            }
         }
         Menu {
             title: qsTr("?")
@@ -2036,8 +2046,17 @@ ApplicationWindow {
             title: qsTr("Windows setup")
             subtitle: qsTr("Optional install tweaks (written to autounattend.xml)")
         }
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        onAccepted: confirmDialog.open()
+        // "Continue…" makes it explicit that this does not start writing yet;
+        // it advances to the erase-confirmation dialog. Custom footer for the
+        // same Qt 6 reason as the confirm dialog below.
+        footer: DialogButtonBox {
+            standardButtons: DialogButtonBox.Cancel
+            Button {
+                text: qsTr("Continue…")
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                onClicked: { windowsSetupDialog.close(); confirmDialog.open() }
+            }
+        }
         // The Windows-setup ScrollView contains ~25 checkboxes + text
         // fields and is only opened when the user starts a Windows ISO
         // job. Defer everything until visible, the biggest single win
@@ -2055,7 +2074,7 @@ ApplicationWindow {
                 width: setupScroll.availableWidth - 14
                 spacing: 10
             Label {
-                text: qsTr("Customize the installation below, or just press OK to skip. "
+                text: qsTr("Customize the installation below, or just press Continue to skip. "
                          + "Every option is optional.")
                 color: palette.placeholderText
                 wrapMode: Text.Wrap
@@ -2568,8 +2587,20 @@ ApplicationWindow {
             title: qsTr("Erase device?")
             subtitle: qsTr("All data on the target will be permanently lost")
         }
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        onAccepted: app.start()
+        // A verb-labelled accept button ("Erase device") reads far clearer
+        // than a generic "OK" on a destructive action. Full custom footer
+        // (rather than relabelling a standardButton) because mixing custom
+        // buttons with Dialog.Ok/Cancel breaks the accept signal in Qt 6.
+        footer: DialogButtonBox {
+            standardButtons: DialogButtonBox.Cancel
+            Button {
+                text: app.method === 3 && app.ventoyUpdate
+                    ? qsTr("Update Ventoy")
+                    : qsTr("Erase device")
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                onClicked: { app.start(); confirmDialog.close() }
+            }
+        }
         // The card + the three labels carry no state at startup. Only
         // build them when the dialog opens; the Loader re-instantiates
         // on each open so the text bindings to invokables re-evaluate
@@ -3338,6 +3369,11 @@ ApplicationWindow {
             }
 
             // Step 1: choose the Windows release.
+            Label {
+                text: qsTr("1.  Choose a Windows release")
+                font.bold: true
+                Layout.topMargin: 4
+            }
             RowLayout {
                 Layout.fillWidth: true
                 FormCombo {
@@ -3355,6 +3391,12 @@ ApplicationWindow {
             }
 
             // Step 2: choose a language.
+            Label {
+                text: qsTr("2.  Choose a language")
+                font.bold: true
+                enabled: app.winLanguages !== ""
+                Layout.topMargin: 4
+            }
             RowLayout {
                 Layout.fillWidth: true
                 FormCombo {
@@ -3371,6 +3413,12 @@ ApplicationWindow {
             }
 
             // Step 3: choose an edition/architecture and download.
+            Label {
+                text: qsTr("3.  Choose an edition and download")
+                font.bold: true
+                enabled: app.winOptions !== ""
+                Layout.topMargin: 4
+            }
             RowLayout {
                 Layout.fillWidth: true
                 FormCombo {

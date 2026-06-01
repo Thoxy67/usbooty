@@ -104,7 +104,14 @@ pub fn run(layout: UefiNtfsLayout<'_>, abort: &AtomicBool) -> Result<()> {
     emit::phase("Copying");
     {
         let mount = fsutil::Mount::for_filesystem(&main_part, main_filesystem)?;
-        let src_hashes = isocopy::copy_iso(iso, mount.path(), abort, &|_| false, opts.verify)?;
+        let src_hashes = isocopy::copy_iso(
+            iso,
+            mount.path(),
+            abort,
+            &|_| false,
+            opts.verify,
+            opts.log_all_files,
+        )?;
         if opts.verify {
             isocopy::verify_iso(iso, mount.path(), abort, &|_| false, &src_hashes)?;
         }

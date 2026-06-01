@@ -131,8 +131,14 @@ fn plain_copy(
     emit::phase("Copying");
     {
         let mount = fsutil::Mount::for_filesystem(&part, filesystem)?;
-        let src_hashes =
-            isocopy::copy_iso(iso, mount.path(), abort, skip_install_wim, opts.verify)?;
+        let src_hashes = isocopy::copy_iso(
+            iso,
+            mount.path(),
+            abort,
+            skip_install_wim,
+            opts.verify,
+            opts.log_all_files,
+        )?;
         if opts.verify {
             isocopy::verify_iso(iso, mount.path(), abort, skip_install_wim, &src_hashes)?;
         }
@@ -275,7 +281,14 @@ fn copy_with_persistence(
     emit::phase("Copying");
     {
         let mount = fsutil::Mount::for_filesystem(&main_part, filesystem)?;
-        let src_hashes = isocopy::copy_iso(iso, mount.path(), abort, &|_| false, opts.verify)?;
+        let src_hashes = isocopy::copy_iso(
+            iso,
+            mount.path(),
+            abort,
+            &|_| false,
+            opts.verify,
+            opts.log_all_files,
+        )?;
         if opts.verify {
             isocopy::verify_iso(iso, mount.path(), abort, &|_| false, &src_hashes)?;
         }
