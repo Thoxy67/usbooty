@@ -9,7 +9,9 @@ use super::assets::{
     DEBLOAT_REG_NAME, DESKTOP_HELPERS_DIR, DESKTOP_HELPERS_SENTINEL, DISABLE_ADAPTERS_COMMAND,
     DOTNET35_COMMAND,
 };
-use super::{escape, push_component_per_arch, push_run_command, sanitize_computer_name, target_archs};
+use super::{
+    escape, push_component_per_arch, push_run_command, sanitize_computer_name, target_archs,
+};
 
 pub(super) fn push_specialize(s: &mut String, setup: &WindowsSetup) {
     let mut deploy_cmds: Vec<(String, Option<&'static str>)> = Vec::new();

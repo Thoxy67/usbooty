@@ -476,8 +476,7 @@ impl Job {
     /// The source ISO for this job, if it has one.
     pub fn iso_path(&self) -> Option<&PathBuf> {
         match self {
-            Job::Dd { iso_path, .. }
-            | Job::Partitioned { iso_path, .. } => Some(iso_path),
+            Job::Dd { iso_path, .. } | Job::Partitioned { iso_path, .. } => Some(iso_path),
             Job::Ventoy { iso_path, .. } => iso_path.as_ref(),
             Job::Format { .. } | Job::Backup { .. } | Job::Check { .. } | Job::Freedos { .. } => {
                 None
@@ -513,7 +512,6 @@ mod tests {
         let back: Job = serde_json::from_str(&json).unwrap();
         assert_eq!(job, back);
     }
-
 
     #[test]
     fn dd_job_roundtrips() {

@@ -11,6 +11,7 @@
 //! bar, and the GUI's speed/ETA readout, keep moving even mid-file.
 
 use anyhow::{Context, Result, bail};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -18,6 +19,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::{emit, fsutil};
+
+/// BLAKE3 hashes of the copied source files, keyed by the lowercased,
+/// `/`-joined relative path (the same key [`join_rel`] produces). Filled during
+/// [`copy_iso`] and consumed by [`verify_iso`] so verification re-reads only the
+/// destination instead of the source again.
+pub type Hashes = HashMap<String, blake3::Hash>;
 
 /// Minimum interval between `Progress` messages, to avoid flooding the GUI.
 const REPORT_EVERY: Duration = Duration::from_millis(100);
@@ -41,6 +48,15 @@ struct Ctx<'a> {
     abort: &'a AtomicBool,
     /// Called with a lowercased relative path; `true` means "skip".
     skip: &'a dyn Fn(&str) -> bool,
+    /// Copy pass: when set, hash each source file as it streams through `buf`
+    /// (free, the bytes are already in memory) and record it in `src_hashes`.
+    hash_source: bool,
+    /// Copy pass: collected source hashes, keyed by relative path.
+    src_hashes: Hashes,
+    /// Verify pass: the source hashes from the copy, so we hash only the
+    /// destination and compare. `None` (or a missing entry) falls back to
+    /// re-hashing the source for that file.
+    expected: Option<&'a Hashes>,
 }
 
 impl Ctx<'_> {
@@ -64,12 +80,18 @@ fn join_rel(rel: &str, name: &str) -> String {
 /// Copy every file from the ISO at `iso_path` into `dest`, except those for
 /// which `skip` (called with the lowercased, `/`-separated relative path)
 /// returns true.
+///
+/// When `collect_hashes` is set, every copied file's source bytes are BLAKE3-
+/// hashed as they stream through (no extra read), and the map of hashes is
+/// returned so a following [`verify_iso`] only has to read the destination.
+/// Pass the verify flag here; with it false an empty map is returned.
 pub fn copy_iso(
     iso_path: &Path,
     dest: &Path,
     abort: &AtomicBool,
     skip: &dyn Fn(&str) -> bool,
-) -> Result<()> {
+    collect_hashes: bool,
+) -> Result<Hashes> {
     let iso = fsutil::LoopMount::open_iso(iso_path, "src")?;
 
     // Pre-pass: sum the sizes of exactly the files we will copy, so the
@@ -89,6 +111,9 @@ pub fn copy_iso(
         last_report: Instant::now(),
         abort,
         skip,
+        hash_source: collect_hashes,
+        src_hashes: Hashes::new(),
+        expected: None,
     };
     copy_tree(iso.path(), dest, "", &mut ctx)?;
     ctx.report(true);
@@ -97,7 +122,7 @@ pub fn copy_iso(
         ctx.files,
         usbooty_core::device::format_size(ctx.copied)
     ));
-    Ok(())
+    Ok(ctx.src_hashes)
 }
 
 /// Sum the sizes of every file under `src` that will actually be copied
@@ -151,7 +176,7 @@ fn copy_tree(src: &Path, dest: &Path, rel: &str, ctx: &mut Ctx) -> Result<()> {
                         usbooty_core::device::format_size(size)
                     ));
                 }
-                copy_file(&src_path, &dest_path, ctx)?;
+                copy_file(&src_path, &dest_path, &child_rel, ctx)?;
             }
         } else {
             // Rock Ridge symlinks: the destination (FAT/NTFS) has no symlinks,
@@ -164,10 +189,13 @@ fn copy_tree(src: &Path, dest: &Path, rel: &str, ctx: &mut Ctx) -> Result<()> {
 
 /// Copy one file in chunks, reporting progress (and so refreshing the GUI's
 /// speed/ETA) even part-way through a multi-gigabyte file like `install.wim`.
-fn copy_file(src: &Path, dest: &Path, ctx: &mut Ctx) -> Result<()> {
+fn copy_file(src: &Path, dest: &Path, rel: &str, ctx: &mut Ctx) -> Result<()> {
     let mut reader = fs::File::open(src).with_context(|| format!("opening {}", src.display()))?;
     let mut writer =
         fs::File::create(dest).with_context(|| format!("creating {}", dest.display()))?;
+    // Hash the source as it streams through (verification will then only need
+    // to re-read the destination, not the source again).
+    let mut hasher = ctx.hash_source.then(blake3::Hasher::new);
     loop {
         if ctx.abort.load(Ordering::SeqCst) {
             bail!("aborted by user");
@@ -178,11 +206,17 @@ fn copy_file(src: &Path, dest: &Path, ctx: &mut Ctx) -> Result<()> {
         if n == 0 {
             break;
         }
+        if let Some(h) = hasher.as_mut() {
+            h.update(&ctx.buf[..n]);
+        }
         writer
             .write_all(&ctx.buf[..n])
             .with_context(|| format!("writing {}", dest.display()))?;
         ctx.copied += n as u64;
         ctx.report(false);
+    }
+    if let Some(h) = hasher {
+        ctx.src_hashes.insert(rel.to_string(), h.finalize());
     }
     ctx.files += 1;
     Ok(())
@@ -191,11 +225,16 @@ fn copy_file(src: &Path, dest: &Path, ctx: &mut Ctx) -> Result<()> {
 /// Re-read every copied file and confirm it matches the source ISO
 /// byte-for-byte. Mirrors [`copy_iso`]; run after a copy when verification is
 /// requested. The destination filesystem must still be mounted at `dest`.
+/// `src_hashes` are the BLAKE3 hashes [`copy_iso`] computed for the source
+/// files; verification hashes only the destination and compares against them,
+/// halving the read load. Any file missing from the map falls back to
+/// re-hashing the source, so correctness never depends on the cache.
 pub fn verify_iso(
     iso_path: &Path,
     dest: &Path,
     abort: &AtomicBool,
     skip: &dyn Fn(&str) -> bool,
+    src_hashes: &Hashes,
 ) -> Result<()> {
     let iso = fsutil::LoopMount::open_iso(iso_path, "src")?;
     let total = tree_size(iso.path(), "", skip)?;
@@ -209,6 +248,9 @@ pub fn verify_iso(
         last_report: Instant::now(),
         abort,
         skip,
+        hash_source: false,
+        src_hashes: Hashes::new(),
+        expected: Some(src_hashes),
     };
     verify_tree(iso.path(), dest, "", &mut ctx)?;
     ctx.report(true);
@@ -232,8 +274,15 @@ fn verify_tree(src: &Path, dest: &Path, rel: &str, ctx: &mut Ctx) -> Result<()> 
         if file_type.is_dir() {
             verify_tree(&src_path, &dest_path, &child_rel, ctx)?;
         } else if file_type.is_file() && !(ctx.skip)(&child_rel) {
-            let src_hash = hash_file(&src_path, &mut ctx.buf, ctx.abort)?;
+            // Prefer the hash recorded during the copy; only re-read the source
+            // when it's absent (blake3::Hash is Copy, so take it before the
+            // mutable borrow of ctx.buf below).
+            let expected = ctx.expected.and_then(|m| m.get(&child_rel)).copied();
             let dest_hash = hash_file(&dest_path, &mut ctx.buf, ctx.abort)?;
+            let src_hash = match expected {
+                Some(h) => h,
+                None => hash_file(&src_path, &mut ctx.buf, ctx.abort)?,
+            };
             if src_hash != dest_hash {
                 bail!("verification failed: {child_rel} does not match the source ISO");
             }
@@ -279,6 +328,63 @@ mod tests {
         assert_eq!(all, 5100);
         let no_wim = tree_size(&base, "", &|rel| rel == "sources/install.wim").unwrap();
         assert_eq!(no_wim, 100);
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    fn ctx<'a>(abort: &'a AtomicBool, skip: &'a dyn Fn(&str) -> bool, hash_source: bool) -> Ctx<'a> {
+        Ctx {
+            phase: "Test",
+            copied: 0,
+            files: 0,
+            total: 0,
+            buf: vec![0u8; 64 * 1024],
+            last_report: Instant::now(),
+            abort,
+            skip,
+            hash_source,
+            src_hashes: Hashes::new(),
+            expected: None,
+        }
+    }
+
+    #[test]
+    fn copy_hashes_source_and_verify_compares_against_them() {
+        let base = std::env::temp_dir().join(format!("usbooty-copyhash-{}", std::process::id()));
+        let (src, dst) = (base.join("src"), base.join("dst"));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(src.join("sub")).unwrap();
+        fs::write(src.join("a.txt"), b"hello world").unwrap();
+        fs::write(src.join("sub/b.bin"), vec![7u8; 4096]).unwrap();
+
+        let abort = AtomicBool::new(false);
+        let noskip = |_: &str| false;
+
+        // Copy with hashing on; the source hashes are collected.
+        let mut c = ctx(&abort, &noskip, true);
+        copy_tree(&src, &dst, "", &mut c).unwrap();
+        let hashes = c.src_hashes;
+        assert!(hashes.contains_key("a.txt"));
+        assert!(hashes.contains_key("sub/b.bin"));
+
+        // Verify against the recorded source hashes: a faithful copy passes.
+        let mut v = ctx(&abort, &noskip, false);
+        v.expected = Some(&hashes);
+        verify_tree(&src, &dst, "", &mut v).expect("intact copy should verify");
+
+        // Tamper the destination: verification must now fail.
+        fs::write(dst.join("a.txt"), b"HELLO WORLD").unwrap();
+        let mut v = ctx(&abort, &noskip, false);
+        v.expected = Some(&hashes);
+        assert!(verify_tree(&src, &dst, "", &mut v).is_err(), "tamper must be caught");
+
+        // Fallback: with no recorded hashes, verify re-reads the source. Restore
+        // the file so the copy is faithful again, then verify with an empty map.
+        fs::write(dst.join("a.txt"), b"hello world").unwrap();
+        let empty = Hashes::new();
+        let mut v = ctx(&abort, &noskip, false);
+        v.expected = Some(&empty);
+        verify_tree(&src, &dst, "", &mut v).expect("fallback (hash source) should verify");
 
         let _ = fs::remove_dir_all(&base);
     }

@@ -144,11 +144,10 @@ fn quick(device: &Path, abort: &AtomicBool) -> Result<CheckReport> {
     let effective_capacity = if ok {
         None
     } else {
-        offsets
-            .iter()
-            .copied()
-            .filter(|o| !bad_offsets.contains(o))
-            .max()
+        // O(1) membership instead of a linear scan per sample (the offset set
+        // can be hundreds of entries on a heavily-faked drive).
+        let bad: std::collections::HashSet<u64> = bad_offsets.iter().copied().collect();
+        offsets.iter().copied().filter(|o| !bad.contains(o)).max()
     };
     let summary = if ok {
         format!(

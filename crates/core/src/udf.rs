@@ -22,6 +22,7 @@
 //!
 //! All fields on disk are little-endian.
 
+use std::collections::HashMap;
 use std::io::{Read, Result as IoResult, Seek, SeekFrom};
 
 /// UDF block size for optical and install media.
@@ -54,6 +55,12 @@ pub struct UdfFs<R: Read + Seek> {
     root_icb: ExtentRef,
     /// Volume label drawn from the Primary Volume Descriptor's volume ID.
     label: String,
+    /// Parsed directory listings, keyed by the directory ICB's start block.
+    /// Every `list` / `file_size` / `read_file_range` lookup re-walks from the
+    /// root, so without this each query re-reads (and re-parses) the same
+    /// directory sectors; caching makes a sequence of lookups under one
+    /// directory O(1) after the first instead of O(depth) sector reads each.
+    dir_cache: HashMap<u32, Vec<DirEntry>>,
 }
 
 /// A (block-location, length-in-bytes) reference to an extent inside the
@@ -126,6 +133,7 @@ impl<R: Read + Seek> UdfFs<R> {
             partition_start,
             root_icb,
             label,
+            dir_cache: HashMap::new(),
         })
     }
 
@@ -205,8 +213,14 @@ impl<R: Read + Seek> UdfFs<R> {
 
     // ---- internals -------------------------------------------------------
 
-    /// Read and parse the directory whose File Entry lives at `icb`.
+    /// Read and parse the directory whose File Entry lives at `icb`. Results are
+    /// memoised by start block so repeated lookups that re-walk the same path
+    /// (every `list` / `file_size` / `read_file_range` starts from the root) hit
+    /// the cache instead of re-reading and re-parsing the directory sectors.
     fn read_dir(&mut self, icb: ExtentRef) -> Option<Vec<DirEntry>> {
+        if let Some(cached) = self.dir_cache.get(&icb.block) {
+            return Some(cached.clone());
+        }
         let data = self.read_file_data(icb).ok()?;
         let mut out = Vec::new();
         let mut p = 0;
@@ -258,6 +272,7 @@ impl<R: Read + Seek> UdfFs<R> {
             }
             p += padded;
         }
+        self.dir_cache.insert(icb.block, out.clone());
         Some(out)
     }
 

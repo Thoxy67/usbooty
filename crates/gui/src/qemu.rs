@@ -95,10 +95,15 @@ pub fn host_ram_mb() -> u32 {
 /// Resolve the `swtpm` binary. It commonly lives in `/usr/sbin`, which isn't
 /// always on a desktop session's PATH, so probe the usual locations directly.
 fn swtpm_path() -> Option<PathBuf> {
-    ["/usr/bin/swtpm", "/usr/sbin/swtpm", "/bin/swtpm", "/sbin/swtpm"]
-        .iter()
-        .map(PathBuf::from)
-        .find(|p| p.is_file())
+    [
+        "/usr/bin/swtpm",
+        "/usr/sbin/swtpm",
+        "/bin/swtpm",
+        "/sbin/swtpm",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .find(|p| p.is_file())
 }
 
 /// Whether OVMF UEFI firmware is installed (so a UEFI boot test is possible).
@@ -255,7 +260,11 @@ pub fn launch(device: &str, cfg: &BootConfig, log: &mut dyn FnMut(&str)) -> Resu
         // user-mode (SLIRP) needs no root/bridge and gives the guest internet;
         // the e1000 model has built-in Windows drivers.
         "-nic".into(),
-        if network { "user,model=e1000".into() } else { "none".into() },
+        if network {
+            "user,model=e1000".into()
+        } else {
+            "none".into()
+        },
     ];
     if kvm {
         qemu.push("-enable-kvm".into());
@@ -405,7 +414,9 @@ pub fn launch(device: &str, cfg: &BootConfig, log: &mut dyn FnMut(&str)) -> Resu
         tpm = swtpm.is_some(),
     ));
     if !snapshot {
-        log("snapshot off → unmounting the device's partitions first; writes persist to the device");
+        log(
+            "snapshot off → unmounting the device's partitions first; writes persist to the device",
+        );
     }
     if let Some(sw) = &swtpm {
         log(&format!("virtual TPM: {} (tpm-tis, TPM 2.0)", sw.display()));
@@ -434,11 +445,19 @@ pub fn launch(device: &str, cfg: &BootConfig, log: &mut dyn FnMut(&str)) -> Resu
         let mut out = String::new();
         errfile.rewind().ok();
         errfile.read_to_string(&mut out).ok();
-        log(&format!("QEMU exited immediately (status {:?})", status.code()));
+        log(&format!(
+            "QEMU exited immediately (status {:?})",
+            status.code()
+        ));
         for l in out.lines().map(str::trim).filter(|l| !l.is_empty()) {
             log(&format!("qemu: {l}"));
         }
-        let detail = out.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+        let detail = out
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("")
+            .trim();
         let lower = out.to_lowercase();
         let hint = if lower.contains("lock") {
             ": the device is held by another process; close any other QEMU window using it"
@@ -449,7 +468,11 @@ pub fn launch(device: &str, cfg: &BootConfig, log: &mut dyn FnMut(&str)) -> Resu
         };
         bail!(
             "QEMU exited immediately{}{}",
-            if detail.is_empty() { String::new() } else { format!(": {detail}") },
+            if detail.is_empty() {
+                String::new()
+            } else {
+                format!(": {detail}")
+            },
             hint
         );
     }

@@ -22,7 +22,6 @@ const BASIC_DATA_GUID: [u8; 16] = [
     0xA2, 0xA0, 0xD0, 0xEB, 0xE5, 0xB9, 0x33, 0x44, 0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7,
 ];
 
-
 /// Linux filesystem-data partition type GUID, in on-disk byte order. Used for
 /// an ext4 partition (`0FC63DAF-8483-4772-8E79-3D69D8477DE4`).
 const LINUX_DATA_GUID: [u8; 16] = [

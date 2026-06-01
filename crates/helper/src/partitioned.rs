@@ -131,9 +131,10 @@ fn plain_copy(
     emit::phase("Copying");
     {
         let mount = fsutil::Mount::for_filesystem(&part, filesystem)?;
-        isocopy::copy_iso(iso, mount.path(), abort, skip_install_wim)?;
+        let src_hashes =
+            isocopy::copy_iso(iso, mount.path(), abort, skip_install_wim, opts.verify)?;
         if opts.verify {
-            isocopy::verify_iso(iso, mount.path(), abort, skip_install_wim)?;
+            isocopy::verify_iso(iso, mount.path(), abort, skip_install_wim, &src_hashes)?;
         }
         if split_wim {
             crate::wimsplit::split_install_wim(iso, mount.path(), abort)?;
@@ -274,9 +275,9 @@ fn copy_with_persistence(
     emit::phase("Copying");
     {
         let mount = fsutil::Mount::for_filesystem(&main_part, filesystem)?;
-        isocopy::copy_iso(iso, mount.path(), abort, &|_| false)?;
+        let src_hashes = isocopy::copy_iso(iso, mount.path(), abort, &|_| false, opts.verify)?;
         if opts.verify {
-            isocopy::verify_iso(iso, mount.path(), abort, &|_| false)?;
+            isocopy::verify_iso(iso, mount.path(), abort, &|_| false, &src_hashes)?;
         }
         // Add the persistence kernel option to the copied bootloader configs,
         // so the live system actually uses the overlay partition.

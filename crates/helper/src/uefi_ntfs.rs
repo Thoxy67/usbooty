@@ -104,9 +104,9 @@ pub fn run(layout: UefiNtfsLayout<'_>, abort: &AtomicBool) -> Result<()> {
     emit::phase("Copying");
     {
         let mount = fsutil::Mount::for_filesystem(&main_part, main_filesystem)?;
-        isocopy::copy_iso(iso, mount.path(), abort, &|_| false)?;
+        let src_hashes = isocopy::copy_iso(iso, mount.path(), abort, &|_| false, opts.verify)?;
         if opts.verify {
-            isocopy::verify_iso(iso, mount.path(), abort, &|_| false)?;
+            isocopy::verify_iso(iso, mount.path(), abort, &|_| false, &src_hashes)?;
         }
         if let Some(setup) = windows_setup {
             crate::unattend::write(mount.path(), setup)?;
@@ -132,12 +132,19 @@ pub fn run(layout: UefiNtfsLayout<'_>, abort: &AtomicBool) -> Result<()> {
 /// Write `image` raw onto the block device `dest`.
 fn write_raw_image(image: &Path, dest: &str) -> Result<()> {
     let mut src = File::open(image).context("opening uefi-ntfs.img")?;
-    let mut out = OpenOptions::new()
+    let out = OpenOptions::new()
         .write(true)
         .open(dest)
         .with_context(|| format!("opening {dest}"))?;
+    // Buffer device writes into COPY_BUF-sized chunks (matching dd / copy)
+    // instead of io::copy's default 8 KiB, so the ~1 MiB image isn't dribbled
+    // out in tiny writes.
+    let mut out = std::io::BufWriter::with_capacity(crate::fsutil::COPY_BUF, out);
     std::io::copy(&mut src, &mut out).context("writing the UEFI:NTFS image")?;
-    out.flush().ok();
+    let out = out
+        .into_inner()
+        .map_err(|e| e.into_error())
+        .context("flushing the UEFI:NTFS image")?;
     nix::unistd::fsync(&out).context("flushing the UEFI:NTFS partition")?;
     Ok(())
 }

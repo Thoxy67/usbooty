@@ -347,8 +347,7 @@ fn read_wim_xml(path: &Path) -> Option<String> {
     if header.len() < 0x60 || &header[0..5] != b"MSWIM" {
         return None;
     }
-    let size =
-        u64::from_le_bytes(header[0x48..0x50].try_into().unwrap()) & 0x00FF_FFFF_FFFF_FFFF;
+    let size = u64::from_le_bytes(header[0x48..0x50].try_into().unwrap()) & 0x00FF_FFFF_FFFF_FFFF;
     let offset = u64::from_le_bytes(header[0x50..0x58].try_into().unwrap());
     if size == 0 || size > 64 * 1024 * 1024 {
         return None;
@@ -375,7 +374,11 @@ pub fn windows_arch(path: &Path) -> Option<String> {
 /// Decode a UTF-16LE byte buffer (with an optional leading BOM) to a `String`,
 /// replacing invalid units rather than failing.
 fn decode_utf16le(bytes: &[u8]) -> String {
-    let start = if bytes.starts_with(&[0xFF, 0xFE]) { 2 } else { 0 };
+    let start = if bytes.starts_with(&[0xFF, 0xFE]) {
+        2
+    } else {
+        0
+    };
     let units: Vec<u16> = bytes[start..]
         .chunks_exact(2)
         .map(|c| u16::from_le_bytes([c[0], c[1]]))

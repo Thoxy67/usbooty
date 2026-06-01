@@ -1549,8 +1549,9 @@ impl qobject::AppController {
                 let msg = format!("Boot test failed: {e:#}");
                 let html = crate::runner::log_html(usbooty_core::LogLevel::Error, &msg);
                 self.as_mut().push_log_line(&msg, &html);
-                self.as_mut()
-                    .set_status(QString::from(&format!("Could not start the boot test: {e:#}")));
+                self.as_mut().set_status(QString::from(&format!(
+                    "Could not start the boot test: {e:#}"
+                )));
             }
         }
     }

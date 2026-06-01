@@ -95,7 +95,12 @@ pub(super) fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
         push_component_per_arch(s, &archs, "Microsoft-Windows-Shell-Setup", &shell_body);
     }
     if !intl_body.is_empty() {
-        push_component_per_arch(s, &archs, "Microsoft-Windows-International-Core", &intl_body);
+        push_component_per_arch(
+            s,
+            &archs,
+            "Microsoft-Windows-International-Core",
+            &intl_body,
+        );
     }
     s.push_str("  </settings>\n");
 }

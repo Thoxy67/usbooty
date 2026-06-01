@@ -70,7 +70,12 @@ pub(super) fn push_windows_pe(s: &mut String, setup: &WindowsSetup) {
         push_component_per_arch(s, &archs, "Microsoft-Windows-Setup", &setup_body);
     }
     if !intl_body.is_empty() {
-        push_component_per_arch(s, &archs, "Microsoft-Windows-International-Core-WinPE", &intl_body);
+        push_component_per_arch(
+            s,
+            &archs,
+            "Microsoft-Windows-International-Core-WinPE",
+            &intl_body,
+        );
     }
     s.push_str("  </settings>\n");
 }

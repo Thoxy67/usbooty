@@ -134,10 +134,10 @@ fn write_helpers_into(dir: &Path) -> Result<()> {
 /// which is always safe since Windows ignores components whose arch doesn't
 /// match the running image.
 pub(super) fn target_archs(setup: &WindowsSetup) -> Vec<&'static str> {
-    if let Some(arch) = setup.arch.as_deref() {
-        if let Some(&matched) = ARCHITECTURES.iter().find(|&&a| a == arch) {
-            return vec![matched];
-        }
+    if let Some(arch) = setup.arch.as_deref()
+        && let Some(&matched) = ARCHITECTURES.iter().find(|&&a| a == arch)
+    {
+        return vec![matched];
     }
     ARCHITECTURES.to_vec()
 }
