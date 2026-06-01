@@ -68,14 +68,29 @@ install media.
 
 These keys are harmless on Windows 10, which silently ignores them.
 On Windows 11 they let Setup proceed on hardware Microsoft considers
-unsupported.
+unsupported. The whole group is shown only when the ISO is Windows 11
+(see *Version gating* below).
+
+### Version gating
+
+Options that only make sense on a given Windows version are shown or
+hidden based on the build number read from the ISO's `install.wim`
+(`<BUILD>` in its XML metadata):
+
+* Windows 11 (build ≥ 22000): hardware-check bypass.
+* Windows 11 24H2+ (build ≥ 26100): "Disable network during OOBE" and
+  "Disable automatic BitLocker device encryption".
+
+When the build can't be read (a non-Windows or unusual ISO), every
+option is shown rather than hidden.
 
 ### Out-of-box experience (OOBE)
 
 | Setting | Effect |
 |---------|--------|
+| Express: skip the optional OOBE prompts | Convenience switch that toggles the four rows below (Wi-Fi, OEM, network type, privacy) together. |
 | Skip Microsoft-account requirement | Emits both `BypassNRO` (Win 10 and Win 11 pre-24H2) and `<HideOnlineAccountScreens>true</HideOnlineAccountScreens>` (Win 11 24H2+). |
-| Disable network during OOBE | Disables every network adapter in the `specialize` pass, re-enables them in `FirstLogonCommands`. Forces local-account creation on 24H2+ even when the two flags above are ignored. |
+| Disable network during OOBE (24H2+) | Disables every network adapter in the `specialize` pass, re-enables them in `FirstLogonCommands`. Forces local-account creation on 24H2+ even when the two flags above are ignored. |
 | Skip Wi-Fi screen | `<HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>` |
 | Hide OEM registration | `<HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>` |
 | Pre-answer network type as Work | `<NetworkLocation>Work</NetworkLocation>` (private / trusted) |
@@ -83,9 +98,10 @@ unsupported.
 
 ### Local account
 
-Filling in **Name** creates a local account during OOBE. Filling in
-**Password** sets a password and also emits an `<AutoLogon>` block so
-the first boot logs in directly without a prompt.
+Filling in **Name** creates a local account during OOBE, in the
+`Administrators;Power Users` groups. Filling in **Password** sets a
+password and also emits an `<AutoLogon>` block so the first boot logs
+in directly without a prompt.
 
 If both are empty, you get the usual OOBE account-creation flow.
 
@@ -199,39 +215,71 @@ unplugged before first logon without breaking it.
 
 Each script is a right-click "Run as administrator" launcher with a
 `pause` at the end so the user sees the result. The bundle ships
-eighteen scripts plus a README that explains each one in plain
-English.
+twenty-four scripts plus a README, sorted into five category
+subfolders (so `xcopy /E` recreates the whole tree on the Desktop):
 
-| File                                 | What it does                                                         |
-|--------------------------------------|----------------------------------------------------------------------|
-| `1-Win11Debloat.bat`                 | Raphire's Win11Debloat (`debloat.raphi.re`). Interactive picker.     |
-| `2-ChrisTitus-Winutil.bat`           | Chris Titus Tech `winutil`, stable channel (`christitus.com/win`).   |
-| `2.1-ChrisTitus-Winutil-Dev.bat`     | Same tool, dev channel (`christitus.com/windev`).                    |
-| `3-Massgravel-Activator.bat`         | Microsoft Activation Scripts (`get.activated.win`).                  |
-| `4-Remove-OneDrive.bat`              | Kills OneDrive and runs both x64 and WoW64 `OneDriveSetup /uninstall`. |
-| `5-OfficeTool.bat`                   | Downloads the OfficeTool runtime ZIP to the user's Downloads folder. |
-| `6-Install-Chocolatey.bat`           | Installs Chocolatey machine-wide. Admin required.                    |
-| `7-Install-Scoop.bat`                | Installs Scoop per-user. Do not run as admin.                        |
-| `8-Install-Winget.bat`               | Installs or repairs winget via `asheroto/winget-install`.            |
-| `9-Remove-Windows-AI.bat`            | Strips Copilot, Recall, generative Paint / Notepad / Photos, AI Search and Cortana hooks via `zoicware/RemoveWindowsAI`. |
-| `10-Winhance.bat`                    | Winhance GUI for debloat / privacy / optimisation (`get.winhance.net`). |
-| `11-FR33THY-Ultimate.bat`            | FR33THY's Ultimate gaming / latency tweaks. Aggressive. Read upstream README first. |
-| `12-Install-PowerToys.bat`           | Microsoft PowerToys via winget (FancyZones, PowerRename, Run, etc.). Needs winget. |
-| `13-Disable-FastStartup.bat`         | Clears `HiberbootEnabled` so a dual-boot Linux can mount NTFS cleanly. Admin required. |
-| `14-Enable-LongPaths.bat`            | Sets `LongPathsEnabled=1` to lift the 260-character `MAX_PATH` limit. Admin; reboot recommended. |
-| `15-Install-VCRedist.bat`            | Visual C++ Redistributable 2015-2022, x64 and x86, via winget. |
-| `16-Install-DirectX.bat`             | Legacy DirectX runtime (D3DX, D3DCompiler, XAudio2) via winget. |
-| `17-Install-Browser.bat`             | Interactive menu: Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc. |
+**`1 Debloat & Privacy/`**
+
+| File                          | What it does                                                         |
+|-------------------------------|----------------------------------------------------------------------|
+| `Win11Debloat.bat`            | Raphire's Win11Debloat (`debloat.raphi.re`). Interactive picker.     |
+| `ChrisTitus-Winutil.bat`      | Chris Titus Tech `winutil`, stable channel (`christitus.com/win`).   |
+| `ChrisTitus-Winutil-Dev.bat`  | Same tool, dev channel (`christitus.com/windev`).                    |
+| `Remove-OneDrive.bat`         | Kills OneDrive and runs both x64 and WoW64 `OneDriveSetup /uninstall`. |
+| `Remove-Windows-AI.bat`       | Strips Copilot, Recall, generative Paint / Notepad / Photos, AI Search and Cortana hooks via `zoicware/RemoveWindowsAI`. |
+| `Winhance.bat`                | Winhance GUI for debloat / privacy / optimisation (`get.winhance.net`). |
+
+**`2 Tweaks & Performance/`**
+
+| File                              | What it does                                                     |
+|-----------------------------------|------------------------------------------------------------------|
+| `FR33THY-Ultimate.bat`            | FR33THY's Ultimate gaming / latency tweaks. Aggressive. Read upstream README first. |
+| `Disable-FastStartup.bat`         | Clears `HiberbootEnabled` so a dual-boot Linux can mount NTFS cleanly. Admin required. |
+| `Enable-LongPaths.bat`            | Sets `LongPathsEnabled=1` to lift the 260-character `MAX_PATH` limit. Admin; reboot recommended. |
+| `Disable-GameBar-GameDVR.bat`     | Turns off the Xbox Game Bar and background Game DVR recording (cuts input latency). Admin. |
+| `Enable-GPU-Scheduling.bat`       | Sets `HwSchMode=2` (hardware-accelerated GPU scheduling). Admin; reboot to apply. |
+| `Enable-Ultimate-Performance.bat` | Unlocks and activates the hidden Ultimate Performance power plan. Admin. |
+| `Disable-Hibernation.bat`         | `powercfg -h off`: removes `hiberfil.sys` and disables hibernation + Fast Startup. Admin. |
+| `Enable-GodMode.bat`              | Creates the God Mode (All Tasks) folder on the Desktop. Per-user; no admin. |
+| `Restore-Classic-ContextMenu.bat` | Restores the full classic Win10 right-click menu on Windows 11. Per-user; no admin. |
+
+**`3 Install Apps/`**
+
+| File                          | What it does                                                         |
+|-------------------------------|----------------------------------------------------------------------|
+| `OfficeTool.bat`              | Downloads the OfficeTool Plus runtime and opens its folder.          |
+| `Install-PowerToys.bat`       | Microsoft PowerToys via winget (FancyZones, PowerRename, Run, etc.). Needs winget. |
+| `Install-VCRedist.bat`        | Visual C++ Redistributable 2015-2022, x64 and x86, via winget.       |
+| `Install-DirectX.bat`         | Legacy DirectX runtime (D3DX, D3DCompiler, XAudio2) via winget.       |
+| `Install-Browser.bat`         | Interactive menu: Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc. |
+| `Install-DotNet-Runtimes.bat` | .NET Desktop Runtime 8 (LTS) and 9, x64, via winget.                 |
+
+**`4 Package Managers/`**
+
+| File                       | What it does                                              |
+|----------------------------|-----------------------------------------------------------|
+| `Install-Chocolatey.bat`   | Installs Chocolatey machine-wide. Admin required.         |
+| `Install-Scoop.bat`        | Installs Scoop per-user. Do not run as admin.             |
+| `Install-Winget.bat`       | Installs or repairs winget via `asheroto/winget-install`. |
+
+**`5 Activation/`**
+
+| File                        | What it does                                       |
+|-----------------------------|-----------------------------------------------------|
+| `Massgravel-Activator.bat`  | Microsoft Activation Scripts (`get.activated.win`). |
 
 Notes:
 
-* Each script downloads code from the public internet on first run.
-  Open the `.bat` in Notepad first if you want to see the exact URL
-  it hits.
+* The debloat suites, activator, package managers and app installers
+  fetch code from the public internet on first run; the
+  `2 Tweaks & Performance` scripts only change local registry / power
+  settings. Open any `.bat` in Notepad to see exactly what it does.
 * All scripts ship with CRLF line endings so cmd parses them
   cleanly.
 * The folder layout is sealed at build time via `include_str!`, so
-  the helper does not depend on any runtime asset path.
+  the helper does not depend on any runtime asset path. The xcopy
+  sentinel is the top-level `README.txt`, so the category folder
+  names (with spaces and `&`) never appear in a `cmd` path.
 
 ## 4. Downloading Windows ISOs
 
