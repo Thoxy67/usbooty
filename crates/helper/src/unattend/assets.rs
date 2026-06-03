@@ -32,67 +32,67 @@ pub(super) const DESKTOP_HELPERS_SENTINEL: &str = "README.txt";
 /// subfolders carry a leading number so they sort in a sensible order in
 /// Explorer; the scripts themselves are unnumbered.
 pub(super) const DESKTOP_HELPERS: &[(&str, &str)] = &[
-    // --- 1 Debloat & Privacy ---
+    // --- 1 Debloat and Privacy ---
     (
-        "1 Debloat & Privacy/Win11Debloat.bat",
-        include_str!("../desktop_helpers/1 Debloat & Privacy/Win11Debloat.bat"),
+        "1 Debloat and Privacy/Win11Debloat.bat",
+        include_str!("../desktop_helpers/1 Debloat and Privacy/Win11Debloat.bat"),
     ),
     (
-        "1 Debloat & Privacy/ChrisTitus-Winutil.bat",
-        include_str!("../desktop_helpers/1 Debloat & Privacy/ChrisTitus-Winutil.bat"),
+        "1 Debloat and Privacy/ChrisTitus-Winutil.bat",
+        include_str!("../desktop_helpers/1 Debloat and Privacy/ChrisTitus-Winutil.bat"),
     ),
     (
-        "1 Debloat & Privacy/ChrisTitus-Winutil-Dev.bat",
-        include_str!("../desktop_helpers/1 Debloat & Privacy/ChrisTitus-Winutil-Dev.bat"),
+        "1 Debloat and Privacy/ChrisTitus-Winutil-Dev.bat",
+        include_str!("../desktop_helpers/1 Debloat and Privacy/ChrisTitus-Winutil-Dev.bat"),
     ),
     (
-        "1 Debloat & Privacy/Remove-OneDrive.bat",
-        include_str!("../desktop_helpers/1 Debloat & Privacy/Remove-OneDrive.bat"),
+        "1 Debloat and Privacy/Remove-OneDrive.bat",
+        include_str!("../desktop_helpers/1 Debloat and Privacy/Remove-OneDrive.bat"),
     ),
     (
-        "1 Debloat & Privacy/Remove-Windows-AI.bat",
-        include_str!("../desktop_helpers/1 Debloat & Privacy/Remove-Windows-AI.bat"),
+        "1 Debloat and Privacy/Remove-Windows-AI.bat",
+        include_str!("../desktop_helpers/1 Debloat and Privacy/Remove-Windows-AI.bat"),
     ),
     (
-        "1 Debloat & Privacy/Winhance.bat",
-        include_str!("../desktop_helpers/1 Debloat & Privacy/Winhance.bat"),
+        "1 Debloat and Privacy/Winhance.bat",
+        include_str!("../desktop_helpers/1 Debloat and Privacy/Winhance.bat"),
     ),
-    // --- 2 Tweaks & Performance ---
+    // --- 2 Tweaks and Performance ---
     (
-        "2 Tweaks & Performance/FR33THY-Ultimate.bat",
-        include_str!("../desktop_helpers/2 Tweaks & Performance/FR33THY-Ultimate.bat"),
-    ),
-    (
-        "2 Tweaks & Performance/Disable-FastStartup.bat",
-        include_str!("../desktop_helpers/2 Tweaks & Performance/Disable-FastStartup.bat"),
+        "2 Tweaks and Performance/FR33THY-Ultimate.bat",
+        include_str!("../desktop_helpers/2 Tweaks and Performance/FR33THY-Ultimate.bat"),
     ),
     (
-        "2 Tweaks & Performance/Enable-LongPaths.bat",
-        include_str!("../desktop_helpers/2 Tweaks & Performance/Enable-LongPaths.bat"),
+        "2 Tweaks and Performance/Disable-FastStartup.bat",
+        include_str!("../desktop_helpers/2 Tweaks and Performance/Disable-FastStartup.bat"),
     ),
     (
-        "2 Tweaks & Performance/Disable-GameBar-GameDVR.bat",
-        include_str!("../desktop_helpers/2 Tweaks & Performance/Disable-GameBar-GameDVR.bat"),
+        "2 Tweaks and Performance/Enable-LongPaths.bat",
+        include_str!("../desktop_helpers/2 Tweaks and Performance/Enable-LongPaths.bat"),
     ),
     (
-        "2 Tweaks & Performance/Enable-GPU-Scheduling.bat",
-        include_str!("../desktop_helpers/2 Tweaks & Performance/Enable-GPU-Scheduling.bat"),
+        "2 Tweaks and Performance/Disable-GameBar-GameDVR.bat",
+        include_str!("../desktop_helpers/2 Tweaks and Performance/Disable-GameBar-GameDVR.bat"),
     ),
     (
-        "2 Tweaks & Performance/Enable-Ultimate-Performance.bat",
-        include_str!("../desktop_helpers/2 Tweaks & Performance/Enable-Ultimate-Performance.bat"),
+        "2 Tweaks and Performance/Enable-GPU-Scheduling.bat",
+        include_str!("../desktop_helpers/2 Tweaks and Performance/Enable-GPU-Scheduling.bat"),
     ),
     (
-        "2 Tweaks & Performance/Disable-Hibernation.bat",
-        include_str!("../desktop_helpers/2 Tweaks & Performance/Disable-Hibernation.bat"),
+        "2 Tweaks and Performance/Enable-Ultimate-Performance.bat",
+        include_str!("../desktop_helpers/2 Tweaks and Performance/Enable-Ultimate-Performance.bat"),
     ),
     (
-        "2 Tweaks & Performance/Enable-GodMode.bat",
-        include_str!("../desktop_helpers/2 Tweaks & Performance/Enable-GodMode.bat"),
+        "2 Tweaks and Performance/Disable-Hibernation.bat",
+        include_str!("../desktop_helpers/2 Tweaks and Performance/Disable-Hibernation.bat"),
     ),
     (
-        "2 Tweaks & Performance/Restore-Classic-ContextMenu.bat",
-        include_str!("../desktop_helpers/2 Tweaks & Performance/Restore-Classic-ContextMenu.bat"),
+        "2 Tweaks and Performance/Enable-GodMode.bat",
+        include_str!("../desktop_helpers/2 Tweaks and Performance/Enable-GodMode.bat"),
+    ),
+    (
+        "2 Tweaks and Performance/Restore-Classic-ContextMenu.bat",
+        include_str!("../desktop_helpers/2 Tweaks and Performance/Restore-Classic-ContextMenu.bat"),
     ),
     // --- 3 Install Apps ---
     (

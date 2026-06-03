@@ -14,7 +14,7 @@ if not "%errorlevel%"=="0" (
 echo Enable Win32 long path support
 echo.
 echo Lifts the historic 260-character path limit (MAX_PATH) for applications
-echo that opt in via their manifest — modern Git, Node.js / npm, Python,
+echo that opt in via their manifest - modern Git, Node.js / npm, Python,
 echo Rust, .NET 6+, and PowerShell already opt in. Without this key,
 echo `node_modules` trees, deep Python venvs, and Git checkouts with long
 echo branch names hit cryptic "filename too long" errors.

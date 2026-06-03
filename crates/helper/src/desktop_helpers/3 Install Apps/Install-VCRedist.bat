@@ -11,7 +11,7 @@ if not "%errorlevel%"=="0" (
     powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
     exit /b
 )
-echo Visual C++ Runtime — 2015-2022 unified package, x64 and x86
+echo Visual C++ Runtime - 2015-2022 unified package, x64 and x86
 echo.
 echo Required by a large fraction of third-party software and games. The
 echo "2015-2022" Redistributable is one merged runtime package that covers

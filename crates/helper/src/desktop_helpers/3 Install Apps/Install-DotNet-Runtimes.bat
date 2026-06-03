@@ -11,7 +11,7 @@ if not "%errorlevel%"=="0" (
     powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
     exit /b
 )
-echo .NET Desktop Runtime — LTS (8) and current (9), x64
+echo .NET Desktop Runtime - LTS (8) and current (9), x64
 echo.
 echo Lots of modern desktop apps (WPF / WinForms) need the .NET Desktop
 echo Runtime, the .NET-era complement to the Visual C++ Redistributable.

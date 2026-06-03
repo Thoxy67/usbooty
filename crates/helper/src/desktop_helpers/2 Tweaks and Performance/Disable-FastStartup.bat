@@ -16,7 +16,7 @@ echo.
 echo Fast Startup hibernates the kernel + drivers on shutdown so the next
 echo boot is faster. The downside: the disk's NTFS journal is left in a
 echo dirty state, which makes the partition mount read-only (or risks
-echo corruption) when another OS — a Linux dual-boot, a recovery USB —
+echo corruption) when another OS - a Linux dual-boot, a recovery USB -
 echo accesses the same drive.
 echo.
 echo This .bat clears the Fast Startup flag but keeps hibernation itself

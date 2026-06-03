@@ -14,7 +14,7 @@ To run a script:
 so below.)
 
 
-1 Debloat & Privacy
+1 Debloat and Privacy
 -------------------
 
 Win11Debloat.bat
@@ -52,7 +52,7 @@ Winhance.bat
     (get.winhance.net). Run as administrator.
 
 
-2 Tweaks & Performance
+2 Tweaks and Performance
 ----------------------
 
 FR33THY-Ultimate.bat

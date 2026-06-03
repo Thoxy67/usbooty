@@ -113,7 +113,7 @@ fn write_helpers_into(dir: &Path) -> Result<()> {
     std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     for (name, body) in DESKTOP_HELPERS {
         // `name` is a category-subfolder-relative path (e.g.
-        // "1 Debloat & Privacy/1-Win11Debloat.bat"); create the parent folder
+        // "1 Debloat and Privacy/1-Win11Debloat.bat"); create the parent folder
         // before writing the script into it.
         let path = dir.join(name);
         if let Some(parent) = path.parent() {
@@ -555,21 +555,21 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "1 Debloat & Privacy/Win11Debloat.bat",
-                "1 Debloat & Privacy/ChrisTitus-Winutil.bat",
-                "1 Debloat & Privacy/ChrisTitus-Winutil-Dev.bat",
-                "1 Debloat & Privacy/Remove-OneDrive.bat",
-                "1 Debloat & Privacy/Remove-Windows-AI.bat",
-                "1 Debloat & Privacy/Winhance.bat",
-                "2 Tweaks & Performance/FR33THY-Ultimate.bat",
-                "2 Tweaks & Performance/Disable-FastStartup.bat",
-                "2 Tweaks & Performance/Enable-LongPaths.bat",
-                "2 Tweaks & Performance/Disable-GameBar-GameDVR.bat",
-                "2 Tweaks & Performance/Enable-GPU-Scheduling.bat",
-                "2 Tweaks & Performance/Enable-Ultimate-Performance.bat",
-                "2 Tweaks & Performance/Disable-Hibernation.bat",
-                "2 Tweaks & Performance/Enable-GodMode.bat",
-                "2 Tweaks & Performance/Restore-Classic-ContextMenu.bat",
+                "1 Debloat and Privacy/Win11Debloat.bat",
+                "1 Debloat and Privacy/ChrisTitus-Winutil.bat",
+                "1 Debloat and Privacy/ChrisTitus-Winutil-Dev.bat",
+                "1 Debloat and Privacy/Remove-OneDrive.bat",
+                "1 Debloat and Privacy/Remove-Windows-AI.bat",
+                "1 Debloat and Privacy/Winhance.bat",
+                "2 Tweaks and Performance/FR33THY-Ultimate.bat",
+                "2 Tweaks and Performance/Disable-FastStartup.bat",
+                "2 Tweaks and Performance/Enable-LongPaths.bat",
+                "2 Tweaks and Performance/Disable-GameBar-GameDVR.bat",
+                "2 Tweaks and Performance/Enable-GPU-Scheduling.bat",
+                "2 Tweaks and Performance/Enable-Ultimate-Performance.bat",
+                "2 Tweaks and Performance/Disable-Hibernation.bat",
+                "2 Tweaks and Performance/Enable-GodMode.bat",
+                "2 Tweaks and Performance/Restore-Classic-ContextMenu.bat",
                 "3 Install Apps/OfficeTool.bat",
                 "3 Install Apps/Install-PowerToys.bat",
                 "3 Install Apps/Install-VCRedist.bat",
@@ -583,5 +583,34 @@ mod tests {
                 "README.txt",
             ]
         );
+    }
+
+    #[test]
+    fn desktop_helper_paths_have_no_cmd_hostile_characters() {
+        // A category folder named with `&` (e.g. the old "1 Debloat & Privacy")
+        // silently breaks every script inside it: the scripts self-elevate by
+        // relaunching `'%~f0'` via `Start-Process -Verb RunAs`, and the `&` in
+        // the path makes the elevated `cmd` split the command, so the script
+        // body never runs. Keep every shipped path free of the characters cmd
+        // treats specially when a path is round-tripped through it.
+        const HOSTILE: &[char] = &['&', '^', '%', '!', '(', ')', '|', '<', '>'];
+        for (path, _) in DESKTOP_HELPERS {
+            assert!(
+                !path.contains(HOSTILE),
+                "desktop-helper path {path:?} contains a cmd-hostile character"
+            );
+        }
+    }
+
+    #[test]
+    fn desktop_helper_scripts_are_ascii() {
+        // The `.bat` files are written as UTF-8 but `cmd` reads them in the
+        // console's OEM code page, so any non-ASCII byte (an em dash, a curly
+        // quote) renders as mojibake. Keep the shipped scripts pure ASCII.
+        for (path, body) in DESKTOP_HELPERS {
+            if let Some(pos) = body.bytes().position(|b| !b.is_ascii()) {
+                panic!("desktop-helper {path:?} has a non-ASCII byte at offset {pos}");
+            }
+        }
     }
 }

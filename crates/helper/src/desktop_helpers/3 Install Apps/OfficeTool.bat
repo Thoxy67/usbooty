@@ -3,7 +3,7 @@ setlocal
 title Install OfficeTool Plus
 
 REM Self-elevate if not already running as administrator. `fltmc` is a
-REM lightweight privileged-only command — a non-zero exit means we are
+REM lightweight privileged-only command - a non-zero exit means we are
 REM running unelevated. Relaunch via PowerShell's RunAs verb (which
 REM triggers the UAC prompt) and exit the current low-priv window.
 >nul 2>&1 fltmc

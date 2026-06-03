@@ -218,7 +218,7 @@ Each script is a right-click "Run as administrator" launcher with a
 twenty-four scripts plus a README, sorted into five category
 subfolders (so `xcopy /E` recreates the whole tree on the Desktop):
 
-**`1 Debloat & Privacy/`**
+**`1 Debloat and Privacy/`**
 
 | File                          | What it does                                                         |
 |-------------------------------|----------------------------------------------------------------------|
@@ -229,7 +229,7 @@ subfolders (so `xcopy /E` recreates the whole tree on the Desktop):
 | `Remove-Windows-AI.bat`       | Strips Copilot, Recall, generative Paint / Notepad / Photos, AI Search and Cortana hooks via `zoicware/RemoveWindowsAI`. |
 | `Winhance.bat`                | Winhance GUI for debloat / privacy / optimisation (`get.winhance.net`). |
 
-**`2 Tweaks & Performance/`**
+**`2 Tweaks and Performance/`**
 
 | File                              | What it does                                                     |
 |-----------------------------------|------------------------------------------------------------------|
@@ -272,7 +272,7 @@ Notes:
 
 * The debloat suites, activator, package managers and app installers
   fetch code from the public internet on first run; the
-  `2 Tweaks & Performance` scripts only change local registry / power
+  `2 Tweaks and Performance` scripts only change local registry / power
   settings. Open any `.bat` in Notepad to see exactly what it does.
 * All scripts ship with CRLF line endings so cmd parses them
   cleanly.

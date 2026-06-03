@@ -34,7 +34,7 @@ echo.
 echo   0)  Quit
 echo.
 echo Press one key to start an install. Anything else just refreshes
-echo this menu. Every winget option needs winget — if it's missing,
+echo this menu. Every winget option needs winget - if it's missing,
 echo run Install-Winget.bat first.
 echo.
 
@@ -59,7 +59,7 @@ if "!k!"=="11" ( call :arc       & goto menu )
 if "!k!"=="12" goto end
 
 REM Unreachable in normal flow (choice only returns matched keys), but
-REM Ctrl+C / Ctrl+Break shows up as errorlevel 0 / 255 — redraw rather
+REM Ctrl+C / Ctrl+Break shows up as errorlevel 0 / 255 - redraw rather
 REM than exit so a stray interrupt doesn't drop the user out.
 goto menu
 
