@@ -134,8 +134,14 @@ pub mod qobject {
         // (MSDM/SLIC) and presents its edition picker on boot. Useful
         // for installing Pro/Enterprise on a PC pre-baked Home Familiale.
         #[qproperty(bool, force_edition_picker)]
+        #[qproperty(bool, show_file_extensions)]
+        #[qproperty(bool, show_hidden_files)]
+        #[qproperty(bool, classic_context_menu)]
+        #[qproperty(bool, dark_mode)]
+        #[qproperty(bool, disable_fast_startup)]
         #[qproperty(QString, local_account)]
         #[qproperty(QString, local_account_password)]
+        #[qproperty(bool, prevent_password_expiration)]
         #[qproperty(QString, computer_name)]
         #[qproperty(QString, locale)]
         #[qproperty(QString, timezone)]

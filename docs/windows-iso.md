@@ -215,7 +215,7 @@ unplugged before first logon without breaking it.
 
 Each script is a right-click "Run as administrator" launcher with a
 `pause` at the end so the user sees the result. The bundle ships
-twenty-four scripts plus a README, sorted into five category
+twenty-five scripts plus a README, sorted into five category
 subfolders (so `xcopy /E` recreates the whole tree on the Desktop):
 
 **`1 Debloat and Privacy/`**
@@ -253,6 +253,7 @@ subfolders (so `xcopy /E` recreates the whole tree on the Desktop):
 | `Install-DirectX.bat`         | Legacy DirectX runtime (D3DX, D3DCompiler, XAudio2) via winget.       |
 | `Install-Browser.bat`         | Interactive menu: Chrome, Firefox, Brave, Zen, LibreWolf, Floorp, Waterfox, Opera, Opera GX, Vivaldi, Arc. |
 | `Install-DotNet-Runtimes.bat` | .NET Desktop Runtime 8 (LTS) and 9, x64, via winget.                 |
+| `Install-ExplorerPatcher.bat` | Downloads the latest ExplorerPatcher installer matching the CPU architecture (`ep_setup.exe` on x64, `ep_setup_arm64.exe` on ARM64) from GitHub and runs it elevated. Brings the Win10 taskbar/Start/Explorer to Win11. Admin required. |
 
 **`4 Package Managers/`**
 

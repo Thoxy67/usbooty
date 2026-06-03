@@ -152,6 +152,16 @@ Install-DotNet-Runtimes.bat
     to the Visual C++ Redistributable; many modern desktop apps need it.
     Needs winget.
 
+Install-ExplorerPatcher.bat
+    Self-elevates, then downloads the latest signed ExplorerPatcher
+    installer that matches your CPU architecture (ep_setup.exe on x64,
+    ep_setup_arm64.exe on ARM64) from the project's GitHub releases
+    (github.com/valinet/ExplorerPatcher) and launches it elevated.
+    ExplorerPatcher brings the Windows 10 taskbar, Start menu and File
+    Explorer behaviour back to Windows 11. Deep Explorer customization:
+    review the project page first. Uninstall later from "Apps and
+    features" or by re-running ep_setup.exe. Admin required.
+
 
 4 Package Managers
 ------------------

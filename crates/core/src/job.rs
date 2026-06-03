@@ -255,6 +255,11 @@ pub struct WindowsSetup {
     /// emits an `<AutoLogon>` block so the first boot logs in directly.
     #[serde(default)]
     pub local_account_password: Option<String>,
+    /// Flip every local account's "password never expires" flag at first
+    /// logon, so Windows never forces a password change on the created (or
+    /// any other local) user. Emitted as a `FirstLogonCommands` entry.
+    #[serde(default)]
+    pub prevent_password_expiration: bool,
     /// Set the machine name (a.k.a. hostname). 1-15 chars, no whitespace and
     /// no `\/:*?"<>|`; longer values are truncated by the helper.
     #[serde(default)]
@@ -309,6 +314,31 @@ pub struct WindowsSetup {
     /// activation-key prompt as well.
     #[serde(default)]
     pub force_edition_picker: bool,
+    /// Show known file extensions in Explorer. Sets `HideFileExt=0` in the
+    /// default user's `NTUSER.DAT` during the `specialize` pass, so every
+    /// account cloned from Default (including the one created at OOBE)
+    /// inherits the setting.
+    #[serde(default)]
+    pub show_file_extensions: bool,
+    /// Show hidden files in Explorer. Sets `Hidden=1` in the default user's
+    /// `NTUSER.DAT` during the `specialize` pass.
+    #[serde(default)]
+    pub show_hidden_files: bool,
+    /// Restore the Windows 10 "classic" right-click context menu on Windows
+    /// 11 by emptying the `InprocServer32` CLSID handler in the default
+    /// user's per-user class store (`UsrClass.dat`). No-op on Windows 10.
+    #[serde(default)]
+    pub classic_context_menu: bool,
+    /// Default the desktop to the dark theme. Sets `AppsUseLightTheme=0` and
+    /// `SystemUsesLightTheme=0` in the default user's `NTUSER.DAT` during the
+    /// `specialize` pass.
+    #[serde(default)]
+    pub dark_mode: bool,
+    /// Disable Fast Startup (hybrid shutdown). Clears `HiberbootEnabled` in
+    /// `HKLM` during the `specialize` pass; a common dual-boot fix so a full
+    /// shutdown really releases the disks instead of hibernating the kernel.
+    #[serde(default)]
+    pub disable_fast_startup: bool,
     /// Target processor architecture of the install image (`"x86"`, `"amd64"`,
     /// or `"arm64"`), detected from the WIM. When set, the unattend emits a
     /// single arch-matched `<component>` per setting instead of one for every
@@ -337,6 +367,7 @@ impl WindowsSetup {
             || self.enable_dotnet35
             || self.local_account.is_some()
             || self.local_account_password.is_some()
+            || self.prevent_password_expiration
             || self.computer_name.is_some()
             || self.locale.is_some()
             || self.timezone.is_some()
@@ -346,6 +377,11 @@ impl WindowsSetup {
             || self.windows_ca_2023
             || self.desktop_helpers
             || self.force_edition_picker
+            || self.show_file_extensions
+            || self.show_hidden_files
+            || self.classic_context_menu
+            || self.dark_mode
+            || self.disable_fast_startup
     }
 }
 

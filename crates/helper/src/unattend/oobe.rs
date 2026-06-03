@@ -4,8 +4,10 @@
 
 use usbooty_core::WindowsSetup;
 
-use super::assets::ENABLE_ADAPTERS_COMMAND;
-use super::{escape, push_component_per_arch, push_first_logon_commands, target_archs};
+use super::assets::{ENABLE_ADAPTERS_COMMAND, PASSWORD_NEVER_EXPIRES_COMMAND};
+use super::{
+    escape, parse_locale, push_component_per_arch, push_first_logon_commands, target_archs, Locale,
+};
 
 pub(super) fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
     let oobe_items = build_oobe_items(setup);
@@ -24,7 +26,8 @@ pub(super) fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
     let has_shell = !oobe_items.is_empty()
         || has_autologon
         || account.is_some()
-        || setup.disable_network_during_oobe;
+        || setup.disable_network_during_oobe
+        || setup.prevent_password_expiration;
     if !has_shell && oobe_locale.is_none() {
         return;
     }
@@ -51,6 +54,12 @@ pub(super) fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
         first_logon.push((
             "Re-enable network adapters after OOBE",
             ENABLE_ADAPTERS_COMMAND,
+        ));
+    }
+    if setup.prevent_password_expiration {
+        first_logon.push((
+            "Set local accounts' password to never expire",
+            PASSWORD_NEVER_EXPIRES_COMMAND,
         ));
     }
     push_first_logon_commands(&mut shell_body, &first_logon);
@@ -81,12 +90,15 @@ pub(super) fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
     }
 
     let mut intl_body = String::new();
-    if let Some(loc) = oobe_locale {
-        let loc = escape(loc);
-        intl_body.push_str(&format!("      <InputLocale>{loc}</InputLocale>\n"));
-        intl_body.push_str(&format!("      <SystemLocale>{loc}</SystemLocale>\n"));
-        intl_body.push_str(&format!("      <UILanguage>{loc}</UILanguage>\n"));
-        intl_body.push_str(&format!("      <UserLocale>{loc}</UserLocale>\n"));
+    if let Some(Locale {
+        primary,
+        input_locale,
+    }) = oobe_locale.and_then(parse_locale)
+    {
+        intl_body.push_str(&format!("      <InputLocale>{input_locale}</InputLocale>\n"));
+        intl_body.push_str(&format!("      <SystemLocale>{primary}</SystemLocale>\n"));
+        intl_body.push_str(&format!("      <UILanguage>{primary}</UILanguage>\n"));
+        intl_body.push_str(&format!("      <UserLocale>{primary}</UserLocale>\n"));
     }
 
     let archs = target_archs(setup);

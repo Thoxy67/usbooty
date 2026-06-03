@@ -119,6 +119,10 @@ pub(super) const DESKTOP_HELPERS: &[(&str, &str)] = &[
         "3 Install Apps/Install-DotNet-Runtimes.bat",
         include_str!("../desktop_helpers/3 Install Apps/Install-DotNet-Runtimes.bat"),
     ),
+    (
+        "3 Install Apps/Install-ExplorerPatcher.bat",
+        include_str!("../desktop_helpers/3 Install Apps/Install-ExplorerPatcher.bat"),
+    ),
     // --- 4 Package Managers ---
     (
         "4 Package Managers/Install-Chocolatey.bat",
@@ -167,6 +171,15 @@ pub(super) const DISABLE_ADAPTERS_COMMAND: &str = concat!(
 pub(super) const ENABLE_ADAPTERS_COMMAND: &str = concat!(
     r#"powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass "#,
     r#"-Command "Get-NetAdapter | Enable-NetAdapter -Confirm:$false""#,
+);
+
+/// PowerShell command that flips the "password never expires" flag on every
+/// local account at first logon. `Get-LocalUser` is the built-in
+/// LocalAccounts module, present on every Windows 10 / 11 desktop SKU; the
+/// auto-logon administrator has the rights to set the flag on each SAM user.
+pub(super) const PASSWORD_NEVER_EXPIRES_COMMAND: &str = concat!(
+    r#"powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass "#,
+    r#"-Command "Get-LocalUser | Set-LocalUser -PasswordNeverExpires $true""#,
 );
 
 /// `sources/ei.cfg` payload, written when

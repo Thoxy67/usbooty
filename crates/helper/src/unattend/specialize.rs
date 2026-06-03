@@ -52,24 +52,96 @@ pub(super) fn push_specialize(s: &mut String, setup: &WindowsSetup) {
             Some("Disable Windows automatic BitLocker device encryption"),
         ));
     }
-    if setup.apply_debloat {
+    if setup.disable_fast_startup {
+        // Clear HiberbootEnabled so a full shutdown really powers off (and
+        // releases the disks) instead of hibernating the kernel, the usual
+        // dual-boot fix. Machine-wide, so it sits in HKLM like the others.
+        deploy_cmds.push((
+            "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power\" \
+             /v HiberbootEnabled /t REG_DWORD /d 0 /f"
+                .to_string(),
+            Some("Disable Fast Startup (hybrid shutdown)"),
+        ));
+    }
+    // Per-user tweaks that live in the default user's NTUSER.DAT. They're
+    // applied by mounting it as HKU\DFT so every account cloned from Default
+    // (including the one created at OOBE) inherits them. The debloat .reg
+    // import shares this same mount window, so we load/unload only once.
+    let mut dft_cmds: Vec<(String, Option<&'static str>)> = Vec::new();
+    if setup.show_file_extensions {
+        dft_cmds.push((
+            "reg add \"HKU\\DFT\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" \
+             /v HideFileExt /t REG_DWORD /d 0 /f"
+                .to_string(),
+            Some("Show known file extensions in Explorer"),
+        ));
+    }
+    if setup.show_hidden_files {
+        dft_cmds.push((
+            "reg add \"HKU\\DFT\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" \
+             /v Hidden /t REG_DWORD /d 1 /f"
+                .to_string(),
+            Some("Show hidden files in Explorer"),
+        ));
+    }
+    if setup.dark_mode {
+        dft_cmds.push((
+            "reg add \"HKU\\DFT\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\" \
+             /v AppsUseLightTheme /t REG_DWORD /d 0 /f"
+                .to_string(),
+            Some("Use the dark theme for apps"),
+        ));
+        dft_cmds.push((
+            "reg add \"HKU\\DFT\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\" \
+             /v SystemUsesLightTheme /t REG_DWORD /d 0 /f"
+                .to_string(),
+            Some("Use the dark theme for the system UI"),
+        ));
+    }
+    if setup.apply_debloat || !dft_cmds.is_empty() {
         deploy_cmds.push((
             "reg load HKU\\DFT C:\\Users\\Default\\NTUSER.DAT".to_string(),
-            Some("Mount the default user's hive for per-user debloat policies"),
+            Some("Mount the default user's hive for per-user tweaks"),
         ));
-        // The USB drive letter is unpredictable on a freshly-installing system,
-        // so scan D..Z for the .reg next to autounattend.xml.
-        deploy_cmds.push((
-            format!(
-                "cmd /c \"for %d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) \
-                 do if exist %d:\\{name} reg import %d:\\{name}\"",
-                name = DEBLOAT_REG_NAME,
-            ),
-            Some("Import usbooty-debloat.reg from the USB"),
-        ));
+        deploy_cmds.extend(dft_cmds);
+        if setup.apply_debloat {
+            // The USB drive letter is unpredictable on a freshly-installing
+            // system, so scan D..Z for the .reg next to autounattend.xml.
+            deploy_cmds.push((
+                format!(
+                    "cmd /c \"for %d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) \
+                     do if exist %d:\\{name} reg import %d:\\{name}\"",
+                    name = DEBLOAT_REG_NAME,
+                ),
+                Some("Import usbooty-debloat.reg from the USB"),
+            ));
+        }
         deploy_cmds.push((
             "reg unload HKU\\DFT".to_string(),
             Some("Unmount the default user's hive"),
+        ));
+    }
+    if setup.classic_context_menu {
+        // Restore the Win 10 "show more options" menu by giving the Win 11
+        // command-bar CLSID an empty InprocServer32 handler. This lives in
+        // the *per-user class store* (UsrClass.dat), a different file from
+        // NTUSER.DAT, so it gets its own mount. Empty value (/ve) is the
+        // documented disable switch. Harmless on Windows 10.
+        deploy_cmds.push((
+            "reg load HKU\\DFTClasses \
+             \"C:\\Users\\Default\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat\""
+                .to_string(),
+            Some("Mount the default user's class store"),
+        ));
+        deploy_cmds.push((
+            "reg add \"HKU\\DFTClasses\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\
+             \\InprocServer32\" /ve /f"
+                .to_string(),
+            Some("Restore the Windows 10 classic right-click menu"),
+        ));
+        deploy_cmds.push((
+            "reg unload HKU\\DFTClasses".to_string(),
+            Some("Unmount the default user's class store"),
         ));
     }
     if setup.desktop_helpers {

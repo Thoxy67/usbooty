@@ -2144,6 +2144,61 @@ ApplicationWindow {
                     text: app.productKey
                     onTextEdited: app.productKey = text
                 }
+                Button {
+                    id: genericKeyButton
+                    text: qsTr("Generic key")
+                    // Display name for the detected ISO; the KMS client setup
+                    // keys are identical between Windows 10 and 11 for matching
+                    // editions, so only the label changes by version.
+                    readonly property string winName: window.isWin11 ? "Windows 11" : "Windows 10"
+                    // Microsoft's published KMS client setup keys (a.k.a.
+                    // "generic" keys). They let Setup pick the edition to
+                    // install without a paid key; they do NOT activate Windows.
+                    readonly property var genericKeys: [
+                        { edition: "Home",                 key: "TX9XD-98N7V-6WMQ6-BX7FG-H8Q99" },
+                        { edition: "Home N",               key: "3KHY7-WNT83-DGQKR-F7HPR-844BM" },
+                        { edition: "Home Single Language", key: "7HNRX-D7KGG-3K4RQ-4WPJ4-YTDFH" },
+                        { edition: "Pro",                  key: "VK7JG-NPHTM-C97JM-9MPGT-3V66T" },
+                        { edition: "Pro N",                key: "2B87N-8KFHP-DKV6R-Y2C8J-PKCKT" },
+                        { edition: "Pro for Workstations", key: "DXG7C-N36C4-C4HTG-X4T3X-2YV77" },
+                        { edition: "Pro Education",        key: "6TP4R-GNPTD-KYYHQ-7B7DP-J447Y" },
+                        { edition: "Education",            key: "NW6C2-QMPVW-D7KKK-3GKT6-VCFB2" },
+                        { edition: "Education N",          key: "2WH4N-8QGBV-H22JP-CT43Q-MDWWJ" },
+                        { edition: "Enterprise",           key: "NPPR9-FWDCX-D2C8J-H872K-2YT43" },
+                        { edition: "Enterprise N",         key: "DPH2V-TTNVB-4X9Q3-TJR4H-KHJW4" },
+                    ]
+                    onClicked: genericKeyMenu.popup(0, genericKeyButton.height)
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Fill the field with a Microsoft generic key (KMS client "
+                        + "setup key) so Setup installs the edition you pick. These choose the "
+                        + "edition only, they do NOT activate Windows, activate separately "
+                        + "afterwards. The list matches the loaded ISO (Windows 10 or 11); the "
+                        + "keys themselves are the same across both versions.")
+                    Menu {
+                        id: genericKeyMenu
+                        MenuItem {
+                            // Non-clickable header so it's obvious which ISO the
+                            // keys below belong to.
+                            text: qsTr("%1 generic keys (install only)").arg(genericKeyButton.winName)
+                            enabled: false
+                        }
+                        MenuSeparator { }
+                        Repeater {
+                            model: genericKeyButton.genericKeys
+                            MenuItem {
+                                required property var modelData
+                                text: genericKeyButton.winName + " " + modelData.edition
+                                onTriggered: app.productKey = modelData.key
+                            }
+                        }
+                        MenuSeparator { }
+                        MenuItem {
+                            text: qsTr("Clear")
+                            onTriggered: app.productKey = ""
+                        }
+                    }
+                }
             }
             WrapCheckBox {
                 text: qsTr("Force the edition picker at boot (OEM PCs)")
@@ -2165,26 +2220,13 @@ ApplicationWindow {
             // --- OOBE (first-boot) skips --------------------------------
             Label { text: qsTr("Out-of-box experience"); font.bold: true; Layout.topMargin: 6 }
             Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
-            WrapCheckBox {
-                // Convenience: flip the four privacy / prompt-skip options below
-                // together. Checked only when all of them are already on. The
-                // Microsoft-account skip stays separate (it's an account choice,
-                // not a privacy prompt).
-                text: qsTr("Express: skip the optional OOBE prompts (Wi-Fi, OEM, network type, privacy)")
-                checked: app.hideWirelessSetup && app.hideOemRegistration
-                         && app.networkLocationWork && app.disableTelemetry
-                onToggled: {
-                    app.hideWirelessSetup = checked
-                    app.hideOemRegistration = checked
-                    app.networkLocationWork = checked
-                    app.disableTelemetry = checked
-                }
-                ToolTip.delay: 500
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("One switch for the four prompt-skip options below: hide the Wi-Fi "
-                    + "screen, the OEM-registration screen, pre-answer the network type as Work, and "
-                    + "skip the privacy / data-collection page. Toggle the individual boxes for finer control.")
-            }
+
+            // Sign-in: how first boot creates the user. The two options are
+            // complementary fallbacks, not alternatives, so they stay separate
+            // checkboxes (both may be on together): skip-MSA flips the OOBE
+            // flags, disable-network is the harder 24H2+ workaround for when
+            // those flags are silently ignored.
+            Label { text: qsTr("Sign-in"); color: palette.placeholderText; Layout.topMargin: 2 }
             WrapCheckBox {
                 text: qsTr("Skip Microsoft-account requirement (works on Win 10 and all Win 11)")
                 checked: app.skipMsaccount
@@ -2210,7 +2252,33 @@ ApplicationWindow {
                     + "reliable local-account workaround on recent Win 11 builds where the regular "
                     + "'skip Microsoft account' flags are silently ignored.")
             }
+
+            // Optional prompts: the Express button flips all four boxes below
+            // at once; the indented boxes give finer control. A button (not a
+            // checkbox) because it's an action, not a saved setting, its label
+            // tracks whether the four are currently all on.
+            Label { text: qsTr("Optional prompts"); color: palette.placeholderText; Layout.topMargin: 6 }
+            Button {
+                // Checked-state of the group: true only when all four are on.
+                readonly property bool allOn: app.hideWirelessSetup && app.hideOemRegistration
+                         && app.networkLocationWork && app.disableTelemetry
+                text: allOn ? qsTr("Restore the four optional OOBE prompts")
+                            : qsTr("Express: skip all four optional OOBE prompts")
+                onClicked: {
+                    var on = !allOn
+                    app.hideWirelessSetup = on
+                    app.hideOemRegistration = on
+                    app.networkLocationWork = on
+                    app.disableTelemetry = on
+                }
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("One switch for the four prompt-skip options below: hide the Wi-Fi "
+                    + "screen, the OEM-registration screen, pre-answer the network type as Work, and "
+                    + "skip the privacy / data-collection page. Toggle the individual boxes for finer control.")
+            }
             WrapCheckBox {
+                Layout.leftMargin: 16
                 text: qsTr("Skip the \"connect to a network\" Wi-Fi screen")
                 checked: app.hideWirelessSetup
                 onToggled: app.hideWirelessSetup = checked
@@ -2221,6 +2289,7 @@ ApplicationWindow {
                     + "if you'd rather finish OOBE first and configure Wi-Fi inside Windows after.")
             }
             WrapCheckBox {
+                Layout.leftMargin: 16
                 text: qsTr("Hide the OEM-registration screen")
                 checked: app.hideOemRegistration
                 onToggled: app.hideOemRegistration = checked
@@ -2231,6 +2300,7 @@ ApplicationWindow {
                     + "clean Microsoft ISOs. There's no OEM page to hide.")
             }
             WrapCheckBox {
+                Layout.leftMargin: 16
                 text: qsTr("Pre-answer the network-type prompt as \"Work\" (private/trusted)")
                 checked: app.networkLocationWork
                 onToggled: app.networkLocationWork = checked
@@ -2242,6 +2312,7 @@ ApplicationWindow {
                     + "discovery enabled. Pick this on a LAN you control; skip it on cafés / hotels.")
             }
             WrapCheckBox {
+                Layout.leftMargin: 16
                 text: qsTr("Disable data-collection / telemetry prompts")
                 checked: app.disableTelemetry
                 onToggled: app.disableTelemetry = checked
@@ -2292,6 +2363,18 @@ ApplicationWindow {
                     text: app.localAccountPassword
                     onTextEdited: app.localAccountPassword = text
                 }
+            }
+            WrapCheckBox {
+                text: qsTr("Never expire the account password")
+                checked: app.preventPasswordExpiration
+                onToggled: app.preventPasswordExpiration = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Sets the 'password never expires' flag on every local account "
+                    + "at first logon, so Windows never forces a password change. Applies whether or "
+                    + "not you set a password above, and to any account, including ones created later "
+                    + "in OOBE. Handy for home PCs, kiosks and lab machines you don't want nagging for "
+                    + "a new password.")
             }
 
             // --- System identity ----------------------------------------
@@ -2349,6 +2432,13 @@ ApplicationWindow {
                     placeholderText: qsTr("Optional, e.g. en-US, fr-FR, de-DE")
                     text: app.locale
                     onTextEdited: app.locale = text
+                    ToolTip.delay: 500
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Sets the system language, display language and regional "
+                        + "format. List several entries separated by a comma or a space to add "
+                        + "extra keyboard layouts, e.g. \"fr-FR, en-US\": the first one is the "
+                        + "main language; every entry is added as a keyboard you can switch "
+                        + "between with the language bar.")
                 }
             }
             RowLayout {
@@ -2544,6 +2634,7 @@ ApplicationWindow {
                     + "&nbsp;• <b>Install-DirectX</b>: legacy DirectX runtime (older games)<br>"
                     + "&nbsp;• <b>Install-Browser</b>: menu of 11 browsers (Chrome, Firefox, Brave, …)<br>"
                     + "&nbsp;• <b>Install-DotNet-Runtimes</b>: .NET Desktop Runtime 8 + 9<br>"
+                    + "&nbsp;• <b>Install-ExplorerPatcher</b>: latest ExplorerPatcher, x64 / ARM64 (Win 10 taskbar on 11)<br>"
                     + "<br><b>Package Managers</b><br>"
                     + "&nbsp;• <b>Install-Chocolatey</b>: Chocolatey (machine-wide, admin)<br>"
                     + "&nbsp;• <b>Install-Scoop</b>: Scoop (per-user, no admin)<br>"
@@ -2553,6 +2644,68 @@ ApplicationWindow {
                     + "<br>"
                     + "The debloat suites, installers and activator fetch code from the internet "
                     + "on first run; the tweak scripts only change local settings.")
+            }
+
+            // --- Tweaks -------------------------------------------------
+            // Optional quality-of-life registry tweaks, baked into the
+            // default user profile (and HKLM) during the specialize pass so
+            // the created account gets them on first sign-in. All off by
+            // default.
+            Label { text: qsTr("Tweaks"); font.bold: true; Layout.topMargin: 6 }
+            Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid; opacity: 0.5 }
+            WrapCheckBox {
+                text: qsTr("Show known file extensions in Explorer")
+                checked: app.showFileExtensions
+                onToggled: app.showFileExtensions = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Turns off 'Hide extensions for known file types', so Explorer "
+                    + "shows .exe, .txt, .docx and the like. Applied to the default user profile, so "
+                    + "the account created at first boot already has it on.")
+            }
+            WrapCheckBox {
+                text: qsTr("Show hidden files in Explorer")
+                checked: app.showHiddenFiles
+                onToggled: app.showHiddenFiles = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Sets Explorer to show hidden files and folders. Does not reveal "
+                    + "protected operating-system files (that's a separate, riskier toggle). Applied to "
+                    + "the default user profile.")
+            }
+            WrapCheckBox {
+                // The classic-menu CLSID trick only matters on Win 11, which
+                // introduced the trimmed 'Show more options' command bar.
+                visible: window.isWin11
+                text: qsTr("Restore the classic right-click context menu (Windows 11)")
+                checked: app.classicContextMenu
+                onToggled: app.classicContextMenu = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Brings back the full Windows 10 right-click menu instead of the "
+                    + "trimmed Windows 11 one that hides most entries behind 'Show more options'. "
+                    + "Applied to the default user profile's class store.")
+            }
+            WrapCheckBox {
+                text: qsTr("Use the dark theme by default")
+                checked: app.darkMode
+                onToggled: app.darkMode = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Defaults both the app and system UI to the dark theme for the "
+                    + "created account, instead of the out-of-the-box light theme. Purely cosmetic; "
+                    + "switch it back any time in Settings > Personalization.")
+            }
+            WrapCheckBox {
+                text: qsTr("Disable Fast Startup (hybrid shutdown)")
+                checked: app.disableFastStartup
+                onToggled: app.disableFastStartup = checked
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Clears HiberbootEnabled so 'Shut down' performs a real, full "
+                    + "shutdown instead of saving the kernel to a hibernation file. The standard fix "
+                    + "for dual-boot setups where Windows otherwise locks the disks, and for machines "
+                    + "that won't cleanly power off. Machine-wide (HKLM).")
             }
             }
         }

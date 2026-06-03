@@ -4,7 +4,7 @@
 
 use usbooty_core::WindowsSetup;
 
-use super::{escape, push_component_per_arch, push_run_command, target_archs};
+use super::{escape, parse_locale, push_component_per_arch, push_run_command, target_archs, Locale};
 
 pub(super) fn push_windows_pe(s: &mut String, setup: &WindowsSetup) {
     let bypasses: Vec<&str> = [
@@ -54,14 +54,17 @@ pub(super) fn push_windows_pe(s: &mut String, setup: &WindowsSetup) {
     }
 
     let mut intl_body = String::new();
-    if let Some(loc) = setup_locale {
-        let loc = escape(loc);
+    if let Some(Locale {
+        primary,
+        input_locale,
+    }) = setup_locale.and_then(parse_locale)
+    {
         intl_body.push_str("      <SetupUILanguage>\n");
-        intl_body.push_str(&format!("        <UILanguage>{loc}</UILanguage>\n"));
+        intl_body.push_str(&format!("        <UILanguage>{primary}</UILanguage>\n"));
         intl_body.push_str("      </SetupUILanguage>\n");
-        intl_body.push_str(&format!("      <InputLocale>{loc}</InputLocale>\n"));
-        intl_body.push_str(&format!("      <SystemLocale>{loc}</SystemLocale>\n"));
-        intl_body.push_str(&format!("      <UILanguage>{loc}</UILanguage>\n"));
+        intl_body.push_str(&format!("      <InputLocale>{input_locale}</InputLocale>\n"));
+        intl_body.push_str(&format!("      <SystemLocale>{primary}</SystemLocale>\n"));
+        intl_body.push_str(&format!("      <UILanguage>{primary}</UILanguage>\n"));
     }
 
     let archs = target_archs(setup);

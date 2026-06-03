@@ -200,6 +200,36 @@ pub(super) fn push_run_command(s: &mut String, order: usize, cmd: &str, descript
     s.push_str("        </RunSynchronousCommand>\n");
 }
 
+/// A parsed Locale field: the single locale that drives the system / UI / user
+/// language, plus the (possibly multi-entry) keyboard list for `InputLocale`.
+/// Both fields are already XML-escaped.
+pub(super) struct Locale {
+    /// First entry, used for the elements that take exactly one value
+    /// (`SystemLocale`, `UILanguage`, `UserLocale`, the Setup-UI language).
+    pub primary: String,
+    /// Every entry joined with `;`, the separator the unattend `InputLocale`
+    /// schema uses to stack multiple keyboard layouts.
+    pub input_locale: String,
+}
+
+/// Parse the user's Locale field. The field accepts several keyboard layouts
+/// separated by a comma or whitespace, e.g. `fr-FR, en-US` or `fr-FR en-US`.
+/// The first entry drives the system / UI / user locale (those take a single
+/// value); every entry becomes a keyboard layout, joined with `;` as the
+/// `InputLocale` schema wants. Returns `None` when no non-empty entry remains.
+pub(super) fn parse_locale(raw: &str) -> Option<Locale> {
+    let parts: Vec<String> = raw
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|t| !t.is_empty())
+        .map(escape)
+        .collect();
+    let primary = parts.first()?.clone();
+    Some(Locale {
+        primary,
+        input_locale: parts.join(";"),
+    })
+}
+
 /// Trim, drop characters Windows forbids in a hostname, and cap at 15 chars.
 pub(super) fn sanitize_computer_name(name: &str) -> String {
     name.trim()
@@ -421,6 +451,89 @@ mod tests {
     }
 
     #[test]
+    fn multiple_keyboards_stack_in_input_locale_only() {
+        // A comma- or space-separated list adds keyboard layouts: every entry
+        // lands in InputLocale joined with ';', but the single-value elements
+        // keep just the first locale.
+        for raw in ["fr-FR, en-US", "fr-FR en-US"] {
+            let setup = WindowsSetup {
+                locale: Some(raw.into()),
+                ..WindowsSetup::default()
+            };
+            let xml = generate(&setup);
+            assert!(
+                xml.contains("<InputLocale>fr-FR;en-US</InputLocale>"),
+                "both keyboards expected for {raw:?}"
+            );
+            assert!(xml.contains("<UserLocale>fr-FR</UserLocale>"));
+            assert!(xml.contains("<SystemLocale>fr-FR</SystemLocale>"));
+            assert!(
+                !xml.contains("<SystemLocale>fr-FR;en-US</SystemLocale>"),
+                "single-value elements must not stack for {raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn prevent_password_expiration_emits_first_logon_command() {
+        let setup = WindowsSetup {
+            prevent_password_expiration: true,
+            ..WindowsSetup::default()
+        };
+        let xml = generate(&setup);
+        assert!(xml.contains("<FirstLogonCommands>"));
+        assert!(
+            xml.contains("Set-LocalUser -PasswordNeverExpires $true"),
+            "expected the password-never-expires PowerShell command"
+        );
+        // The option stands alone: it must pull in the Shell-Setup component
+        // even without a local account or any other OOBE tweak.
+        assert!(xml.contains("name=\"Microsoft-Windows-Shell-Setup\""));
+    }
+
+    #[test]
+    fn explorer_and_theme_tweaks_land_in_the_default_user_hive() {
+        let setup = WindowsSetup {
+            show_file_extensions: true,
+            show_hidden_files: true,
+            dark_mode: true,
+            classic_context_menu: true,
+            disable_fast_startup: true,
+            // Pin one arch so each component (and its commands) is emitted
+            // exactly once, keeping the mount-count assertions deterministic.
+            arch: Some("amd64".into()),
+            ..WindowsSetup::default()
+        };
+        let xml = generate(&setup);
+        // The NTUSER.DAT hive is mounted once and unmounted once for all the
+        // per-user tweaks that live there ("reg load HKU\DFT " with a trailing
+        // space, and the unload terminated by </Path>, so neither matches the
+        // separate DFTClasses hive below).
+        assert_eq!(xml.matches("reg load HKU\\DFT ").count(), 1);
+        assert_eq!(xml.matches("reg unload HKU\\DFT</Path>").count(), 1);
+        assert!(xml.contains("/v HideFileExt /t REG_DWORD /d 0 /f"));
+        assert!(xml.contains("/v Hidden /t REG_DWORD /d 1 /f"));
+        assert!(xml.contains("/v AppsUseLightTheme /t REG_DWORD /d 0 /f"));
+        // The classic menu uses a separate class-store hive.
+        assert!(xml.contains("DFTClasses"));
+        assert!(xml.contains("{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}"));
+        // Fast Startup is machine-wide.
+        assert!(xml.contains("/v HiberbootEnabled /t REG_DWORD /d 0 /f"));
+    }
+
+    #[test]
+    fn split_explorer_toggles_are_independent() {
+        // Only extensions, not hidden files.
+        let setup = WindowsSetup {
+            show_file_extensions: true,
+            ..WindowsSetup::default()
+        };
+        let xml = generate(&setup);
+        assert!(xml.contains("/v HideFileExt /t REG_DWORD /d 0 /f"));
+        assert!(!xml.contains("/v Hidden /t REG_DWORD /d 1 /f"));
+    }
+
+    #[test]
     fn product_key_and_accept_eula_share_one_user_data_block_per_arch() {
         let setup = WindowsSetup {
             product_key: Some("ABCDE-12345-FGHIJ-67890-KLMNO".into()),
@@ -576,6 +689,7 @@ mod tests {
                 "3 Install Apps/Install-DirectX.bat",
                 "3 Install Apps/Install-Browser.bat",
                 "3 Install Apps/Install-DotNet-Runtimes.bat",
+                "3 Install Apps/Install-ExplorerPatcher.bat",
                 "4 Package Managers/Install-Chocolatey.bat",
                 "4 Package Managers/Install-Scoop.bat",
                 "4 Package Managers/Install-Winget.bat",
