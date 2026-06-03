@@ -77,12 +77,15 @@ fn install_fat(partition: &str, mount: &Path) -> Result<()> {
 /// location does not exist yet, needed because the ISO's bootloader directory
 /// is named `isolinux` but Syslinux on disk looks at `syslinux`.
 fn ensure_syslinux_cfg(mount: &Path) -> Result<()> {
-    let target_dir = mount.join("syslinux");
+    // Resolve copied directories case-insensitively so a case-sensitive
+    // destination doesn't end up with `isolinux`/`Isolinux` or duplicate
+    // `syslinux` siblings. See [`crate::fsutil::ci_join`].
+    let target_dir = crate::fsutil::ci_join(mount, &["syslinux"]);
     let target = target_dir.join("syslinux.cfg");
     if target.exists() {
         return Ok(());
     }
-    let source = mount.join("isolinux").join("isolinux.cfg");
+    let source = crate::fsutil::ci_join(mount, &["isolinux", "isolinux.cfg"]);
     if !source.exists() {
         // No isolinux config to mirror; syslinux will still install and look
         // for `boot/syslinux.cfg` or fail gracefully at boot time.
@@ -99,11 +102,11 @@ fn ensure_syslinux_cfg(mount: &Path) -> Result<()> {
 /// Run `extlinux --install` against an ext4 mountpoint, with the config
 /// living in `<mount>/syslinux/`.
 fn install_extlinux(mount: &Path) -> Result<()> {
-    let target = mount.join("syslinux");
+    let target = crate::fsutil::ci_join(mount, &["syslinux"]);
     std::fs::create_dir_all(&target).with_context(|| format!("creating {}", target.display()))?;
 
     // Mirror the isolinux config the same way as for FAT.
-    let source_cfg = mount.join("isolinux").join("isolinux.cfg");
+    let source_cfg = crate::fsutil::ci_join(mount, &["isolinux", "isolinux.cfg"]);
     let target_cfg = target.join("syslinux.cfg");
     if source_cfg.exists() && !target_cfg.exists() {
         std::fs::copy(&source_cfg, &target_cfg)

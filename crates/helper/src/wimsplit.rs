@@ -45,7 +45,11 @@ pub fn split_install_wim(src_iso: &Path, dest_mount: &Path, abort: &AtomicBool) 
     let src_wim = fsutil::ci_path(src_mount.path(), &["sources", "install.wim"])
         .context("the ISO has no `sources/install.wim` to split")?;
 
-    let dest_sources = dest_mount.join("sources");
+    // Resolve the copied `sources/` case-insensitively so the chunks land in
+    // the directory the ISO created rather than a hard-coded sibling that a
+    // case-sensitive destination would treat as distinct. See
+    // [`fsutil::ci_join`].
+    let dest_sources = fsutil::ci_join(dest_mount, &["sources"]);
     fs::create_dir_all(&dest_sources)
         .with_context(|| format!("creating {}", dest_sources.display()))?;
     let swm_template = dest_sources.join("install.swm");

@@ -189,5 +189,8 @@ pub(super) const EI_CFG: &str = "[Channel]\n_Default\n[VL]\n0\n";
 /// directory at the root of the install media.
 pub(super) const EI_CFG_NAME: &str = "ei.cfg";
 
-/// Subdirectory on the USB where Windows Setup looks for `ei.cfg`.
-pub(super) const EI_CFG_DIR: &str = "Sources";
+/// Subdirectory on the USB where Windows Setup looks for `ei.cfg`. Resolved
+/// case-insensitively against the directory the ISO actually copied (lower-cased
+/// `sources` on real media), so it never creates a second, case-colliding
+/// directory on a case-sensitive destination. See [`crate::fsutil::ci_join`].
+pub(super) const EI_CFG_DIR: &str = "sources";

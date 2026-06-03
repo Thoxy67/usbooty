@@ -33,9 +33,6 @@ use crate::{emit, fsutil};
 /// `\Windows\System32\SecureBootUpdates\` so the layout matches.
 const SOURCE_PATH: &str = "Windows/System32/SecureBootUpdates/SkuSiPolicy.p7b";
 
-/// Destination on the USB, mirroring the EFI fallback path Windows expects.
-const DEST_RELATIVE: &str = "EFI/Microsoft/Boot/SkuSiPolicy.p7b";
-
 /// Extract `SkuSiPolicy.p7b` from `src_iso`'s install image and place it
 /// at `<dest_mount>/EFI/Microsoft/Boot/SkuSiPolicy.p7b`. Returns `Ok(())`
 /// on either a successful copy or a soft skip (with a log line).
@@ -120,7 +117,12 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
         return Ok(());
     }
 
-    let dest = dest_mount.join(DEST_RELATIVE);
+    // Resolve `EFI/Microsoft/Boot` case-insensitively against the directories
+    // the ISO copied (lower-cased `efi/microsoft/boot` on real media). Joining
+    // the hard-coded capitalised path on a case-sensitive destination (the
+    // ntfs3 kernel driver) would create colliding sibling directories, which
+    // corrupts the NTFS index from Windows' view. See [`fsutil::ci_join`].
+    let dest = fsutil::ci_join(dest_mount, &["EFI", "Microsoft", "Boot", "SkuSiPolicy.p7b"]);
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
     }

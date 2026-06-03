@@ -423,6 +423,37 @@ pub fn wimlib_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Resolve `segments` under `root` for *writing*, matching each existing path
+/// component case-insensitively and falling back to the literal segment for any
+/// component that doesn't exist yet. Unlike [`ci_path`] this never fails.
+///
+/// It exists because the install media is copied verbatim from the ISO (whose
+/// directories are typically lower-cased, e.g. `sources`, `efi`), and the
+/// destination may be mounted through the *case-sensitive* in-kernel `ntfs3`
+/// driver. Joining a hard-coded `Sources`/`EFI` there would create a *second*
+/// directory colliding with the copied one; two NTFS entries differing only in
+/// case make the directory index ambiguous to Windows, so the boot manager can
+/// no longer resolve `\sources\boot.wim` and fails with 0xc000000f. Resolving
+/// the real existing component first keeps the write in the original directory.
+pub fn ci_join(root: &Path, segments: &[&str]) -> PathBuf {
+    let mut current = root.to_path_buf();
+    for seg in segments {
+        let matched = std::fs::read_dir(&current).ok().and_then(|entries| {
+            entries.flatten().find_map(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(seg)
+                    .then(|| e.file_name())
+            })
+        });
+        match matched {
+            Some(name) => current.push(name),
+            None => current.push(seg),
+        }
+    }
+    current
+}
+
 /// Resolve a `/`-segment path under `root`, matching each segment ignoring
 /// case (ISO9660 may upper-case names; UDF preserves them).
 pub fn ci_path(root: &Path, segments: &[&str]) -> Result<PathBuf> {

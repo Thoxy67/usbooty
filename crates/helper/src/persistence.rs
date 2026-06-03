@@ -90,7 +90,10 @@ pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
 pub fn setup_inline(data_mount: &Path, kind: PersistenceKind) -> Result<()> {
     match kind {
         PersistenceKind::SlaxChanges => {
-            let dir = data_mount.join("slax").join("changes");
+            // Resolve the copied `slax/` case-insensitively so a case-sensitive
+            // destination reuses it instead of creating a colliding sibling.
+            // See [`crate::fsutil::ci_join`].
+            let dir = crate::fsutil::ci_join(data_mount, &["slax", "changes"]);
             std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
             emit::log(format!(
                 "Slax persistence directory created at {}",

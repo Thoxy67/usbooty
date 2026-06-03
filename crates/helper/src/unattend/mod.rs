@@ -72,12 +72,17 @@ pub fn write(mount: &Path, setup: &WindowsSetup) -> Result<()> {
 
     if setup.force_edition_picker {
         // `sources/` already exists on a Windows install USB (it's where
-        // `install.wim` lives). On the off-chance the partition layout is
-        // unusual or the directory is missing, `create_dir_all` is a no-op
-        // when it already exists.
-        let dir = mount.join(EI_CFG_DIR);
-        std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
-        let path = dir.join(EI_CFG_NAME);
+        // `install.wim` lives). Resolve it case-insensitively so the file lands
+        // in the directory the ISO actually copied, not a hard-coded `Sources`
+        // that a case-sensitive destination (the ntfs3 kernel driver) would
+        // create as a colliding sibling, breaking boot with 0xc000000f. See
+        // [`crate::fsutil::ci_join`]. `create_dir_all` of the resolved parent is
+        // a no-op when it already exists.
+        let path = crate::fsutil::ci_join(mount, &[EI_CFG_DIR, EI_CFG_NAME]);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
         std::fs::write(&path, EI_CFG).with_context(|| format!("writing {}", path.display()))?;
         emit::log("Wrote sources/ei.cfg to force Setup's edition picker on boot");
     }
@@ -502,6 +507,32 @@ mod tests {
         assert!(!cfg.contains("[EditionID]"));
         assert!(cfg.contains("[Channel]\n_Default"));
         assert!(cfg.contains("[VL]\n0"));
+    }
+
+    #[test]
+    fn force_edition_picker_reuses_existing_differently_cased_sources_dir() {
+        // The install media is copied verbatim from the ISO, whose directory is
+        // lower-cased `sources`. On a case-sensitive destination (the ntfs3
+        // kernel driver) the picker write must land *in that directory*, not in
+        // a hard-coded capitalised `Sources` sibling: two NTFS entries differing
+        // only in case break Windows boot (0xc000000f). Tempdirs on Linux are
+        // case-sensitive, so this reproduces the original bug directly.
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("sources")).expect("seed sources/");
+        let setup = WindowsSetup {
+            force_edition_picker: true,
+            ..WindowsSetup::default()
+        };
+        write(dir.path(), &setup).expect("write");
+
+        assert!(
+            dir.path().join("sources").join("ei.cfg").exists(),
+            "ei.cfg must go into the existing lower-cased sources/"
+        );
+        assert!(
+            !dir.path().join("Sources").exists(),
+            "must not create a case-colliding Sources/ sibling"
+        );
     }
 
     #[test]
