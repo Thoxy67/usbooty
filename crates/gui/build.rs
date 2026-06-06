@@ -1,4 +1,4 @@
-use cxx_qt_build::{CxxQtBuilder, QmlModule};
+use cxx_qt_build::{CxxQtBuilder, QmlFile, QmlModule};
 use std::path::Path;
 use std::process::Command;
 
@@ -27,7 +27,36 @@ fn main() {
     println!("cargo:rerun-if-changed=include/translator_bridge.h");
     println!("cargo:rerun-if-changed=include/translator_bridge.cpp");
 
-    CxxQtBuilder::new_qml_module(QmlModule::new("com.usbooty").qml_file("qml/main.qml"))
+    CxxQtBuilder::new_qml_module(
+        QmlModule::new("com.usbooty")
+            // main.qml is the window shell; the rest of the UI lives in
+            // sibling files of the same module, reachable by type name with
+            // no extra import. Ui is a singleton holding shared helpers.
+            .qml_file(QmlFile::from("qml/Ui.qml").singleton(true))
+            .qml_files([
+                "qml/main.qml",
+                // Reusable leaf components.
+                "qml/components/StepCard.qml",
+                "qml/components/WindowsLogo.qml",
+                "qml/components/LinuxLogo.qml",
+                "qml/components/Pill.qml",
+                "qml/components/DialogHeader.qml",
+                "qml/components/FormCombo.qml",
+                "qml/components/WrapCheckBox.qml",
+                "qml/components/Banner.qml",
+                "qml/components/SplitButton.qml",
+                // Top-level dialogs.
+                "qml/dialogs/CheckConfirmDialog.qml",
+                "qml/dialogs/WindowsSetupDialog.qml",
+                "qml/dialogs/InspectDialog.qml",
+                "qml/dialogs/DepsDialog.qml",
+                "qml/dialogs/BootTestDialog.qml",
+                "qml/dialogs/ResultDialog.qml",
+                "qml/dialogs/AboutDialog.qml",
+                "qml/dialogs/EraseConfirmDialog.qml",
+                "qml/dialogs/WindowsDownloadDialog.qml",
+            ]),
+    )
         .file("src/bridge/mod.rs")
         // Compile the QTranslator C++ shim *through cxx-qt-build*, using
         // a separate cc::Build invocation works locally with stale
