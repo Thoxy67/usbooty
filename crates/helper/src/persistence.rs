@@ -22,6 +22,9 @@ const OPENSUSE_COW_LABEL: &str = "cow";
 /// the kernel command line; Rufus picked `PERSISTENCE` upstream and we match it
 /// so a stick written by either tool is interchangeable.
 const ARCH_COW_LABEL: &str = "PERSISTENCE";
+/// Label the Knoppix initrd scans for and auto-adopts as its persistent
+/// overlay; no kernel parameter is involved.
+const KNOPPIX_DATA_LABEL: &str = "KNOPPIX-DATA";
 
 /// Format and configure the persistence partition at `device` for `kind`.
 ///
@@ -36,9 +39,14 @@ pub fn setup(device: &str, kind: PersistenceKind) -> Result<()> {
     let label = match kind {
         PersistenceKind::CasperRw => "casper-rw",
         PersistenceKind::DebianLive => "persistence",
-        PersistenceKind::FedoraOverlay => FEDORA_OVERLAY_LABEL,
+        PersistenceKind::FedoraOverlay | PersistenceKind::FedoraOverlayFs => FEDORA_OVERLAY_LABEL,
         PersistenceKind::OpenSuseCow => OPENSUSE_COW_LABEL,
         PersistenceKind::ArchOverlay => ARCH_COW_LABEL,
+        // The Knoppix initrd auto-adopts any partition with this label as
+        // its persistent overlay (ext4 works for 8.x/9.x). Needs
+        // verification on real Knoppix media; older releases used a
+        // `knoppix.img` file instead.
+        PersistenceKind::KnoppixData => KNOPPIX_DATA_LABEL,
         PersistenceKind::SlaxChanges | PersistenceKind::AlpineLbu => {
             // Inline schemes (Slax, Alpine) have no dedicated partition; the
             // caller must route them through setup_inline() instead.
@@ -121,33 +129,54 @@ pub fn setup_inline(data_mount: &Path, kind: PersistenceKind) -> Result<()> {
     }
 }
 
+/// An ordered anchor cascade: for each boot-config file, the *first* pair
+/// whose marker is present is applied and the rest are skipped. Mirrors
+/// Rufus's `iso.c` fallback chain, where one config syntax (say, Mint's
+/// `boot=casper`) must win over a more generic anchor present in the same
+/// file.
+type PatchCascade<'a> = &'a [(&'a str, &'a str)];
+
 /// Patch the copied bootloader configs on `target` so the live system
 /// actually activates persistence; without the kernel option the overlay
 /// partition is created but never used. Mirrors Rufus's `iso.c` patching.
 pub fn patch_boot_config(target: &Path, kind: PersistenceKind) -> Result<()> {
-    let mut patched = 0u32;
-    match kind {
-        PersistenceKind::CasperRw => patch_dir(
-            target,
-            "boot=casper",
-            "boot=casper persistent",
-            &mut patched,
+    // Pre-formatted args for the cascades below (cascade entries are &str).
+    let fedora_arg = format!(
+        "rd.live.image rd.live.overlay=LABEL={FEDORA_OVERLAY_LABEL}:/{FEDORA_OVERLAY_FILE}"
+    );
+    let fedora_overlayfs_arg = format!(
+        "rd.live.image rd.live.overlay=LABEL={FEDORA_OVERLAY_LABEL} rd.live.overlay.overlayfs=1"
+    );
+    let cow_arg_archiso = format!("cow_label={ARCH_COW_LABEL} archisobasedir=");
+    let cow_arg_miso = format!("cow_label={ARCH_COW_LABEL} misobasedir=");
+
+    // (cascade, tokens to scrub from patched files)
+    let (cascade, scrub): (PatchCascade, &[&str]) = match kind {
+        // Ubuntu-family. The anchor moved around across releases (Rufus
+        // iso.c documents the archaeology): preseed for classic Ubuntu,
+        // `boot=casper` for Mint (must come before the vmlinuz anchors,
+        // Mint configs carry both), bare `/casper/vmlinuz` for Ubuntu
+        // 23.04+ GRUB configs that dropped `boot=casper` entirely.
+        // `maybe-ubiquity` is scrubbed like Rufus does, so the patched
+        // entry boots to the live desktop instead of the installer prompt.
+        PersistenceKind::CasperRw => (
+            &[
+                ("file=/cdrom/preseed", "persistent file=/cdrom/preseed"),
+                ("boot=casper", "boot=casper persistent"),
+                ("/casper/vmlinuz", "/casper/vmlinuz persistent"),
+            ],
+            &[" maybe-ubiquity"],
         ),
-        PersistenceKind::DebianLive => {
-            patch_dir(target, "boot=live", "boot=live persistence", &mut patched)
-        }
-        PersistenceKind::FedoraOverlay => {
-            // Point dracut at the COW file created in `setup` (the
-            // devspec:pathspec form). Inserted after the `rd.live.image` marker
-            // every Fedora / RHEL-family live cmdline carries.
-            let kernel_arg =
-                format!("rd.live.overlay=LABEL={FEDORA_OVERLAY_LABEL}:/{FEDORA_OVERLAY_FILE}");
-            patch_dir(
-                target,
-                "rd.live.image",
-                &format!("rd.live.image {kernel_arg}"),
-                &mut patched,
-            );
+        PersistenceKind::DebianLive => (&[("boot=live", "boot=live persistence")], &[]),
+        // Point dracut at the COW file created in `setup` (the
+        // devspec:pathspec form). Inserted after the `rd.live.image` marker
+        // every Fedora / RHEL-family live cmdline carries.
+        PersistenceKind::FedoraOverlay => (&[("rd.live.image", fedora_arg.as_str())], &[]),
+        // Fedora 40+ dracut: use the labelled partition directly as an
+        // overlayfs upper dir. No COW file, no fixed-size exhaustion.
+        // Needs verification on real Fedora live media.
+        PersistenceKind::FedoraOverlayFs => {
+            (&[("rd.live.image", fedora_overlayfs_arg.as_str())], &[])
         }
         PersistenceKind::OpenSuseCow => {
             // kiwi-live creates its own persistent write partition (in free
@@ -156,47 +185,73 @@ pub fn patch_boot_config(target: &Path, kind: PersistenceKind) -> Result<()> {
             // unpartitioned free space, which the current cow-partition layout
             // does not leave, so this is only half the fix. Verify on real
             // openSUSE live media.
-            patch_dir(
-                target,
-                "rd.live.image",
-                "rd.live.image rd.live.overlay.persistent",
-                &mut patched,
-            );
+            (
+                &[("rd.live.image", "rd.live.image rd.live.overlay.persistent")],
+                &[],
+            )
         }
-        PersistenceKind::ArchOverlay => {
-            // The archiso initramfs hook activates an overlay when
-            // `cow_label=<LABEL>` is on the kernel command line. Every
-            // archiso bootloader config (BIOS syslinux, UEFI systemd-boot,
-            // GRUB loopback) already carries `archisobasedir=arch`, so use
-            // that as the insertion anchor.
-            let kernel_arg = format!("cow_label={ARCH_COW_LABEL}");
-            patch_dir(
-                target,
-                "archisobasedir=arch",
-                &format!("archisobasedir=arch {kernel_arg}"),
-                &mut patched,
-            );
-        }
+        // The archiso initramfs hook activates an overlay when
+        // `cow_label=<LABEL>` is on the kernel command line. Anchor on the
+        // basedir token *prefix* (value varies per distro: `arch`,
+        // `manjaro`, `garuda`, ...) and insert before it, so one cascade
+        // covers archiso and the miso/buildiso forks alike. Whether miso
+        // still honours `cow_label=` needs verification on real Manjaro
+        // media; archiso does.
+        PersistenceKind::ArchOverlay => (
+            &[
+                ("archisobasedir=", cow_arg_archiso.as_str()),
+                ("misobasedir=", cow_arg_miso.as_str()),
+            ],
+            &[],
+        ),
         PersistenceKind::SlaxChanges => {
             // Slax 9+ saves changes to /slax/changes/ automatically on writable
             // media, with no kernel parameter required (the only related arg,
             // `perchsize=`, merely raises the FAT 16 GiB cap). The directory is
             // created in setup_inline; there is nothing to patch here.
+            (&[], &[])
         }
         PersistenceKind::AlpineLbu => {
             // Alpine's diskless init auto-loads the apkovl from the writable
             // boot media; no kernel parameter is needed.
+            (&[], &[])
         }
+        PersistenceKind::KnoppixData => {
+            // The Knoppix initrd scans every partition for the
+            // `KNOPPIX-DATA` label on its own; no kernel parameter needed.
+            (&[], &[])
+        }
+    };
+
+    let mut patched = 0u32;
+    patch_dir(target, cascade, scrub, &mut patched);
+    if cascade.is_empty() {
+        // Nothing to patch by design (inline / auto-scan schemes).
+        return Ok(());
     }
-    emit::log(format!(
-        "Enabled persistence in {patched} bootloader config file(s)"
-    ));
+    if patched == 0 {
+        // The partition exists but nothing will activate it: that's a
+        // persistence-less stick that looks configured. Don't fail the job
+        // (the copy already succeeded and the fix is one manual kernel
+        // arg), but make the problem impossible to miss.
+        emit::warn(format!(
+            "No bootloader config matched the {kind:?} persistence anchors; \
+             persistence will NOT activate automatically. Add the \
+             distribution's persistence kernel option manually at boot."
+        ));
+    } else {
+        emit::log(format!(
+            "Enabled persistence in {patched} bootloader config file(s)"
+        ));
+    }
     Ok(())
 }
 
-/// Recursively rewrite `*.cfg` / `*.conf` boot configs under `dir`, adding the
-/// persistence kernel option. Best-effort: unreadable files are skipped.
-fn patch_dir(dir: &Path, marker: &str, replacement: &str, patched: &mut u32) {
+/// Recursively rewrite `*.cfg` / `*.conf` boot configs under `dir`, adding
+/// the persistence kernel option. For each file the first cascade entry
+/// whose marker appears wins; `scrub` tokens are removed from patched files.
+/// Best-effort: unreadable files are skipped.
+fn patch_dir(dir: &Path, cascade: PatchCascade, scrub: &[&str], patched: &mut u32) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -206,7 +261,7 @@ fn patch_dir(dir: &Path, marker: &str, replacement: &str, patched: &mut u32) {
         };
         let path = entry.path();
         if file_type.is_dir() {
-            patch_dir(&path, marker, replacement, patched);
+            patch_dir(&path, cascade, scrub, patched);
         } else if file_type.is_file() {
             let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
             if !(name.ends_with(".cfg") || name.ends_with(".conf")) {
@@ -215,11 +270,23 @@ fn patch_dir(dir: &Path, marker: &str, replacement: &str, patched: &mut u32) {
             let Ok(content) = std::fs::read_to_string(&path) else {
                 continue;
             };
-            if content.contains(marker)
-                && !content.contains(replacement)
-                && std::fs::write(&path, content.replace(marker, replacement)).is_ok()
-            {
-                *patched += 1;
+            for (marker, replacement) in cascade {
+                if !content.contains(marker) {
+                    continue;
+                }
+                // First matching anchor decides this file; if its
+                // replacement is already present the file was patched on a
+                // previous run (idempotence).
+                if !content.contains(replacement) {
+                    let mut new_content = content.replace(marker, replacement);
+                    for token in scrub {
+                        new_content = new_content.replace(token, "");
+                    }
+                    if std::fs::write(&path, new_content).is_ok() {
+                        *patched += 1;
+                    }
+                }
+                break;
             }
         }
     }
@@ -243,7 +310,7 @@ mod tests {
 
         patch_boot_config(&dir, PersistenceKind::ArchOverlay).unwrap();
         let out = std::fs::read_to_string(&cfg).unwrap();
-        assert!(out.contains("archisobasedir=arch cow_label=PERSISTENCE"));
+        assert!(out.contains("cow_label=PERSISTENCE archisobasedir=arch"));
         // Idempotent: a second pass must not double the keyword.
         patch_boot_config(&dir, PersistenceKind::ArchOverlay).unwrap();
         assert_eq!(
@@ -253,6 +320,78 @@ mod tests {
                 .count(),
             1
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn miso_config_gains_the_cow_label() {
+        // Manjaro/Garuda (miso/buildiso forks) carry `misobasedir=<name>`
+        // instead of `archisobasedir=`; the generic anchor must catch it.
+        let dir = std::env::temp_dir().join(format!("usbooty-misocfg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("boot/grub")).unwrap();
+        let cfg = dir.join("boot/grub/grub.cfg");
+        std::fs::write(
+            &cfg,
+            "linux /boot/vmlinuz-x86_64 misobasedir=manjaro misolabel=MANJARO quiet\n",
+        )
+        .unwrap();
+
+        patch_boot_config(&dir, PersistenceKind::ArchOverlay).unwrap();
+        let out = std::fs::read_to_string(&cfg).unwrap();
+        assert!(out.contains("cow_label=PERSISTENCE misobasedir=manjaro"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn modern_ubuntu_grub_without_boot_casper_is_patched() {
+        // Ubuntu 23.04+ grub.cfg has no `boot=casper`; the bare
+        // `/casper/vmlinuz` anchor must still land `persistent`, and the
+        // `maybe-ubiquity` token must be scrubbed like Rufus does.
+        let dir = std::env::temp_dir().join(format!("usbooty-ub2304-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("boot/grub")).unwrap();
+        let cfg = dir.join("boot/grub/grub.cfg");
+        std::fs::write(
+            &cfg,
+            "linux /casper/vmlinuz layerfs-path=minimal.standard.live.squashfs maybe-ubiquity quiet splash ---\n",
+        )
+        .unwrap();
+
+        patch_boot_config(&dir, PersistenceKind::CasperRw).unwrap();
+        let out = std::fs::read_to_string(&cfg).unwrap();
+        assert!(out.contains("/casper/vmlinuz persistent"));
+        assert!(!out.contains("maybe-ubiquity"));
+        // Idempotent.
+        patch_boot_config(&dir, PersistenceKind::CasperRw).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&cfg)
+                .unwrap()
+                .matches("persistent")
+                .count(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mint_boot_casper_anchor_wins_over_vmlinuz_anchor() {
+        // Mint configs carry BOTH `boot=casper` and `linux /casper/vmlinuz`;
+        // the cascade must apply exactly one anchor (the boot=casper one).
+        let dir = std::env::temp_dir().join(format!("usbooty-mintcfg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("isolinux")).unwrap();
+        let cfg = dir.join("isolinux/live.cfg");
+        std::fs::write(
+            &cfg,
+            "kernel /casper/vmlinuz\nappend boot=casper initrd=/casper/initrd.lz quiet\n",
+        )
+        .unwrap();
+
+        patch_boot_config(&dir, PersistenceKind::CasperRw).unwrap();
+        let out = std::fs::read_to_string(&cfg).unwrap();
+        assert_eq!(out.matches("persistent").count(), 1, "{out}");
+        assert!(out.contains("boot=casper persistent"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

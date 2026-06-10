@@ -60,7 +60,9 @@ fn fixes_for(family: DistroFamily) -> Vec<fn(&Path, &str) -> Result<()>> {
         DistroFamily::Arch
         | DistroFamily::Manjaro
         | DistroFamily::EndeavourOs
-        | DistroFamily::CachyOs => vec![write_efi_grub_redirect],
+        | DistroFamily::CachyOs
+        | DistroFamily::Garuda
+        | DistroFamily::Artix => vec![write_efi_grub_redirect],
         // Bazzite uses a Fedora-derived EFI layout; the prefix is sometimes
         // baked to /EFI/fedora, which breaks on a copied USB. Same redirect.
         DistroFamily::Bazzite => vec![write_efi_grub_redirect],
@@ -80,7 +82,16 @@ fn fixes_for(family: DistroFamily) -> Vec<fn(&Path, &str) -> Result<()>> {
         | DistroFamily::CentOs
         | DistroFamily::Alpine
         | DistroFamily::OpenSuse
-        | DistroFamily::Slax => Vec::new(),
+        | DistroFamily::Slax
+        | DistroFamily::Kali
+        | DistroFamily::PopOs
+        | DistroFamily::Zorin
+        | DistroFamily::Elementary
+        | DistroFamily::KdeNeon
+        | DistroFamily::LinuxLite
+        | DistroFamily::Tails
+        | DistroFamily::Puppy
+        | DistroFamily::Antix => Vec::new(),
     }
 }
 

@@ -13,12 +13,19 @@ pub enum PersistenceKind {
     CasperRw,
     /// Debian-live: a `persistence` partition carrying a `persistence.conf` file.
     DebianLive,
-    /// Fedora / RHEL-family live: an ext4 partition with the fixed label
-    /// `OVERLAY` holding a sparse `overlay.img` COW file. dracut's dmsquash-live
-    /// loop-mounts that file as a dm-snapshot when
+    /// RHEL-family live (Alma/Rocky/CentOS): an ext4 partition with the fixed
+    /// label `OVERLAY` holding a sparse `overlay.img` COW file. dracut's
+    /// dmsquash-live loop-mounts that file as a dm-snapshot when
     /// `rd.live.overlay=LABEL=OVERLAY:/overlay.img` is on the kernel command
     /// line (which we add when patching configs).
     FedoraOverlay,
+    /// Fedora 40+ (and Fedora-derived) live: same `OVERLAY` partition but
+    /// used *directly* as an overlayfs upper dir via
+    /// `rd.live.overlay=LABEL=OVERLAY rd.live.overlay.overlayfs=1`. No COW
+    /// file, so none of dm-snapshot's silent-corruption-when-full failure
+    /// mode. Kept separate from [`FedoraOverlay`] because RHEL-era dracut
+    /// lacks overlayfs support.
+    FedoraOverlayFs,
     /// openSUSE live (kiwi-live): an ext4 partition labelled `cow`, picked up
     /// automatically by the live system; no kernel parameter required.
     OpenSuseCow,
@@ -29,11 +36,15 @@ pub enum PersistenceKind {
     ArchOverlay,
     /// Slax: *no separate partition*. Slax 9+ persists into `/slax/changes/`
     /// at the data partition's root; the helper creates the directory and
-    /// patches `perch` onto the kernel command line so the boot menu's
-    /// "Persistent Changes" path is taken by default. Unlike every other
-    /// variant the size slider is ignored; Slax just keeps writing into the
-    /// folder until the partition fills.
+    /// Slax picks it up automatically on writable media, no kernel parameter
+    /// required (`perchsize=` exists only to raise the FAT 16 GiB cap).
+    /// Unlike every other variant the size slider is ignored; Slax just
+    /// keeps writing into the folder until the partition fills.
     SlaxChanges,
+    /// Knoppix: an ext4 partition labelled `KNOPPIX-DATA`. The Knoppix
+    /// initrd scans every partition for that label at boot and adopts it as
+    /// the persistent overlay automatically; no kernel parameter is needed.
+    KnoppixData,
     /// Alpine "diskless" mode. No overlay partition: Alpine runs from RAM and
     /// persists config via `lbu` (an apkovl tarball) on the writable boot
     /// media. usbooty just prepares a local apk cache directory; the user runs
@@ -105,8 +116,34 @@ pub enum DistroFamily {
     Alpine,
     /// Slax: own `/slax/changes/` scheme.
     Slax,
-    /// Knoppix: own scheme, very old isolinux defaults.
+    /// Knoppix: `KNOPPIX-DATA` auto-adopted overlay partition.
     Knoppix,
+    /// Kali Linux (Debian Live family; its boot menu ships a native
+    /// "Live USB Persistence" entry using the standard Debian scheme).
+    Kali,
+    /// Pop!_OS (Casper-based, Ubuntu-derived).
+    PopOs,
+    /// Zorin OS (Casper-based, Ubuntu-derived).
+    Zorin,
+    /// elementary OS (Casper-based, Ubuntu-derived).
+    Elementary,
+    /// KDE neon (Casper-based, Ubuntu-derived).
+    KdeNeon,
+    /// Linux Lite (Casper-based, Ubuntu-derived).
+    LinuxLite,
+    /// Garuda Linux (miso/buildiso, Arch-derived).
+    Garuda,
+    /// Artix Linux (archiso-derived, no systemd).
+    Artix,
+    /// Tails. Persistence is its own LUKS2 "Persistent Storage" created from
+    /// inside Tails; usbooty must not (and cannot) pre-create it.
+    Tails,
+    /// Puppy Linux family (FossaPup, BookwormPup, ...). Persists via a save
+    /// file/folder Puppy itself offers to create on first shutdown.
+    Puppy,
+    /// antiX / MX Linux. Persistence (rootfs/homefs files) is configured
+    /// from their own live boot menu; pre-creating the files is fragile.
+    Antix,
 }
 
 impl DistroFamily {
@@ -144,6 +181,20 @@ impl DistroFamily {
         if dir_starts_with("knoppix") || has_dir("knoppix") {
             return DistroFamily::Knoppix;
         }
+        // antiX/MX ship a hard-named `antiX/` directory at the root.
+        if root_entries
+            .iter()
+            .any(|(name, is_dir, _)| *is_dir && name.eq_ignore_ascii_case("antix"))
+        {
+            return DistroFamily::Antix;
+        }
+        // Puppy variants carry their squashfs modules as `puppy_*.sfs` (or
+        // `*pup*.sfs`) files at the root; labels vary wildly per puplet.
+        if root_entries.iter().any(|(name, is_dir, _)| {
+            !*is_dir && name.ends_with(".sfs") && (name.starts_with("puppy_") || name.contains("pup"))
+        }) {
+            return DistroFamily::Puppy;
+        }
 
         // Label-based detection, most specific first. Needles are pre-lowered
         // so each iteration is just a substring scan over the already-lowered
@@ -159,11 +210,29 @@ impl DistroFamily {
             ("endeavour", DistroFamily::EndeavourOs),
             ("cachyos", DistroFamily::CachyOs),
             ("cos_", DistroFamily::CachyOs),
+            ("garuda", DistroFamily::Garuda),
+            ("artix", DistroFamily::Artix),
             ("almalinux", DistroFamily::AlmaLinux),
             ("rockylinux", DistroFamily::Rocky),
             ("rocky", DistroFamily::Rocky),
             ("centos", DistroFamily::CentOs),
             ("alpine", DistroFamily::Alpine),
+            // Debian derivatives with their own schemes/labels, before the
+            // `debian` needle.
+            ("kali", DistroFamily::Kali),
+            ("tails", DistroFamily::Tails),
+            // Ubuntu derivatives, before the `ubuntu` needle.
+            ("pop_os", DistroFamily::PopOs),
+            ("pop-os", DistroFamily::PopOs),
+            ("zorin", DistroFamily::Zorin),
+            ("elementary", DistroFamily::Elementary),
+            ("kde neon", DistroFamily::KdeNeon),
+            ("neon-", DistroFamily::KdeNeon),
+            ("linux lite", DistroFamily::LinuxLite),
+            ("linuxlite", DistroFamily::LinuxLite),
+            ("puppy", DistroFamily::Puppy),
+            ("fossapup", DistroFamily::Puppy),
+            ("bookwormpup", DistroFamily::Puppy),
             ("ubuntu", DistroFamily::Ubuntu),
             ("kubuntu", DistroFamily::Ubuntu),
             ("xubuntu", DistroFamily::Ubuntu),
@@ -230,6 +299,17 @@ impl DistroFamily {
             DistroFamily::Alpine => "Alpine Linux",
             DistroFamily::Slax => "Slax",
             DistroFamily::Knoppix => "Knoppix",
+            DistroFamily::Kali => "Kali Linux",
+            DistroFamily::PopOs => "Pop!_OS",
+            DistroFamily::Zorin => "Zorin OS",
+            DistroFamily::Elementary => "elementary OS",
+            DistroFamily::KdeNeon => "KDE neon",
+            DistroFamily::LinuxLite => "Linux Lite",
+            DistroFamily::Garuda => "Garuda Linux",
+            DistroFamily::Artix => "Artix Linux",
+            DistroFamily::Tails => "Tails",
+            DistroFamily::Puppy => "Puppy Linux",
+            DistroFamily::Antix => "antiX / MX Linux",
         }
     }
 
@@ -238,24 +318,53 @@ impl DistroFamily {
     /// this distro; the user is offered the DD method and no slider.
     pub fn persistence(self) -> Option<PersistenceKind> {
         match self {
-            DistroFamily::Ubuntu | DistroFamily::Mint => Some(PersistenceKind::CasperRw),
-            DistroFamily::Debian | DistroFamily::Lmde => Some(PersistenceKind::DebianLive),
-            DistroFamily::Fedora
-            | DistroFamily::Bazzite
-            | DistroFamily::Nobara
-            | DistroFamily::AlmaLinux
-            | DistroFamily::Rocky
-            | DistroFamily::CentOs => Some(PersistenceKind::FedoraOverlay),
+            DistroFamily::Ubuntu
+            | DistroFamily::Mint
+            | DistroFamily::PopOs
+            | DistroFamily::Zorin
+            | DistroFamily::Elementary
+            | DistroFamily::KdeNeon
+            | DistroFamily::LinuxLite => Some(PersistenceKind::CasperRw),
+            DistroFamily::Debian | DistroFamily::Lmde | DistroFamily::Kali => {
+                Some(PersistenceKind::DebianLive)
+            }
+            // Fedora-current dracut supports overlayfs persistence (no COW
+            // file to exhaust); the RHEL rebuilds ship older dracut and keep
+            // the dm-snapshot overlay.img scheme.
+            DistroFamily::Fedora | DistroFamily::Bazzite | DistroFamily::Nobara => {
+                Some(PersistenceKind::FedoraOverlayFs)
+            }
+            DistroFamily::AlmaLinux | DistroFamily::Rocky | DistroFamily::CentOs => {
+                Some(PersistenceKind::FedoraOverlay)
+            }
             DistroFamily::OpenSuse | DistroFamily::GeckoLinux => Some(PersistenceKind::OpenSuseCow),
             DistroFamily::Arch
             | DistroFamily::Manjaro
             | DistroFamily::EndeavourOs
-            | DistroFamily::CachyOs => Some(PersistenceKind::ArchOverlay),
+            | DistroFamily::CachyOs
+            | DistroFamily::Garuda
+            | DistroFamily::Artix => Some(PersistenceKind::ArchOverlay),
             DistroFamily::Slax => Some(PersistenceKind::SlaxChanges),
             // Alpine "diskless" persists via lbu (an apkovl tarball on writable
             // media), an inline scheme rather than an overlay partition.
             DistroFamily::Alpine => Some(PersistenceKind::AlpineLbu),
-            DistroFamily::Knoppix | DistroFamily::Unknown => None,
+            DistroFamily::Knoppix => Some(PersistenceKind::KnoppixData),
+            // These manage persistence themselves; see `persistence_note_key`.
+            DistroFamily::Tails | DistroFamily::Puppy | DistroFamily::Antix => None,
+            DistroFamily::Unknown => None,
+        }
+    }
+
+    /// A stable key naming the "why is there no persistence slider" note for
+    /// families that manage persistence themselves. The GUI maps the key to
+    /// a translated message (keys, not sentences, so the catalog owns the
+    /// wording).
+    pub fn persistence_note_key(self) -> Option<&'static str> {
+        match self {
+            DistroFamily::Tails => Some("tails"),
+            DistroFamily::Puppy => Some("puppy"),
+            DistroFamily::Antix => Some("antix"),
+            _ => None,
         }
     }
 }
@@ -315,6 +424,11 @@ pub struct IsoReport {
     /// no concern was found or the ISO carries no signed EFI binaries.
     #[serde(default)]
     pub revocation_warnings: Vec<String>,
+    /// Key for the GUI's "this distro manages persistence itself" note
+    /// (see [`DistroFamily::persistence_note_key`]). Empty when there is
+    /// nothing to explain.
+    #[serde(default)]
+    pub persistence_note_key: String,
 }
 
 impl IsoReport {
@@ -337,6 +451,7 @@ impl IsoReport {
             persistence: None,
             distro: DistroFamily::Unknown,
             revocation_warnings: Vec::new(),
+            persistence_note_key: String::new(),
         }
     }
 
@@ -383,6 +498,16 @@ mod distro_family_tests {
             ("Rocky-9-KDE-x86_64-latest", DistroFamily::Rocky),
             ("CentOS-Stream-9-latest-x86_64-Live", DistroFamily::CentOs),
             ("alpine-standard-3.20.0-x86_64", DistroFamily::Alpine),
+            ("kali-linux-2026.1-live-amd64", DistroFamily::Kali),
+            ("TAILS 6.5 - 20260601", DistroFamily::Tails),
+            ("Pop_OS 22.04 amd64 Intel", DistroFamily::PopOs),
+            ("Zorin-OS-17.1-Core-64-bit", DistroFamily::Zorin),
+            ("elementary OS 8.0", DistroFamily::Elementary),
+            ("neon-user-20260601-0716", DistroFamily::KdeNeon),
+            ("Linux Lite 7.0", DistroFamily::LinuxLite),
+            ("GARUDA_DR460NIZED_RAPTOR", DistroFamily::Garuda),
+            ("artix-plasma-openrc-20260501", DistroFamily::Artix),
+            ("Puppy BookwormPup64 10.0", DistroFamily::Puppy),
         ] {
             assert_eq!(
                 DistroFamily::detect(label, &[]),
@@ -390,6 +515,51 @@ mod distro_family_tests {
                 "label `{label}` should detect as {expected:?}"
             );
         }
+    }
+
+    #[test]
+    fn derivative_persistence_routing() {
+        // The new families must route to the parent family's scheme.
+        assert_eq!(
+            DistroFamily::Kali.persistence(),
+            Some(PersistenceKind::DebianLive)
+        );
+        for fam in [
+            DistroFamily::PopOs,
+            DistroFamily::Zorin,
+            DistroFamily::Elementary,
+            DistroFamily::KdeNeon,
+            DistroFamily::LinuxLite,
+        ] {
+            assert_eq!(fam.persistence(), Some(PersistenceKind::CasperRw));
+        }
+        for fam in [DistroFamily::Garuda, DistroFamily::Artix] {
+            assert_eq!(fam.persistence(), Some(PersistenceKind::ArchOverlay));
+        }
+        assert_eq!(
+            DistroFamily::Knoppix.persistence(),
+            Some(PersistenceKind::KnoppixData)
+        );
+        // Self-managed persistence: no slider, but a note for the UI.
+        for fam in [DistroFamily::Tails, DistroFamily::Puppy, DistroFamily::Antix] {
+            assert_eq!(fam.persistence(), None);
+            assert!(fam.persistence_note_key().is_some());
+        }
+    }
+
+    #[test]
+    fn root_markers_pin_antix_and_puppy() {
+        // antiX/MX: hard-named `antiX/` directory at the root.
+        assert_eq!(
+            DistroFamily::detect("CUSTOM-LABEL", &[dir("antiX")]),
+            DistroFamily::Antix
+        );
+        // Puppy: squashfs modules at the root.
+        let sfs = ("puppy_bookwormpup64_10.0.sfs".to_string(), false, 1_000u64);
+        assert_eq!(
+            DistroFamily::detect("CUSTOM", std::slice::from_ref(&sfs)),
+            DistroFamily::Puppy
+        );
     }
 
     #[test]
@@ -458,9 +628,11 @@ mod distro_family_tests {
             DistroFamily::Lmde.persistence(),
             Some(PersistenceKind::DebianLive)
         );
+        // Fedora-current (and derivatives) use the overlayfs mode; the RHEL
+        // rebuilds keep the dm-snapshot COW file (older dracut).
         assert_eq!(
             DistroFamily::Bazzite.persistence(),
-            Some(PersistenceKind::FedoraOverlay)
+            Some(PersistenceKind::FedoraOverlayFs)
         );
         assert_eq!(
             DistroFamily::GeckoLinux.persistence(),
@@ -487,7 +659,11 @@ mod distro_family_tests {
             DistroFamily::Alpine.persistence(),
             Some(PersistenceKind::AlpineLbu)
         );
-        assert_eq!(DistroFamily::Knoppix.persistence(), None);
+        // Knoppix auto-adopts a KNOPPIX-DATA labelled partition.
+        assert_eq!(
+            DistroFamily::Knoppix.persistence(),
+            Some(PersistenceKind::KnoppixData)
+        );
         assert_eq!(DistroFamily::Unknown.persistence(), None);
     }
 

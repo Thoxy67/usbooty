@@ -61,13 +61,36 @@ fn gpt_type_guid(filesystem: FileSystem) -> [u8; 16] {
     }
 }
 
-/// The MBR partition-type byte for a `filesystem`.
-fn mbr_type_byte(filesystem: FileSystem) -> u8 {
+/// Last LBA reachable through CHS addressing under the conventional
+/// 1024-cylinder / 255-head / 63-sector translated geometry (~7.8 GiB).
+const CHS_HORIZON: u32 = 1024 * 255 * 63;
+
+/// The CHS tuple for `lba` under the conventional translated geometry,
+/// saturating to the "past the horizon" 1023/254/63 marker every BIOS
+/// understands as "use LBA". Old BIOSes (and some buggy 2005-2012 ones)
+/// derive the disk geometry by matching the first partition's CHS fields
+/// against its LBA; all-zero CHS makes some refuse to boot.
+fn chs_for_lba(lba: u32) -> mbrman::CHS {
+    mbrman::CHS::from_lba_exact(lba, 1023, 255, 63)
+        .unwrap_or_else(|_| mbrman::CHS::new(1023, 254, 63))
+}
+
+/// The MBR partition-type byte for a `filesystem` whose last sector is
+/// `end_lba`.
+fn mbr_type_byte(filesystem: FileSystem, end_lba: u32) -> u8 {
     match filesystem {
         FileSystem::Fat32 => MBR_TYPE_FAT32_LBA,
-        // FAT16 partitions ≥ 32 MiB use type 0x06 (FAT16B); we never write
+        // FAT16 partitions ≥ 32 MiB use type 0x06 (FAT16B) while they stay
+        // CHS-addressable, which is what genuinely old BIOSes expect; past
+        // the CHS horizon the LBA variant 0x0E is required. We never write
         // sub-32 MiB partitions, so the older 0x04 type is unnecessary.
-        FileSystem::Fat16 => 0x06,
+        FileSystem::Fat16 => {
+            if end_lba < CHS_HORIZON {
+                0x06
+            } else {
+                0x0E
+            }
+        }
         FileSystem::Ntfs | FileSystem::ExFat => MBR_TYPE_NTFS,
         // Linux Data covers every Linux-native filesystem at the MBR level:
         // BIOSes and bootloaders inspect the partition's superblock, not the
@@ -161,14 +184,16 @@ fn write_gpt<D: Read + Write + Seek>(
 fn write_mbr<D: Read + Write + Seek>(device: &mut D, filesystem: FileSystem) -> Result<()> {
     let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>()?)
         .context("creating MBR")?;
-    let sectors = mbr.disk_size.saturating_sub(ALIGN_SECTORS as u32);
+    let start = ALIGN_SECTORS as u32;
+    let sectors = mbr.disk_size.saturating_sub(start);
+    let end = start + sectors - 1;
 
     mbr[1] = mbrman::MBRPartitionEntry {
         boot: mbrman::BOOT_ACTIVE,
-        first_chs: mbrman::CHS::empty(),
-        sys: mbr_type_byte(filesystem),
-        last_chs: mbrman::CHS::empty(),
-        starting_lba: ALIGN_SECTORS as u32,
+        first_chs: chs_for_lba(start),
+        sys: mbr_type_byte(filesystem, end),
+        last_chs: chs_for_lba(end),
+        starting_lba: start,
         sectors,
     };
 
@@ -184,7 +209,7 @@ fn write_hybrid_mbr_gpt<D: Read + Write + Seek>(
     name: &str,
 ) -> Result<()> {
     write_gpt(device, filesystem, name)?;
-    synthesize_hybrid_mbr(device, mbr_type_byte(filesystem), 1)
+    synthesize_hybrid_mbr(device, filesystem, 1)
 }
 
 /// Replace the protective MBR that `gptman` writes with a *hybrid* MBR:
@@ -198,7 +223,7 @@ fn write_hybrid_mbr_gpt<D: Read + Write + Seek>(
 /// dislike any hybrid layout; that's the trade-off of the option.
 fn synthesize_hybrid_mbr<D: Read + Write + Seek>(
     device: &mut D,
-    mbr_type: u8,
+    filesystem: FileSystem,
     gpt_index: u32,
 ) -> Result<()> {
     // Re-parse the GPT just to learn the data partition's LBA range; we
@@ -222,9 +247,9 @@ fn synthesize_hybrid_mbr<D: Read + Write + Seek>(
     // Slot 1: real bootable mirror entry for legacy BIOS.
     mbr[1] = mbrman::MBRPartitionEntry {
         boot: mbrman::BOOT_ACTIVE,
-        first_chs: mbrman::CHS::empty(),
-        sys: mbr_type,
-        last_chs: mbrman::CHS::empty(),
+        first_chs: chs_for_lba(start),
+        sys: mbr_type_byte(filesystem, end),
+        last_chs: chs_for_lba(end),
         starting_lba: start,
         sectors,
     };
@@ -233,9 +258,9 @@ fn synthesize_hybrid_mbr<D: Read + Write + Seek>(
     // partitioning tools from treating the disk as legacy-only.
     mbr[2] = mbrman::MBRPartitionEntry {
         boot: mbrman::BOOT_INACTIVE,
-        first_chs: mbrman::CHS::empty(),
+        first_chs: chs_for_lba(1),
         sys: 0xEE,
-        last_chs: mbrman::CHS::empty(),
+        last_chs: chs_for_lba(start.saturating_sub(1)),
         starting_lba: 1,
         sectors: start.saturating_sub(1).max(1),
     };
@@ -266,7 +291,7 @@ pub fn write_uefi_ntfs_layout<D: Read + Write + Seek>(
             // it. Slot 2 is the protective entry for the GPT areas. The
             // tiny FAT bootloader partition is reachable via UEFI through
             // the GPT; BIOSes don't need it.
-            synthesize_hybrid_mbr(device, MBR_TYPE_NTFS, 1)
+            synthesize_hybrid_mbr(device, FileSystem::Ntfs, 1)
         }
         // Pure-MBR variants: same on-disk layout.
         PartitionTable::Mbr | PartitionTable::MbrBiosUefi => {
@@ -335,9 +360,9 @@ fn write_mbr_uefi_ntfs<D: Read + Write + Seek>(device: &mut D, fat_sectors: u64)
     // Partition 1: NTFS.
     mbr[1] = mbrman::MBRPartitionEntry {
         boot: mbrman::BOOT_INACTIVE,
-        first_chs: mbrman::CHS::empty(),
+        first_chs: chs_for_lba(p1_start),
         sys: MBR_TYPE_NTFS,
-        last_chs: mbrman::CHS::empty(),
+        last_chs: chs_for_lba(fat_start - 1),
         starting_lba: p1_start,
         sectors: fat_start - p1_start,
     };
@@ -345,9 +370,9 @@ fn write_mbr_uefi_ntfs<D: Read + Write + Seek>(device: &mut D, fat_sectors: u64)
     // marked active.
     mbr[2] = mbrman::MBRPartitionEntry {
         boot: mbrman::BOOT_ACTIVE,
-        first_chs: mbrman::CHS::empty(),
+        first_chs: chs_for_lba(fat_start),
         sys: MBR_TYPE_EFI_SYSTEM,
-        last_chs: mbrman::CHS::empty(),
+        last_chs: chs_for_lba(total - 1),
         starting_lba: fat_start,
         sectors: fat_sectors,
     };
@@ -374,7 +399,7 @@ pub fn write_persistence_layout<D: Read + Write + Seek>(
             // Mirror the data partition (slot 1, GPT entry 1) into the MBR
             // so a legacy BIOS can boot the live system; the persistence
             // overlay isn't bootable and stays GPT-only.
-            synthesize_hybrid_mbr(device, mbr_type_byte(filesystem), 1)
+            synthesize_hybrid_mbr(device, filesystem, 1)
         }
         PartitionTable::Mbr | PartitionTable::MbrBiosUefi => {
             write_mbr_persistence(device, filesystem, pers_sectors)
@@ -442,17 +467,17 @@ fn write_mbr_persistence<D: Read + Write + Seek>(
 
     mbr[1] = mbrman::MBRPartitionEntry {
         boot: mbrman::BOOT_ACTIVE,
-        first_chs: mbrman::CHS::empty(),
-        sys: mbr_type_byte(filesystem),
-        last_chs: mbrman::CHS::empty(),
+        first_chs: chs_for_lba(p1_start),
+        sys: mbr_type_byte(filesystem, pers_start - 1),
+        last_chs: chs_for_lba(pers_start - 1),
         starting_lba: p1_start,
         sectors: pers_start - p1_start,
     };
     mbr[2] = mbrman::MBRPartitionEntry {
         boot: mbrman::BOOT_INACTIVE,
-        first_chs: mbrman::CHS::empty(),
+        first_chs: chs_for_lba(pers_start),
         sys: MBR_TYPE_LINUX,
-        last_chs: mbrman::CHS::empty(),
+        last_chs: chs_for_lba(total - 1),
         starting_lba: pers_start,
         sectors: pers_sectors,
     };
@@ -498,6 +523,32 @@ mod tests {
         assert_eq!(mbr[1].sys, MBR_TYPE_FAT32_LBA);
         assert_eq!(mbr[1].boot, mbrman::BOOT_ACTIVE);
         assert_eq!(mbr[1].starting_lba, ALIGN_SECTORS as u32);
+    }
+
+    #[test]
+    fn chs_values_are_real_within_horizon_and_saturated_past_it() {
+        // LBA 2048 under 255/63 translated geometry: cylinder 0, head 32,
+        // sector 33 (2048 = 32*63 + 32, sector is 1-based).
+        let chs = chs_for_lba(2048);
+        assert_eq!((chs.cylinder, chs.head, chs.sector), (0, 32, 33));
+        // Past the 8 GB horizon: the saturated all-ones tuple.
+        let sat = chs_for_lba(CHS_HORIZON + 1);
+        assert_eq!((sat.cylinder, sat.head, sat.sector), (1023, 254, 63));
+    }
+
+    #[test]
+    fn mbr_partition_carries_real_chs_and_fat16_lba_type_past_horizon() {
+        let mut disk = disk(64 * 1024 * 1024);
+        write_single_partition(&mut disk, PartitionTable::Mbr, FileSystem::Fat32, "X").unwrap();
+        disk.set_position(0);
+        let mbr = mbrman::MBR::read_from(&mut disk, SECTOR as u32).unwrap();
+        // A 64 MiB disk is entirely CHS-addressable: real values, not zeros.
+        assert_ne!(mbr[1].first_chs, mbrman::CHS::empty());
+        assert_ne!(mbr[1].last_chs, mbrman::CHS::empty());
+
+        // FAT16 type byte: CHS variant inside the horizon, LBA variant past it.
+        assert_eq!(mbr_type_byte(FileSystem::Fat16, CHS_HORIZON - 1), 0x06);
+        assert_eq!(mbr_type_byte(FileSystem::Fat16, CHS_HORIZON), 0x0E);
     }
 
     #[test]

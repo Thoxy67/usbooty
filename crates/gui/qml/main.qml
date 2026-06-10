@@ -969,13 +969,24 @@ ApplicationWindow {
                 }
             }
 
-            // Linux ISO whose distribution has no partition-persistence support.
+            // Linux ISO whose distribution has no partition-persistence
+            // support. Distros that manage persistence themselves get a
+            // specific explanation (keyed by persistenceNoteKey) instead of
+            // the generic "isn't supported" line.
             Label {
                 Layout.fillWidth: true
                 visible: app.linuxIso && !app.persistenceSupported && app.method === 1
-                text: app.distroLabel.length > 0
-                    ? qsTr("Persistent storage isn't supported for %1.").arg(app.distroLabel)
-                    : qsTr("Persistent storage isn't supported for this distribution.")
+                text: {
+                    if (app.persistenceNoteKey === "tails")
+                        return qsTr("Tails manages its own encrypted Persistent Storage: create it from inside Tails after the first boot.")
+                    if (app.persistenceNoteKey === "puppy")
+                        return qsTr("Puppy Linux offers to create its save file on first shutdown; nothing to set up here.")
+                    if (app.persistenceNoteKey === "antix")
+                        return qsTr("antiX / MX Linux set up persistence from their own live boot menu (the Persist options) on first boot.")
+                    return app.distroLabel.length > 0
+                        ? qsTr("Persistent storage isn't supported for %1.").arg(app.distroLabel)
+                        : qsTr("Persistent storage isn't supported for this distribution.")
+                }
                 color: palette.placeholderText
                 font.pointSize: 8
                 wrapMode: Text.Wrap

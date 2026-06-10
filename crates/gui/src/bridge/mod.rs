@@ -76,6 +76,10 @@ pub mod qobject {
         // Linux live-USB persistence: whether the ISO supports it, and the
         // chosen overlay size in MiB (0 = no persistence partition).
         #[qproperty(bool, persistence_supported)]
+        // Key for the "this distro manages persistence itself" note
+        // ("tails" / "puppy" / "antix", empty otherwise); QML maps the key
+        // to a translated sentence.
+        #[qproperty(QString, persistence_note_key)]
         // True when persistence lives in a folder on the data partition
         // rather than a dedicated partition (currently only Slax). QML
         // swaps the size slider for a simple on/off checkbox in that case.

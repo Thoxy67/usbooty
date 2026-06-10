@@ -97,6 +97,7 @@ impl qobject::AppController {
         self.as_mut().set_windows_iso(false);
         self.as_mut().set_linux_iso(false);
         self.as_mut().set_persistence_supported(false);
+        self.as_mut().set_persistence_note_key(QString::default());
         self.as_mut().set_persistence_inline(false);
         self.as_mut().set_distro_label(QString::default());
         self.as_mut().set_persistence_size(0);
@@ -159,6 +160,8 @@ impl qobject::AppController {
         // Pre-fill the editable volume label from the image's own label.
         self.as_mut().set_label(QString::from(&vol_label));
         self.as_mut().set_persistence_supported(pers_supported);
+        self.as_mut()
+            .set_persistence_note_key(QString::from(&report.persistence_note_key));
         self.as_mut().set_persistence_inline(pers_inline);
         self.as_mut().set_distro_label(QString::from(&distro_label));
         self.as_mut().set_persistence_size(0);
