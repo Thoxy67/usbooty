@@ -6,11 +6,11 @@ use std::io::{Read, Seek, SeekFrom, Write};
 
 use usbooty_core::{FileSystem, PartitionTable};
 
-/// Logical sector size assumed throughout (Linux reports 512 for `/sys`-style
-/// sizing regardless of the physical sector size).
-pub const SECTOR: u64 = 512;
-/// Partition alignment: 1 MiB, the universal modern default.
-const ALIGN_SECTORS: u64 = 2048;
+/// Partition alignment in sectors: 1 MiB, the universal modern default,
+/// expressed in the device's logical sector size.
+fn align_sectors(sector_size: u64) -> u64 {
+    (1024 * 1024 / sector_size).max(1)
+}
 
 /// Microsoft Basic Data partition type GUID, in on-disk byte order. Used for
 /// *both* the main partition and the tiny UEFI:NTFS partition. UEFI firmware
@@ -143,15 +143,18 @@ pub fn write_single_partition<D: Read + Write + Seek>(
     table: PartitionTable,
     filesystem: FileSystem,
     name: &str,
+    sector_size: u64,
 ) -> Result<()> {
     match table {
-        PartitionTable::Gpt => write_gpt(device, filesystem, name),
+        PartitionTable::Gpt => write_gpt(device, filesystem, name, sector_size),
         // Plain BIOS-only MBR and the BIOS+UEFI variant share the same
         // on-disk layout: one bootable partition spanning the device. The
         // BIOS+UEFI flavour just commits the user to a FAT-family FS so
         // UEFI fallback (`/EFI/BOOT/BOOT*.EFI` on the partition) works.
-        PartitionTable::Mbr | PartitionTable::MbrBiosUefi => write_mbr(device, filesystem),
-        PartitionTable::HybridMbrGpt => write_hybrid_mbr_gpt(device, filesystem, name),
+        PartitionTable::Mbr | PartitionTable::MbrBiosUefi => {
+            write_mbr(device, filesystem, sector_size)
+        }
+        PartitionTable::HybridMbrGpt => write_hybrid_mbr_gpt(device, filesystem, name, sector_size),
     }
 }
 
@@ -159,32 +162,37 @@ fn write_gpt<D: Read + Write + Seek>(
     device: &mut D,
     filesystem: FileSystem,
     name: &str,
+    sector_size: u64,
 ) -> Result<()> {
-    let mut gpt =
-        gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()?).context("creating GPT")?;
+    let mut gpt = gptman::GPT::new_from(device, sector_size, random_bytes::<16>()?)
+        .context("creating GPT")?;
     // Recompute usable LBAs from the device's real size.
     gpt.header
-        .update_from(device, SECTOR)
+        .update_from(device, sector_size)
         .context("sizing GPT to the device")?;
 
     gpt[1] = gptman::GPTPartitionEntry {
         partition_type_guid: gpt_type_guid(filesystem),
         unique_partition_guid: random_bytes::<16>()?,
-        starting_lba: gpt.header.first_usable_lba.max(ALIGN_SECTORS),
+        starting_lba: gpt.header.first_usable_lba.max(align_sectors(sector_size)),
         ending_lba: gpt.header.last_usable_lba,
         attribute_bits: 0,
         partition_name: crate::label::partition(name).as_str().into(),
     };
 
     gpt.write_into(device).context("writing GPT")?;
-    gptman::GPT::write_protective_mbr_into(device, SECTOR).context("writing protective MBR")?;
+    gptman::GPT::write_protective_mbr_into(device, sector_size).context("writing protective MBR")?;
     Ok(())
 }
 
-fn write_mbr<D: Read + Write + Seek>(device: &mut D, filesystem: FileSystem) -> Result<()> {
-    let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>()?)
+fn write_mbr<D: Read + Write + Seek>(
+    device: &mut D,
+    filesystem: FileSystem,
+    sector_size: u64,
+) -> Result<()> {
+    let mut mbr = mbrman::MBR::new_from(device, sector_size as u32, random_bytes::<4>()?)
         .context("creating MBR")?;
-    let start = ALIGN_SECTORS as u32;
+    let start = align_sectors(sector_size) as u32;
     let sectors = mbr.disk_size.saturating_sub(start);
     let end = start + sectors - 1;
 
@@ -207,9 +215,10 @@ fn write_hybrid_mbr_gpt<D: Read + Write + Seek>(
     device: &mut D,
     filesystem: FileSystem,
     name: &str,
+    sector_size: u64,
 ) -> Result<()> {
-    write_gpt(device, filesystem, name)?;
-    synthesize_hybrid_mbr(device, filesystem, 1)
+    write_gpt(device, filesystem, name, sector_size)?;
+    synthesize_hybrid_mbr(device, filesystem, 1, sector_size)
 }
 
 /// Replace the protective MBR that `gptman` writes with a *hybrid* MBR:
@@ -225,6 +234,7 @@ fn synthesize_hybrid_mbr<D: Read + Write + Seek>(
     device: &mut D,
     filesystem: FileSystem,
     gpt_index: u32,
+    sector_size: u64,
 ) -> Result<()> {
     // Re-parse the GPT just to learn the data partition's LBA range; we
     // could plumb the values through arguments, but reading them straight
@@ -241,8 +251,8 @@ fn synthesize_hybrid_mbr<D: Read + Write + Seek>(
         .context("hybrid MBR cannot address a partition past 2 TiB")?;
     let sectors = end - start + 1;
 
-    let mut mbr =
-        mbrman::MBR::read_from(device, SECTOR as u32).context("re-reading protective MBR")?;
+    let mut mbr = mbrman::MBR::read_from(device, sector_size as u32)
+        .context("re-reading protective MBR")?;
 
     // Slot 1: real bootable mirror entry for legacy BIOS.
     mbr[1] = mbrman::MBRPartitionEntry {
@@ -279,23 +289,24 @@ pub fn write_uefi_ntfs_layout<D: Read + Write + Seek>(
     table: PartitionTable,
     fat_bytes: u64,
     main_name: &str,
+    sector_size: u64,
 ) -> Result<()> {
-    let fat_sectors = fat_bytes.div_ceil(SECTOR);
+    let fat_sectors = fat_bytes.div_ceil(sector_size);
     match table {
         // GPT-based variants; the hybrid one then synthesises an MBR mirror.
-        PartitionTable::Gpt => write_gpt_uefi_ntfs(device, fat_sectors, main_name),
+        PartitionTable::Gpt => write_gpt_uefi_ntfs(device, fat_sectors, main_name, sector_size),
         PartitionTable::HybridMbrGpt => {
-            write_gpt_uefi_ntfs(device, fat_sectors, main_name)?;
+            write_gpt_uefi_ntfs(device, fat_sectors, main_name, sector_size)?;
             // Build a hybrid MBR over the GPT layout: slot 1 mirrors the
             // *main* (NTFS) partition as bootable so legacy BIOSes can find
             // it. Slot 2 is the protective entry for the GPT areas. The
             // tiny FAT bootloader partition is reachable via UEFI through
             // the GPT; BIOSes don't need it.
-            synthesize_hybrid_mbr(device, FileSystem::Ntfs, 1)
+            synthesize_hybrid_mbr(device, FileSystem::Ntfs, 1, sector_size)
         }
         // Pure-MBR variants: same on-disk layout.
         PartitionTable::Mbr | PartitionTable::MbrBiosUefi => {
-            write_mbr_uefi_ntfs(device, fat_sectors)
+            write_mbr_uefi_ntfs(device, fat_sectors, sector_size)
         }
     }
 }
@@ -304,14 +315,15 @@ fn write_gpt_uefi_ntfs<D: Read + Write + Seek>(
     device: &mut D,
     fat_sectors: u64,
     main_name: &str,
+    sector_size: u64,
 ) -> Result<()> {
-    let mut gpt =
-        gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()?).context("creating GPT")?;
+    let mut gpt = gptman::GPT::new_from(device, sector_size, random_bytes::<16>()?)
+        .context("creating GPT")?;
     gpt.header
-        .update_from(device, SECTOR)
+        .update_from(device, sector_size)
         .context("sizing GPT to the device")?;
 
-    let first = gpt.header.first_usable_lba.max(ALIGN_SECTORS);
+    let first = gpt.header.first_usable_lba.max(align_sectors(sector_size));
     let last = gpt.header.last_usable_lba;
     if last <= first + fat_sectors {
         anyhow::bail!("device is too small for the UEFI:NTFS layout");
@@ -340,18 +352,22 @@ fn write_gpt_uefi_ntfs<D: Read + Write + Seek>(
     };
 
     gpt.write_into(device).context("writing GPT")?;
-    gptman::GPT::write_protective_mbr_into(device, SECTOR).context("writing protective MBR")?;
+    gptman::GPT::write_protective_mbr_into(device, sector_size).context("writing protective MBR")?;
     Ok(())
 }
 
-fn write_mbr_uefi_ntfs<D: Read + Write + Seek>(device: &mut D, fat_sectors: u64) -> Result<()> {
-    let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>()?)
+fn write_mbr_uefi_ntfs<D: Read + Write + Seek>(
+    device: &mut D,
+    fat_sectors: u64,
+    sector_size: u64,
+) -> Result<()> {
+    let mut mbr = mbrman::MBR::new_from(device, sector_size as u32, random_bytes::<4>()?)
         .context("creating MBR")?;
 
     let total = mbr.disk_size;
     let fat_sectors =
         u32::try_from(fat_sectors).context("FAT partition exceeds the MBR 2 TiB sector limit")?;
-    let p1_start = ALIGN_SECTORS as u32;
+    let p1_start = align_sectors(sector_size) as u32;
     if total <= p1_start + fat_sectors {
         anyhow::bail!("device is too small for the UEFI:NTFS layout");
     }
@@ -390,19 +406,22 @@ pub fn write_persistence_layout<D: Read + Write + Seek>(
     filesystem: FileSystem,
     persistence_bytes: u64,
     main_name: &str,
+    sector_size: u64,
 ) -> Result<()> {
-    let pers_sectors = persistence_bytes.div_ceil(SECTOR);
+    let pers_sectors = persistence_bytes.div_ceil(sector_size);
     match table {
-        PartitionTable::Gpt => write_gpt_persistence(device, filesystem, pers_sectors, main_name),
+        PartitionTable::Gpt => {
+            write_gpt_persistence(device, filesystem, pers_sectors, main_name, sector_size)
+        }
         PartitionTable::HybridMbrGpt => {
-            write_gpt_persistence(device, filesystem, pers_sectors, main_name)?;
+            write_gpt_persistence(device, filesystem, pers_sectors, main_name, sector_size)?;
             // Mirror the data partition (slot 1, GPT entry 1) into the MBR
             // so a legacy BIOS can boot the live system; the persistence
             // overlay isn't bootable and stays GPT-only.
-            synthesize_hybrid_mbr(device, filesystem, 1)
+            synthesize_hybrid_mbr(device, filesystem, 1, sector_size)
         }
         PartitionTable::Mbr | PartitionTable::MbrBiosUefi => {
-            write_mbr_persistence(device, filesystem, pers_sectors)
+            write_mbr_persistence(device, filesystem, pers_sectors, sector_size)
         }
     }
 }
@@ -412,14 +431,15 @@ fn write_gpt_persistence<D: Read + Write + Seek>(
     filesystem: FileSystem,
     pers_sectors: u64,
     main_name: &str,
+    sector_size: u64,
 ) -> Result<()> {
-    let mut gpt =
-        gptman::GPT::new_from(device, SECTOR, random_bytes::<16>()?).context("creating GPT")?;
+    let mut gpt = gptman::GPT::new_from(device, sector_size, random_bytes::<16>()?)
+        .context("creating GPT")?;
     gpt.header
-        .update_from(device, SECTOR)
+        .update_from(device, sector_size)
         .context("sizing GPT to the device")?;
 
-    let first = gpt.header.first_usable_lba.max(ALIGN_SECTORS);
+    let first = gpt.header.first_usable_lba.max(align_sectors(sector_size));
     let last = gpt.header.last_usable_lba;
     if last <= first + pers_sectors {
         anyhow::bail!("device is too small for the persistence layout");
@@ -444,7 +464,7 @@ fn write_gpt_persistence<D: Read + Write + Seek>(
     };
 
     gpt.write_into(device).context("writing GPT")?;
-    gptman::GPT::write_protective_mbr_into(device, SECTOR).context("writing protective MBR")?;
+    gptman::GPT::write_protective_mbr_into(device, sector_size).context("writing protective MBR")?;
     Ok(())
 }
 
@@ -452,14 +472,15 @@ fn write_mbr_persistence<D: Read + Write + Seek>(
     device: &mut D,
     filesystem: FileSystem,
     pers_sectors: u64,
+    sector_size: u64,
 ) -> Result<()> {
-    let mut mbr = mbrman::MBR::new_from(device, SECTOR as u32, random_bytes::<4>()?)
+    let mut mbr = mbrman::MBR::new_from(device, sector_size as u32, random_bytes::<4>()?)
         .context("creating MBR")?;
 
     let total = mbr.disk_size;
     let pers_sectors = u32::try_from(pers_sectors)
         .context("persistence partition exceeds the MBR 2 TiB sector limit")?;
-    let p1_start = ALIGN_SECTORS as u32;
+    let p1_start = align_sectors(sector_size) as u32;
     if total <= p1_start + pers_sectors {
         anyhow::bail!("device is too small for the persistence layout");
     }
@@ -491,6 +512,10 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
+    /// Default logical sector size: what the in-memory test targets use. Real
+    /// devices are probed with `BLKSSZGET` (`blockdev::logical_sector_size`).
+    const SECTOR: u64 = 512;
+
     /// gptman/mbrman operate on any `Read + Write + Seek`, so an in-memory
     /// buffer stands in for a device: no root, no real disk.
     fn disk(size: usize) -> Cursor<Vec<u8>> {
@@ -500,13 +525,19 @@ mod tests {
     #[test]
     fn writes_a_gpt_with_one_basic_data_partition() {
         let mut disk = disk(64 * 1024 * 1024);
-        write_single_partition(&mut disk, PartitionTable::Gpt, FileSystem::Fat32, "USBOOTY")
-            .unwrap();
+        write_single_partition(
+            &mut disk,
+            PartitionTable::Gpt,
+            FileSystem::Fat32,
+            "USBOOTY",
+            SECTOR,
+        )
+        .unwrap();
 
         disk.set_position(0);
         let gpt = gptman::GPT::read_from(&mut disk, SECTOR).unwrap();
         assert_eq!(gpt[1].partition_type_guid, BASIC_DATA_GUID);
-        assert!(gpt[1].starting_lba >= ALIGN_SECTORS);
+        assert!(gpt[1].starting_lba >= align_sectors(SECTOR));
         assert!(gpt[1].ending_lba > gpt[1].starting_lba);
         assert_eq!(gpt[2].partition_type_guid, [0u8; 16]); // only one partition
     }
@@ -514,15 +545,43 @@ mod tests {
     #[test]
     fn writes_an_mbr_with_one_active_fat32_partition() {
         let mut disk = disk(64 * 1024 * 1024);
-        write_single_partition(&mut disk, PartitionTable::Mbr, FileSystem::Fat32, "USBOOTY")
-            .unwrap();
+        write_single_partition(
+            &mut disk,
+            PartitionTable::Mbr,
+            FileSystem::Fat32,
+            "USBOOTY",
+            SECTOR,
+        )
+        .unwrap();
 
         disk.set_position(0);
         let mbr = mbrman::MBR::read_from(&mut disk, SECTOR as u32).unwrap();
         assert!(mbr[1].is_used());
         assert_eq!(mbr[1].sys, MBR_TYPE_FAT32_LBA);
         assert_eq!(mbr[1].boot, mbrman::BOOT_ACTIVE);
-        assert_eq!(mbr[1].starting_lba, ALIGN_SECTORS as u32);
+        assert_eq!(mbr[1].starting_lba, align_sectors(SECTOR) as u32);
+    }
+
+    #[test]
+    fn gpt_on_4kn_device_uses_4096_byte_lbas_and_1mib_alignment() {
+        let mut disk = disk(64 * 1024 * 1024);
+        write_single_partition(
+            &mut disk,
+            PartitionTable::Gpt,
+            FileSystem::Fat32,
+            "USBOOTY",
+            4096,
+        )
+        .unwrap();
+
+        disk.set_position(0);
+        // Readable only at the 4096-byte sector size: proves every LBA is in
+        // 4Kn units, the thing a 4Kn enclosure's firmware actually parses.
+        let gpt = gptman::GPT::read_from(&mut disk, 4096).unwrap();
+        assert_eq!(gpt[1].partition_type_guid, BASIC_DATA_GUID);
+        // 1 MiB alignment is 256 sectors of 4096 bytes.
+        assert_eq!(align_sectors(4096), 256);
+        assert!(gpt[1].starting_lba >= align_sectors(4096));
     }
 
     #[test]
@@ -539,7 +598,8 @@ mod tests {
     #[test]
     fn mbr_partition_carries_real_chs_and_fat16_lba_type_past_horizon() {
         let mut disk = disk(64 * 1024 * 1024);
-        write_single_partition(&mut disk, PartitionTable::Mbr, FileSystem::Fat32, "X").unwrap();
+        write_single_partition(&mut disk, PartitionTable::Mbr, FileSystem::Fat32, "X", SECTOR)
+            .unwrap();
         disk.set_position(0);
         let mbr = mbrman::MBR::read_from(&mut disk, SECTOR as u32).unwrap();
         // A 64 MiB disk is entirely CHS-addressable: real values, not zeros.

@@ -19,6 +19,9 @@ const ZEROOUT_CHUNK: u64 = 256 * 1024 * 1024;
 
 // BLKGETSIZE64: `_IOR(0x12, 114, size_t)`, device size in bytes.
 nix::ioctl_read!(blkgetsize64, 0x12, 114, u64);
+// BLKSSZGET: `_IO(0x12, 104)`, logical sector size in bytes. Old-style ioctl
+// (no direction/size encoded in the request), hence the `_bad` variant.
+nix::ioctl_read_bad!(blksszget, nix::request_code_none!(0x12, 104), nix::libc::c_int);
 // BLKRRPART: `_IO(0x12, 95)`, ask the kernel to re-read the partition table.
 nix::ioctl_none!(blkrrpart, 0x12, 95);
 // BLKFLSBUF: `_IO(0x12, 97)`, flush and invalidate the block-device page cache.
@@ -70,6 +73,22 @@ pub fn device_size(file: &File) -> Result<u64> {
             Ok(file.metadata().context("stat of the target file")?.len())
         }
         Err(e) => Err(e).context("BLKGETSIZE64 ioctl failed"),
+    }
+}
+
+/// Logical sector size of the target in bytes.
+///
+/// `BLKSSZGET` on a real block device; 512 on a regular file (loopback-style
+/// test target, `ENOTTY`) and for any nonsensical reply. Native-4K (4Kn) USB
+/// enclosures report 4096 here, and every LBA written into their partition
+/// tables must be expressed in those units or the firmware reads garbage.
+pub fn logical_sector_size(file: &File) -> u32 {
+    let mut ssz: nix::libc::c_int = 0;
+    // SAFETY: `file` is a valid open descriptor; `ssz` is a valid pointer to a
+    // c_int sized exactly as the ioctl expects.
+    match unsafe { blksszget(file.as_raw_fd(), &mut ssz) } {
+        Ok(_) if ssz >= 512 && (ssz as u32).is_power_of_two() => ssz as u32,
+        _ => 512,
     }
 }
 

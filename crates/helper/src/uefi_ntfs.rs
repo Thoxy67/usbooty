@@ -79,6 +79,10 @@ pub fn run(layout: UefiNtfsLayout<'_>, abort: &AtomicBool) -> Result<()> {
         if dev_size < iso_size + img_size {
             bail!("the target device is too small for the Windows files");
         }
+        let sector_size = blockdev::logical_sector_size(&dev);
+        if sector_size != 512 {
+            emit::log(format!("Device reports {sector_size}-byte logical sectors"));
+        }
         emit::log("Wiping old partition tables and filesystem signatures");
         partition::wipe_signatures(&mut dev, dev_size)?;
         emit::log(format!(
@@ -87,7 +91,7 @@ pub fn run(layout: UefiNtfsLayout<'_>, abort: &AtomicBool) -> Result<()> {
             usbooty_core::device::format_size(img_size),
             table_label = table.label(),
         ));
-        partition::write_uefi_ntfs_layout(&mut dev, table, img_size, &opts.label)?;
+        partition::write_uefi_ntfs_layout(&mut dev, table, img_size, &opts.label, sector_size as u64)?;
         dev.flush().ok();
         let _ = nix::unistd::fsync(&dev);
         blockdev::reread_partition_table(&dev);

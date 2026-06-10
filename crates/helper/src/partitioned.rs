@@ -210,6 +210,10 @@ pub fn setup_single_partition(
             device.display(),
             usbooty_core::device::format_size(dev_size)
         ));
+        let sector_size = blockdev::logical_sector_size(&dev);
+        if sector_size != 512 {
+            emit::log(format!("Device reports {sector_size}-byte logical sectors"));
+        }
         emit::log("Wiping old partition tables and filesystem signatures");
         partition::wipe_signatures(&mut dev, dev_size)?;
         emit::log(format!(
@@ -217,7 +221,13 @@ pub fn setup_single_partition(
             table.label(),
             filesystem.label()
         ));
-        partition::write_single_partition(&mut dev, table, filesystem, &opts.label)?;
+        partition::write_single_partition(
+            &mut dev,
+            table,
+            filesystem,
+            &opts.label,
+            sector_size as u64,
+        )?;
         commit(&dev)?;
     }
 
@@ -252,6 +262,10 @@ fn copy_with_persistence(
         if dev_size < iso_size + persistence.size_bytes {
             bail!("the target device is too small for the ISO plus persistence");
         }
+        let sector_size = blockdev::logical_sector_size(&dev);
+        if sector_size != 512 {
+            emit::log(format!("Device reports {sector_size}-byte logical sectors"));
+        }
         emit::log("Wiping old partition tables and filesystem signatures");
         partition::wipe_signatures(&mut dev, dev_size)?;
         emit::log(format!(
@@ -266,6 +280,7 @@ fn copy_with_persistence(
             filesystem,
             persistence.size_bytes,
             &opts.label,
+            sector_size as u64,
         )?;
         commit(&dev)?;
     }
