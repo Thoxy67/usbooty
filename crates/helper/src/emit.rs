@@ -43,6 +43,29 @@ pub fn phase(name: impl Into<String>) {
     emit(&ProgressMsg::Phase { name: name.into() });
 }
 
+/// Log an external command invocation as a `$ program args...` line, right
+/// before it is spawned. Makes every tool the helper shells out to (mkfs,
+/// ventoy, wimlib-imagex, mount, ...) visible and reproducible from the
+/// activity log.
+pub fn cmd(c: &std::process::Command) {
+    let mut line = String::from("$ ");
+    line.push_str(&c.get_program().to_string_lossy());
+    for a in c.get_args() {
+        line.push(' ');
+        let a = a.to_string_lossy();
+        // Quote arguments with whitespace so the logged line stays
+        // copy-pasteable into a shell.
+        if a.contains(char::is_whitespace) {
+            line.push('\'');
+            line.push_str(&a);
+            line.push('\'');
+        } else {
+            line.push_str(&a);
+        }
+    }
+    log(line);
+}
+
 /// Emit a terminal error message.
 pub fn error(text: impl Into<String>) {
     emit(&ProgressMsg::Error { text: text.into() });

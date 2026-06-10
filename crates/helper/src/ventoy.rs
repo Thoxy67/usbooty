@@ -62,7 +62,7 @@ fn run_cli(device: &Path, table: PartitionTable, secure_boot: bool, update: bool
     }
     args.push(dev);
 
-    emit::log(format!("Running ventoy {}", args.join(" ")));
+    emit::log(format!("$ ventoy {}", args.join(" ")));
     let mut child = Command::new("ventoy")
         .args(&args)
         .stdin(Stdio::piped())

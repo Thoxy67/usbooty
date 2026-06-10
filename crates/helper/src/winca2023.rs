@@ -91,8 +91,8 @@ fn try_apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
     // that doesn't ship SkuSiPolicy.p7b (or files it elsewhere) is a clean
     // skip rather than a hard `wimlib-imagex` failure that aborts the job.
     // Without it, recent builds (e.g. Win 11 25H2) abort with exit code 49.
-    let mut child = Command::new("wimlib-imagex")
-        .arg("extract")
+    let mut cmd = Command::new("wimlib-imagex");
+    cmd.arg("extract")
         .arg(&install_wim)
         .arg("1")
         .arg(SOURCE_PATH)
@@ -101,9 +101,9 @@ fn try_apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
         .arg("--no-acls")
         .arg("--nullglob")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("spawning wimlib-imagex extract")?;
+        .stderr(Stdio::piped());
+    emit::cmd(&cmd);
+    let mut child = cmd.spawn().context("spawning wimlib-imagex extract")?;
     // Drain both pipes while the child runs; an unread pipe that fills up
     // would block the child and hang `wait()` forever.
     let _stdout_drain = fsutil::drain_to_string(child.stdout.take());

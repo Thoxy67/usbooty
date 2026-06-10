@@ -62,15 +62,15 @@ pub fn split_install_wim(src_iso: &Path, dest_mount: &Path, abort: &AtomicBool) 
 
     // Spawn rather than .output() so the cancel button can interrupt a split
     // that on a 5 GiB install.wim runs for ten-plus minutes.
-    let mut child = Command::new("wimlib-imagex")
-        .arg("split")
+    let mut cmd = Command::new("wimlib-imagex");
+    cmd.arg("split")
         .arg(&src_wim)
         .arg(&swm_template)
         .arg(CHUNK_MIB.to_string())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("spawning wimlib-imagex")?;
+        .stderr(Stdio::piped());
+    emit::cmd(&cmd);
+    let mut child = cmd.spawn().context("spawning wimlib-imagex")?;
 
     // Drain both pipes concurrently with the poll loop: wimlib prints
     // continuous progress to stdout, and once the ~64 KiB pipe buffer fills

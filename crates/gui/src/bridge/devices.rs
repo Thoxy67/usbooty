@@ -62,6 +62,16 @@ impl qobject::AppController {
     pub fn select_device(mut self: core::pin::Pin<&mut Self>, index: i32) {
         self.as_mut().set_selected_device(index);
         self.as_mut().set_smart_warning(QString::default());
+        // Breadcrumb the target into the activity log so a saved log shows
+        // exactly which device the user pointed the job at.
+        if let Some(dev) = self.selected_info().cloned() {
+            self.as_mut().log_info(&format!(
+                "Target device selected: {} ({}, {})",
+                dev.path,
+                dev.model.trim(),
+                usbooty_core::device::format_size(dev.size),
+            ));
+        }
         self.as_mut().refresh_fit_warning();
         self.as_mut().refresh_persistence_max();
         self.as_mut().probe_smart();
@@ -281,11 +291,14 @@ impl qobject::AppController {
             };
             let _ = qt.queue(move |mut ctrl: core::pin::Pin<&mut Self>| match outcome {
                 Ok(()) => {
+                    ctrl.as_mut().log_info(&format!("Ejected {path}"));
                     ctrl.as_mut()
                         .set_status(QString::from(&format!("Ejected {path}")));
                     ctrl.refresh_devices();
                 }
                 Err(err) => {
+                    ctrl.as_mut()
+                        .log_warn(&format!("Eject failed for {path}: {err}"));
                     ctrl.as_mut()
                         .set_status(QString::from(&format!("Eject failed: {err}")));
                 }

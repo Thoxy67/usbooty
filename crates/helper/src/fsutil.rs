@@ -214,7 +214,7 @@ pub fn mkfs(filesystem: FileSystem, device: &str, label: &str) -> Result<()> {
 /// extract, ventoy, mount) need direct stdin/stdout control and roll
 /// their own.
 pub(crate) fn run_tool(tool: &str, args: &[&str], doing: &str) -> Result<()> {
-    emit::log(format!("Running: {tool} {}", args.join(" ")));
+    emit::log(format!("$ {tool} {}", args.join(" ")));
     let output = Command::new(tool)
         .args(args)
         .output()
@@ -310,9 +310,10 @@ impl Mount {
         std::fs::create_dir_all(&mountpoint)
             .with_context(|| format!("creating mountpoint {}", mountpoint.display()))?;
 
-        let output = Command::new("ntfs-3g")
-            .arg(device)
-            .arg(&mountpoint)
+        let mut c = Command::new("ntfs-3g");
+        c.arg(device).arg(&mountpoint);
+        emit::cmd(&c);
+        let output = c
             .output()
             .with_context(|| {
                 format!(
@@ -393,10 +394,10 @@ impl LoopMount {
 
         let mut last_err = String::new();
         for fstype in ["udf", "iso9660"] {
-            let output = Command::new("mount")
-                .args(["-t", fstype, "-o", "loop,ro"])
-                .arg(iso)
-                .arg(&mountpoint)
+            let mut c = Command::new("mount");
+            c.args(["-t", fstype, "-o", "loop,ro"]).arg(iso).arg(&mountpoint);
+            emit::cmd(&c);
+            let output = c
                 .output()
                 .context("running mount. Is util-linux installed?")?;
             if output.status.success() {

@@ -446,6 +446,10 @@ fn finish(qt: &CxxQtThread<AppController>, success: bool, message: String) {
     // missing = silently skipped.
     notify(success, &message);
     let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
+        // Record the outcome in the log itself (bold green / red), so a saved
+        // log ends with a clear verdict instead of trailing off mid-stream.
+        ctrl.as_mut()
+            .push_log_line(&message, &outcome_html(success, &message));
         ctrl.as_mut().set_busy(false);
         ctrl.as_mut()
             .set_phase(QString::from(if success { "Finished" } else { "Failed" }));
@@ -617,16 +621,34 @@ fn set_phase(qt: &CxxQtThread<AppController>, name: &str) {
     });
 }
 
-/// Format one activity-log line as rich text. Warnings (amber) and errors
-/// (red) stand out against the default info colour; each line is HTML-escaped
-/// before styling so file paths or messages containing `<`, `>`, `&` render
-/// verbatim. Shared with the bridge's own log appends.
+/// Format one activity-log line as an inline rich-text fragment. Warnings
+/// (amber) and errors (red) stand out against the default info colour, and
+/// `$ command` lines (the helper echoing every external tool it runs) render
+/// teal so the eye can separate "what usbooty did" from "what it said". Each
+/// line is HTML-escaped before styling so file paths or messages containing
+/// `<`, `>`, `&` render verbatim. The caller (`push_log_line`) wraps the
+/// fragment in a timestamped `<div>`, so no block element here.
 pub(crate) fn log_html(level: LogLevel, text: &str) -> String {
     let escaped = html_escape(text);
     match level {
-        LogLevel::Info => format!("<div>{escaped}</div>"),
-        LogLevel::Warn => format!("<div style=\"color:#d18616\">\u{26A0} {escaped}</div>"),
-        LogLevel::Error => format!("<div style=\"color:#e5534b\">\u{2717} {escaped}</div>"),
+        LogLevel::Info if text.starts_with("$ ") => {
+            format!("<span style=\"color:#1b9aaa\">{escaped}</span>")
+        }
+        LogLevel::Info => escaped,
+        LogLevel::Warn => format!("<span style=\"color:#d18616\">\u{26A0} {escaped}</span>"),
+        LogLevel::Error => format!("<span style=\"color:#e5534b\">\u{2717} {escaped}</span>"),
+    }
+}
+
+/// The closing green/red summary line appended when a job ends, so the log
+/// itself records the outcome (the status bar and result dialog are
+/// transient; "Save log" keeps this).
+pub(crate) fn outcome_html(success: bool, text: &str) -> String {
+    let escaped = html_escape(text);
+    if success {
+        format!("<span style=\"color:#2da44e;font-weight:bold\">\u{2713} {escaped}</span>")
+    } else {
+        format!("<span style=\"color:#e5534b;font-weight:bold\">\u{2717} {escaped}</span>")
     }
 }
 
@@ -646,10 +668,9 @@ fn append_phase_header(ctrl: Pin<&mut AppController>, name: &str) {
     }
     let escaped = html_escape(name);
     let html = format!(
-        "<div style=\"color:#2188ff;font-weight:bold;margin-top:4px\">\
-         \u{25B6} {escaped}</div>"
+        "<span style=\"color:#2188ff;font-weight:bold\">\u{25B6} {escaped}</span>"
     );
-    ctrl.push_log_line(name, &html);
+    ctrl.push_log_line(&format!("== {name} =="), &html);
 }
 
 /// Minimal HTML escaping for log text (the four characters Qt's rich-text

@@ -11,12 +11,28 @@ impl qobject::AppController {
     /// the HTML for repopulating the lazily-loaded view, flip the non-empty
     /// flag on the first line, and emit the new line for the live view to
     /// append. Each call is O(line length); no whole-buffer rebuild.
+    ///
+    /// Every line is stamped with the wall-clock time here, once, so the
+    /// plain "Save log" buffer and the rendered view can never disagree.
+    /// `html` is an *inline* fragment (see `runner::log_html`); the block
+    /// `<div>` wrapper is added here around the dim timestamp + fragment.
     pub fn push_log_line(mut self: core::pin::Pin<&mut Self>, plain: &str, html: &str) {
+        let now = cxx_qt_lib::QTime::current_time();
+        let stamp = format!(
+            "{:02}:{:02}:{:02}",
+            now.hour(),
+            now.minute(),
+            now.second()
+        );
+        let plain = format!("[{stamp}] {plain}");
+        let html = format!(
+            "<div><span style=\"color:#7d8590\">[{stamp}]</span> {html}</div>"
+        );
         {
             let mut rust = self.as_mut().rust_mut();
-            rust.full_log.push_str(plain);
+            rust.full_log.push_str(&plain);
             rust.full_log.push('\n');
-            rust.log_html.push_str(html);
+            rust.log_html.push_str(&html);
         }
         // Emit the live append BEFORE flipping `log_non_empty`: the flip
         // synchronously auto-expands the log panel, whose freshly-created
@@ -26,6 +42,21 @@ impl qobject::AppController {
         if !*self.as_ref().log_non_empty() {
             self.as_mut().set_log_non_empty(true);
         }
+    }
+
+    /// Log one info-level action line to the activity log. The single entry
+    /// point for the GUI's own "what the user just did" breadcrumbs (image
+    /// selected, device chosen, analysis verdict, eject, ...), so they get the
+    /// same timestamp + styling as the helper's job output.
+    pub(crate) fn log_info(self: core::pin::Pin<&mut Self>, text: &str) {
+        let html = crate::runner::log_html(usbooty_core::LogLevel::Info, text);
+        self.push_log_line(text, &html);
+    }
+
+    /// Log one warning-level action line (amber) to the activity log.
+    pub(crate) fn log_warn(self: core::pin::Pin<&mut Self>, text: &str) {
+        let html = crate::runner::log_html(usbooty_core::LogLevel::Warn, text);
+        self.push_log_line(text, &html);
     }
 
     /// Empty the activity log. The view clears itself when `log_non_empty`

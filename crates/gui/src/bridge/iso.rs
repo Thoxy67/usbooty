@@ -23,10 +23,12 @@ impl qobject::AppController {
         }
         let path_buf = PathBuf::from(&path);
         if !path_buf.is_file() {
+            self.as_mut().log_info(&format!("Source image not readable: {path}"));
             self.as_mut()
                 .set_iso_summary(QString::from("Cannot read that file"));
             return;
         }
+        self.as_mut().log_info(&format!("Source image selected: {path}"));
         match crate::decompress::detect(&path_buf) {
             crate::decompress::Compression::None => {
                 // A `.vhd` file is raw data + a 512-byte footer; strip the
@@ -149,6 +151,24 @@ impl qobject::AppController {
         };
         let is_windows = report.os_kind == OsKind::Windows;
         let is_linux = report.os_kind == OsKind::Linux;
+
+        // Record the analysis verdict in the activity log so the user has a
+        // durable record of what usbooty decided about the image.
+        let mut facts = vec![report.summary()];
+        if !distro_label.is_empty() {
+            facts.push(format!("distro: {distro_label}"));
+        }
+        if pers_supported {
+            facts.push("persistence available".into());
+        }
+        if !report.revocation_warnings.is_empty() {
+            facts.push(format!(
+                "{} Secure Boot revocation warning(s)",
+                report.revocation_warnings.len()
+            ));
+        }
+        self.as_mut()
+            .log_info(&format!("Analyzed {name}: {}", facts.join(", ")));
 
         // A different ISO is taking over: any hash worker still running for
         // the previous one must not publish onto this one's panel.
