@@ -218,7 +218,7 @@ pub fn setup_single_partition(
             filesystem.label()
         ));
         partition::write_single_partition(&mut dev, table, filesystem, &opts.label)?;
-        commit(&dev);
+        commit(&dev)?;
     }
 
     let part = blockdev::partition_path(device, 1);
@@ -267,7 +267,7 @@ fn copy_with_persistence(
             persistence.size_bytes,
             &opts.label,
         )?;
-        commit(&dev);
+        commit(&dev)?;
     }
 
     let main_part = blockdev::partition_path(device, 1);
@@ -300,6 +300,9 @@ fn copy_with_persistence(
         if install_bootloader {
             crate::syslinux::install_files(&main_part, mount.path(), filesystem)?;
         }
+        emit::phase("Flushing");
+        // `mount` drops here: sync + unmount, which is the actual flush the
+        // phase refers to (it can take minutes on a slow stick).
     }
     // MBR stub goes on after the unmount so the whole-disk open can be
     // exclusive, otherwise EBUSY because the partition is still mounted.
@@ -308,7 +311,6 @@ fn copy_with_persistence(
     }
 
     crate::persistence::setup(&pers_part, persistence.kind)?;
-    emit::phase("Flushing");
     emit::log(format!(
         "{} live USB created with a persistence partition",
         filesystem.label()
@@ -336,7 +338,10 @@ fn open_device(device: &Path) -> Result<std::fs::File> {
 }
 
 /// Flush a freshly-written partition table and ask the kernel to re-read it.
-fn commit(dev: &std::fs::File) {
-    let _ = nix::unistd::fsync(dev);
+/// The fsync failure is fatal: continuing past a failed flush of the table
+/// would surface later as a confusing mkfs/mount error, or not at all.
+fn commit(dev: &std::fs::File) -> Result<()> {
+    nix::unistd::fsync(dev).context("flushing the new partition table to the device")?;
     blockdev::reread_partition_table(dev);
+    Ok(())
 }

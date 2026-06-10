@@ -11,7 +11,6 @@
 
 use anyhow::{Context, Result, bail};
 use std::fs;
-use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -73,6 +72,12 @@ pub fn split_install_wim(src_iso: &Path, dest_mount: &Path, abort: &AtomicBool) 
         .spawn()
         .context("spawning wimlib-imagex")?;
 
+    // Drain both pipes concurrently with the poll loop: wimlib prints
+    // continuous progress to stdout, and once the ~64 KiB pipe buffer fills
+    // an undrained child blocks in write() and never exits.
+    let _stdout_drain = fsutil::drain_to_string(child.stdout.take());
+    let stderr_drain = fsutil::drain_to_string(child.stderr.take());
+
     let status = loop {
         if abort.load(Ordering::SeqCst) {
             let _ = child.kill();
@@ -86,10 +91,7 @@ pub fn split_install_wim(src_iso: &Path, dest_mount: &Path, abort: &AtomicBool) 
     };
 
     if !status.success() {
-        let mut stderr = String::new();
-        if let Some(mut s) = child.stderr.take() {
-            let _ = s.read_to_string(&mut stderr);
-        }
+        let stderr = stderr_drain.join().unwrap_or_default();
         bail!("wimlib-imagex split failed: {}", stderr.trim());
     }
     emit::log("install.wim split into install.swm chunks");

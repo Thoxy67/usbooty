@@ -205,9 +205,22 @@ pub fn run_job(
         }
     };
 
+    // Drain stderr continuously on its own thread. Only reading it after the
+    // stdout loop ends would deadlock the job if the helper (or a tool whose
+    // stderr it inherits: mkfs, ventoy, pkexec itself) fills the ~64 KiB pipe
+    // buffer.
+    let stderr_drain = child.stderr.take().map(|mut s| {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            let _ = s.read_to_string(&mut buf);
+            buf
+        })
+    });
+
     // Send the job as one JSON line, then keep stdin open so `cancel` can be
     // written to it later by AppController::cancel.
     let Some(mut stdin) = child.stdin.take() else {
+        reap(&mut child);
         finish(&qt, false, "Could not open the helper's stdin pipe".into());
         return;
     };
@@ -216,6 +229,7 @@ pub fn run_job(
         .and_then(|_| stdin.flush())
         .is_err()
     {
+        reap(&mut child);
         finish(&qt, false, "Could not send the job to the helper".into());
         return;
     }
@@ -223,6 +237,7 @@ pub fn run_job(
 
     // Stream stdout, forwarding each progress message to the UI.
     let Some(stdout) = child.stdout.take() else {
+        reap(&mut child);
         finish(&qt, false, "Could not open the helper's stdout pipe".into());
         return;
     };
@@ -262,7 +277,10 @@ pub fn run_job(
         apply(&qt, msg);
     }
 
-    let (success, message) = outcome(&mut child, saw_done, last_error);
+    let stderr = stderr_drain
+        .and_then(|h| h.join().ok())
+        .unwrap_or_default();
+    let (success, message) = outcome(&mut child, saw_done, last_error, &stderr);
     let message = finish_summary(success, message, &meter, job_total + phase_peak);
 
     // Post-job convenience: a freshly-prepared Ventoy stick with no source
@@ -365,8 +383,21 @@ fn finish_summary(success: bool, message: String, meter: &RateMeter, moved: u64)
     }
 }
 
+/// Kill and wait a child whose setup failed. Dropping a `Child` without
+/// waiting leaves a zombie process around for the rest of the GUI session.
+fn reap(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 /// Wait for the helper and decide the final success flag and message.
-fn outcome(child: &mut Child, saw_done: bool, last_error: Option<String>) -> (bool, String) {
+/// `stderr` is the output collected by the drain thread.
+fn outcome(
+    child: &mut Child,
+    saw_done: bool,
+    last_error: Option<String>,
+    stderr: &str,
+) -> (bool, String) {
     let status = child.wait();
     let success = saw_done && matches!(&status, Ok(s) if s.success());
 
@@ -377,10 +408,6 @@ fn outcome(child: &mut Child, saw_done: bool, last_error: Option<String>) -> (bo
         return (false, err);
     }
 
-    let mut stderr = String::new();
-    if let Some(mut s) = child.stderr.take() {
-        let _ = s.read_to_string(&mut stderr);
-    }
     let message = match status {
         Ok(s) if !stderr.trim().is_empty() => format!("Helper failed ({s}): {}", stderr.trim()),
         Ok(s) => format!("Helper exited unexpectedly ({s})"),
@@ -556,6 +583,12 @@ pub fn download_windows_url(
                 &qt,
                 ProgressMsg::info(format!("SHA-256: {}", hashes.sha256)),
             );
+            // Analyze on this worker thread; both `analyze` and the WIM
+            // metadata read are disk-bound and would freeze the UI if done
+            // inside the queued closure.
+            let report = crate::iso::analyze(std::path::Path::new(&path));
+            let win = (report.os_kind == usbooty_core::OsKind::Windows)
+                .then(|| crate::iso::windows_meta(std::path::Path::new(&path)));
             let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
                 ctrl.as_mut().set_busy(false);
                 ctrl.as_mut().set_progress(1.0);
@@ -565,7 +598,10 @@ pub fn download_windows_url(
                 ctrl.as_mut().set_status(QString::from(&summary));
                 // Every digest was computed during the download; use them
                 // directly instead of re-reading the whole ISO.
-                ctrl.as_mut().set_downloaded_iso(&path, &hashes);
+                ctrl.as_mut().apply_iso(&path, report, win, Some(&hashes));
+                // Clear the job handle like finish() does, so a stray Cancel
+                // click while idle doesn't flip a dead abort flag.
+                ctrl.as_mut().rust_mut().job = None;
                 ctrl.as_mut().job_finished(true, QString::from(&summary));
             });
         }
@@ -637,7 +673,12 @@ fn html_escape(s: &str) -> String {
 /// bound), hence off-thread. The `hash_progress` property is updated as
 /// fractions of completion so the UI can show a percent instead of a
 /// frozen "Computing…".
-pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String) {
+///
+/// `generation` is the value of `hash_generation` when this worker was
+/// spawned; every queued closure re-checks it so a worker outlived by an
+/// ISO change discards its results instead of publishing them under the
+/// wrong image.
+pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String, generation: u64) {
     use crate::iso::HashKind;
 
     let qt_progress = qt.clone();
@@ -651,6 +692,9 @@ pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String) {
                 0.0
             };
             let _ = qt_progress.queue(move |mut ctrl: Pin<&mut AppController>| {
+                if ctrl.rust().hash_generation != generation {
+                    return;
+                }
                 ctrl.as_mut().set_hash_progress(fraction);
             });
         },
@@ -659,6 +703,9 @@ pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String) {
         // immediately, without waiting for the slower hashes.
         move |kind, digest| {
             let _ = qt_hash.queue(move |mut ctrl: Pin<&mut AppController>| {
+                if ctrl.rust().hash_generation != generation {
+                    return;
+                }
                 let v = QString::from(&digest);
                 match kind {
                     HashKind::Md5 => ctrl.as_mut().set_iso_md5(v),
@@ -679,6 +726,9 @@ pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String) {
         .unwrap_or_default();
 
     let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
+        if ctrl.rust().hash_generation != generation {
+            return;
+        }
         ctrl.as_mut().set_iso_adguard_badge(QString::from(&badge));
         ctrl.as_mut().set_hash_progress(1.0);
         ctrl.as_mut().set_hashing(false);
@@ -697,6 +747,10 @@ pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String) {
 pub fn analyze_then_apply(qt: CxxQtThread<AppController>, src: PathBuf) {
     let display = src.display().to_string();
     let report = crate::iso::analyze(&src);
+    // Pre-compute the Windows WIM metadata here too: it re-reads the WIM XML
+    // (disk bound) and must not run inside the Qt-thread closure.
+    let win = (report.os_kind == usbooty_core::OsKind::Windows)
+        .then(|| crate::iso::windows_meta(&src));
     let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
         ctrl.as_mut().set_busy(false);
         ctrl.as_mut().set_progress(0.0);
@@ -704,7 +758,7 @@ pub fn analyze_then_apply(qt: CxxQtThread<AppController>, src: PathBuf) {
         ctrl.as_mut().set_speed(QString::default());
         ctrl.as_mut().set_eta(QString::default());
         ctrl.as_mut().set_status(QString::from("Ready"));
-        ctrl.as_mut().apply_iso(&display, report, None);
+        ctrl.as_mut().apply_iso(&display, report, win, None);
     });
 }
 

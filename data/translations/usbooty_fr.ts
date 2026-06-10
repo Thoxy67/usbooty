@@ -52,137 +52,147 @@
 <context>
     <name>BootTestDialog</name>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="31"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="38"/>
         <source>Verify boot device</source>
         <translation>Tester le démarrage du périphérique</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="32"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="39"/>
         <source>Boot the selected device in QEMU; it is not modified</source>
         <translation>Démarrer le périphérique sélectionné dans QEMU ; il n&apos;est pas modifié</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="37"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="44"/>
         <source>Launch</source>
         <translation>Lancer</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="59"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="66"/>
         <source>Device</source>
         <translation>Périphérique</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="76"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="83"/>
         <source>⚠ qemu-system-x86_64 was not found. Install the &apos;qemu-full&apos; (Arch) or &apos;qemu-system-x86&apos; (Debian/Ubuntu) package to use this.</source>
         <translation>⚠ qemu-system-x86_64 est introuvable. Installez le paquet « qemu-full » (Arch) ou « qemu-system-x86 » (Debian/Ubuntu) pour utiliser cette fonction.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="85"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="92"/>
         <source>Firmware</source>
         <translation>Micrologiciel</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="94"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="101"/>
         <source>BIOS / MBR (SeaBIOS)</source>
         <translation>BIOS / MBR (SeaBIOS)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="96"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="103"/>
         <source>UEFI (OVMF)</source>
         <translation>UEFI (OVMF)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="98"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="105"/>
         <source>UEFI + Secure Boot (OVMF)</source>
         <translation>UEFI + Secure Boot (OVMF)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="109"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="116"/>
         <source>Machine</source>
         <translation>Machine</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="125"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="124"/>
+        <source>i440fx (legacy)</source>
+        <translation>i440fx (hérité)</translation>
+    </message>
+    <message>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="124"/>
+        <source>q35 (modern)</source>
+        <translation>q35 (moderne)</translation>
+    </message>
+    <message>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="132"/>
         <source>UEFI test needs OVMF firmware (install &apos;edk2-ovmf&apos; / &apos;ovmf&apos;).</source>
         <translation>Le test UEFI nécessite le micrologiciel OVMF (installez « edk2-ovmf » / « ovmf »).</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="135"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="142"/>
         <source>✓ A virtual TPM 2.0 (swtpm) will be attached, needed for Windows 11 OOBE.</source>
         <translation>✓ Un TPM 2.0 virtuel (swtpm) sera attaché, nécessaire pour l&apos;OOBE de Windows 11.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="136"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="143"/>
         <source>⚠ swtpm not installed: no TPM 2.0 will be attached, so Windows 11 OOBE may loop on &quot;Why did my PC restart?&quot;. Install the &apos;swtpm&apos; package.</source>
         <translation>⚠ swtpm n&apos;est pas installé : aucun TPM 2.0 ne sera attaché, l&apos;OOBE de Windows 11 risque donc de boucler sur « Pourquoi mon PC a-t-il redémarré ? ». Installez le paquet « swtpm ».</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="147"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="154"/>
         <source>Memory</source>
         <translation>Mémoire</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="179"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="186"/>
         <source>Processors</source>
         <translation>Processeurs</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="202"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="209"/>
         <source> vCPU</source>
         <translation> vCPU</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="209"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="216"/>
         <source>Hardware acceleration (KVM)</source>
         <translation>Accélération matérielle (KVM)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="217"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="224"/>
         <source>KVM is unavailable (/dev/kvm missing); the VM will run under slower software emulation.</source>
         <translation>KVM indisponible (/dev/kvm absent) ; la VM fonctionnera en émulation logicielle, plus lente.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="225"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="232"/>
         <source>Network access (user-mode networking)</source>
         <translation>Accès réseau (réseau en mode utilisateur)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="229"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="236"/>
         <source>Attach a virtual network card with QEMU user-mode networking (no root or bridge needed) so the guest can reach the internet, useful for testing Windows OOBE / activation. Off runs the VM with no network.</source>
         <translation>Attache une carte réseau virtuelle avec le réseau en mode utilisateur de QEMU (sans root ni pont), pour que l&apos;invité accède à Internet ; utile pour tester l&apos;OOBE / l&apos;activation de Windows. Désactivé, la VM tourne sans réseau.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="236"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="243"/>
         <source>Guest audio (Intel HD Audio)</source>
         <translation>Audio de l&apos;invité (Intel HD Audio)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="240"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="247"/>
         <source>Attach an emulated Intel HD Audio device routed to your host&apos;s PipeWire/PulseAudio, so the guest can play sound. Off runs the VM silently.</source>
         <translation>Attache un périphérique Intel HD Audio émulé, routé vers le PipeWire/PulseAudio de l&apos;hôte, pour que l&apos;invité puisse jouer du son. Désactivé, la VM tourne en silence.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="247"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="254"/>
         <source>Snapshot mode (discard writes, device not modified)</source>
         <translation>Mode instantané (écritures ignorées, périphérique non modifié)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="251"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="258"/>
         <source>On: every write goes to a throwaway overlay and the real device is never touched. Off: writes persist to the device, needed to run Windows OOBE to completion across its reboots (and to keep the logs it writes), but it WILL modify the drive.</source>
         <translation>Activé : chaque écriture va dans une surcouche jetable et le périphérique réel n&apos;est jamais touché. Désactivé : les écritures sont conservées sur le périphérique, ce qui est nécessaire pour mener l&apos;OOBE de Windows à terme malgré ses redémarrages (et pour conserver les journaux qu&apos;il écrit), mais cela MODIFIERA le lecteur.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="260"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="267"/>
         <source>⚠ Snapshot is off: this boot test will write to and modify the real device.</source>
         <translation>⚠ Le mode instantané est désactivé : ce test de démarrage écrira sur le périphérique réel et le modifiera.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="269"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="276"/>
         <source>Opens in snapshot mode, so nothing is written back to the device. Admin rights are required to read the raw device.</source>
         <translation>Ouvre en mode instantané : rien n&apos;est réécrit sur le périphérique. Des droits administrateur sont nécessaires pour lire le périphérique brut.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="271"/>
+        <location filename="../../crates/gui/qml/dialogs/BootTestDialog.qml" line="278"/>
         <source>Admin rights are required to read the raw device.</source>
         <translation>Des droits administrateur sont nécessaires pour lire le périphérique brut.</translation>
     </message>
@@ -1024,207 +1034,212 @@
 <context>
     <name>main</name>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1153"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1154"/>
         <source>Working</source>
         <translation>Travail en cours</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="195"/>
+        <location filename="../../crates/gui/qml/main.qml" line="194"/>
         <source>Device</source>
         <translation>Périphérique</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="197"/>
+        <location filename="../../crates/gui/qml/main.qml" line="196"/>
         <source>Quick check (fake-drive)…</source>
         <translation>Vérification rapide (fausse capacité)…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="202"/>
+        <location filename="../../crates/gui/qml/main.qml" line="201"/>
         <source>Full bad-blocks scan…</source>
         <translation>Analyse complète des blocs défectueux…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="208"/>
+        <location filename="../../crates/gui/qml/main.qml" line="207"/>
         <source>Save snapshot to file…</source>
         <translation>Enregistrer un instantané…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="253"/>
+        <location filename="../../crates/gui/qml/main.qml" line="252"/>
         <source>?</source>
         <translation>?</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="230"/>
+        <location filename="../../crates/gui/qml/main.qml" line="229"/>
         <source>Force English</source>
         <translation>Forcer l&apos;anglais</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="218"/>
+        <location filename="../../crates/gui/qml/main.qml" line="217"/>
         <source>Verify boot device (QEMU)…</source>
         <translation>Tester le démarrage du périphérique (QEMU)…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="242"/>
+        <location filename="../../crates/gui/qml/main.qml" line="241"/>
         <source>Log every copied file</source>
         <translation>Journaliser chaque fichier copié</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="247"/>
+        <location filename="../../crates/gui/qml/main.qml" line="246"/>
         <source>List every file copied to the target in the activity log, not just the large ones. Useful to see exactly what was written; produces a long log on big images.</source>
         <translation>Liste chaque fichier copié sur la cible dans le journal d&apos;activité, pas seulement les plus gros. Pratique pour voir exactement ce qui a été écrit ; produit un long journal sur les grosses images.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="255"/>
+        <location filename="../../crates/gui/qml/main.qml" line="254"/>
         <source>Dependencies</source>
         <translation>Dépendances</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="262"/>
+        <location filename="../../crates/gui/qml/main.qml" line="261"/>
         <source>About USBooty</source>
         <translation>À propos d&apos;USBooty</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="317"/>
+        <location filename="../../crates/gui/qml/main.qml" line="318"/>
         <source>USBooty scanned this ISO&apos;s signed EFI binaries against the Secure Boot revocation database (SBAT generations + the live UEFI Forum DBX update). One or more bootloaders are flagged as obsolete. UEFI firmware with current revocations will refuse to load them. Try a newer ISO, or boot in legacy / non-Secure-Boot mode.</source>
         <translation>USBooty a comparé les binaires EFI signés de cette ISO à la base de révocation Secure Boot (générations SBAT + la mise à jour DBX du UEFI Forum). Un ou plusieurs chargeurs d&apos;amorçage sont marqués comme obsolètes. Un micrologiciel UEFI à jour refusera de les charger. Essayez une ISO plus récente, ou démarrez en mode hérité / sans Secure Boot.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="347"/>
+        <location filename="../../crates/gui/qml/main.qml" line="337"/>
+        <source>SMART: %1. Consider replacing this drive.</source>
+        <translation>SMART : %1. Envisagez de remplacer ce disque.</translation>
+    </message>
+    <message>
+        <location filename="../../crates/gui/qml/main.qml" line="348"/>
         <source>Source image (not used)</source>
         <translation>Image source (non utilisée)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="348"/>
+        <location filename="../../crates/gui/qml/main.qml" line="349"/>
         <source>Source image (optional)</source>
         <translation>Image source (facultative)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="349"/>
+        <location filename="../../crates/gui/qml/main.qml" line="350"/>
         <source>Source image</source>
         <translation>Image source</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="361"/>
+        <location filename="../../crates/gui/qml/main.qml" line="362"/>
         <source>Not used for a plain format</source>
         <translation>Non utilisée pour un simple formatage</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="363"/>
+        <location filename="../../crates/gui/qml/main.qml" line="364"/>
         <source>Optional: Ventoy lets you drop ISOs onto the data partition later</source>
         <translation>Facultative : Ventoy permet de déposer des ISO sur la partition de données plus tard</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="364"/>
+        <location filename="../../crates/gui/qml/main.qml" line="365"/>
         <source>Choose an ISO image, or drag one onto the window…</source>
         <translation>Choisissez une image ISO, ou glissez-en une dans la fenêtre…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="378"/>
+        <location filename="../../crates/gui/qml/main.qml" line="379"/>
         <source>Browse…</source>
         <translation>Parcourir…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="385"/>
+        <location filename="../../crates/gui/qml/main.qml" line="386"/>
         <source>Download a Windows ISO…</source>
         <translation>Télécharger une ISO Windows…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="390"/>
+        <location filename="../../crates/gui/qml/main.qml" line="391"/>
         <source>Clear source image</source>
         <translation>Effacer l&apos;image source</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="414"/>
+        <location filename="../../crates/gui/qml/main.qml" line="415"/>
         <source>Windows</source>
         <translation>Windows</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="424"/>
+        <location filename="../../crates/gui/qml/main.qml" line="425"/>
         <source>Linux</source>
         <translation>Linux</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="451"/>
+        <location filename="../../crates/gui/qml/main.qml" line="452"/>
         <source>Compute checksums</source>
         <translation>Calculer les sommes de contrôle</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="456"/>
+        <location filename="../../crates/gui/qml/main.qml" line="457"/>
         <source>Stream the ISO through MD5, SHA-1, SHA-256, SHA-512 and BLAKE3 in one pass. Disk-bound and CPU-heavy on a multi-GiB ISO; skip it unless you want to cross-check against a published hash.</source>
         <translation>Passe l&apos;ISO dans MD5, SHA-1, SHA-256, SHA-512 et BLAKE3 en une seule lecture. Limité par le disque et coûteux en CPU sur une ISO de plusieurs Gio ; à éviter sauf pour confronter à un hash publié.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="461"/>
+        <location filename="../../crates/gui/qml/main.qml" line="462"/>
         <source>Checksums skipped. Click to compute every digest.</source>
         <translation>Sommes ignorées. Cliquez pour les calculer.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="476"/>
+        <location filename="../../crates/gui/qml/main.qml" line="477"/>
         <source>Computing checksums…</source>
         <translation>Calcul des sommes de contrôle…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="583"/>
+        <location filename="../../crates/gui/qml/main.qml" line="584"/>
         <source>Target device</source>
         <translation>Périphérique cible</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="596"/>
+        <location filename="../../crates/gui/qml/main.qml" line="597"/>
         <source>No removable devices found</source>
         <translation>Aucun périphérique amovible trouvé</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="633"/>
+        <location filename="../../crates/gui/qml/main.qml" line="634"/>
         <source>Refresh</source>
         <translation>Actualiser</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="642"/>
+        <location filename="../../crates/gui/qml/main.qml" line="643"/>
         <source>Re-scan /sys/block for connected drives. Usbooty already polls every few seconds while idle; use this if you just hotplugged a device and want it instantly.</source>
         <translation>Re-scanne /sys/block à la recherche des disques connectés. Usbooty interroge déjà toutes les quelques secondes quand il est inactif ; à utiliser si vous venez de brancher un périphérique et le voulez immédiatement.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="648"/>
+        <location filename="../../crates/gui/qml/main.qml" line="649"/>
         <source>Show non-removable (internal) disks</source>
         <translation>Afficher les disques non amovibles (internes)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="657"/>
+        <location filename="../../crates/gui/qml/main.qml" line="658"/>
         <source>Off by default. Internal SATA/NVMe disks are filtered out so they cannot be picked by mistake. Enable only when you really want to target a fixed disk (lab, dual-boot stick, image dump).</source>
         <translation>Désactivé par défaut. Les disques SATA/NVMe internes sont filtrés pour éviter une sélection accidentelle. À activer uniquement si vous voulez vraiment cibler un disque fixe (labo, clé dual-boot, dump d&apos;image).</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="666"/>
+        <location filename="../../crates/gui/qml/main.qml" line="667"/>
         <source>Options</source>
         <translation>Options</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="675"/>
+        <location filename="../../crates/gui/qml/main.qml" line="676"/>
         <source>Write method</source>
         <translation>Méthode d&apos;écriture</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="679"/>
+        <location filename="../../crates/gui/qml/main.qml" line="680"/>
         <source>DD image (raw copy)</source>
         <translation>Image DD (copie brute)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="680"/>
+        <location filename="../../crates/gui/qml/main.qml" line="681"/>
         <source>Partition &amp; copy files</source>
         <translation>Partitionner &amp; copier les fichiers</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="681"/>
+        <location filename="../../crates/gui/qml/main.qml" line="682"/>
         <source>Format only (no ISO)</source>
         <translation>Formater uniquement (sans ISO)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="682"/>
+        <location filename="../../crates/gui/qml/main.qml" line="683"/>
         <source>Ventoy (multi-boot USB)</source>
         <translation>Ventoy (USB multi-amorçage)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="688"/>
+        <location filename="../../crates/gui/qml/main.qml" line="689"/>
         <source>DD: bit-for-bit copy of the ISO, no partitioning. Works for any isohybrid (most Linux ISOs).
 
 Partition &amp; copy: USBooty creates a fresh partition table, formats it, and copies the ISO files. Required for Windows install media and for anything that needs persistence.
@@ -1245,227 +1260,226 @@ Ventoy : installe Ventoy pour pouvoir déposer plusieurs ISO sur la partition de
 FreeDOS : télécharge la dernière version du noyau et du shell FreeDOS et construit une clé USB DOS amorçable autonome (sans ISO). Utile pour les utilitaires de flashage de BIOS et les anciens outils DOS.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="702"/>
+        <location filename="../../crates/gui/qml/main.qml" line="703"/>
         <source>Filesystem</source>
         <translation>Système de fichiers</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="720"/>
+        <location filename="../../crates/gui/qml/main.qml" line="721"/>
         <source>When writing an image, the filesystem is chosen automatically.</source>
         <translation>Quand on écrit une image, le système de fichiers est choisi automatiquement.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="723"/>
+        <location filename="../../crates/gui/qml/main.qml" line="724"/>
         <source>Partition scheme</source>
         <translation>Schéma de partitionnement</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="732"/>
+        <location filename="../../crates/gui/qml/main.qml" line="733"/>
         <source>GPT (UEFI)</source>
         <translation>GPT (UEFI)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="742"/>
+        <location filename="../../crates/gui/qml/main.qml" line="743"/>
         <source>The DD method preserves the ISO&apos;s own partition table.</source>
         <translation>La méthode DD préserve la table de partitions propre à l&apos;ISO.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="759"/>
+        <location filename="../../crates/gui/qml/main.qml" line="760"/>
         <source>Volume label</source>
         <translation>Étiquette du volume</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="767"/>
+        <location filename="../../crates/gui/qml/main.qml" line="768"/>
         <source>Drive label</source>
         <translation>Étiquette du disque</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="778"/>
+        <location filename="../../crates/gui/qml/main.qml" line="779"/>
         <source>The label is sanitized to each filesystem&apos;s limits.</source>
         <translation>L&apos;étiquette est tronquée aux limites de chaque système de fichiers.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="781"/>
+        <location filename="../../crates/gui/qml/main.qml" line="782"/>
         <source>Will be written as “%1” (fits the chosen filesystem).</source>
         <translation>Sera écrite comme « %1 » (compatible avec le système de fichiers choisi).</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="783"/>
+        <location filename="../../crates/gui/qml/main.qml" line="784"/>
         <source>Will be written as “%1” (trimmed for the chosen filesystem)</source>
         <translation>Sera écrite comme « %1 » (tronquée pour le système de fichiers choisi)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="790"/>
+        <location filename="../../crates/gui/qml/main.qml" line="791"/>
         <source>Full format: erase the whole device first (slow)</source>
         <translation>Formatage complet : efface tout le périphérique (lent)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="798"/>
+        <location filename="../../crates/gui/qml/main.qml" line="799"/>
         <source>Zeroes every sector before writing. Slow (tens of minutes on a 64 GB stick), but it wipes any prior partition layout / hidden partitions and gives a clean slate. The quick path skips this and only writes the new layout.</source>
         <translation>Met à zéro chaque secteur avant d&apos;écrire. Lent (des dizaines de minutes sur une clé de 64 Go), mais efface toute partition antérieure ou cachée et repart d&apos;un état propre. Le chemin rapide saute cette étape et n&apos;écrit que la nouvelle disposition.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="810"/>
+        <location filename="../../crates/gui/qml/main.qml" line="811"/>
         <source>Split install.wim onto FAT32 (needs wimlib-imagex): broader firmware support than UEFI:NTFS</source>
         <translation>Découper install.wim sur FAT32 (nécessite wimlib-imagex) : meilleur support firmware que UEFI:NTFS</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="816"/>
+        <location filename="../../crates/gui/qml/main.qml" line="817"/>
         <source>Windows ISOs with install.wim larger than 4 GiB cannot live on a single FAT32 partition as-is. The default layout is UEFI:NTFS (a small FAT32 + a big NTFS partition with a signed UEFI loader). This alternative uses wimlib-imagex to split install.wim into install.swm chunks Windows Setup loads natively, leaving you with a single FAT32 partition that boots on more firmware.</source>
         <translation>Les ISO Windows dont install.wim dépasse 4 Gio ne tiennent pas sur une seule partition FAT32 telle quelle. La disposition par défaut est UEFI:NTFS (une petite partition FAT32 + une grosse NTFS avec un chargeur UEFI signé). Cette alternative utilise wimlib-imagex pour découper install.wim en morceaux install.swm que Windows Setup charge nativement, vous laissant avec une seule partition FAT32 qui démarre sur davantage de firmwares.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="824"/>
+        <location filename="../../crates/gui/qml/main.qml" line="825"/>
         <source>Verify after writing: read the data back and check it</source>
         <translation>Vérifier après l&apos;écriture : relire et contrôler les données</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="831"/>
+        <location filename="../../crates/gui/qml/main.qml" line="832"/>
         <source>Re-reads the entire device after writing and compares it to a BLAKE3 hash captured during the write. Roughly doubles the job time but catches counterfeit / failing flash that silently corrupts data.</source>
         <translation>Relit l&apos;intégralité du périphérique après écriture et la compare à un hash BLAKE3 capturé pendant l&apos;écriture. Double à peu près la durée du travail mais détecte les flash contrefaits ou défaillants qui corrompent silencieusement les données.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="842"/>
+        <location filename="../../crates/gui/qml/main.qml" line="843"/>
         <source>Update an existing Ventoy install (keeps your ISOs)</source>
         <translation>Mettre à jour une installation Ventoy existante (conserve vos ISO)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="848"/>
+        <location filename="../../crates/gui/qml/main.qml" line="849"/>
         <source>Upgrade the Ventoy bootloader in-place. The existing data partition (with your ISOs) is preserved; only the small EFI partition and the Ventoy boot files get rewritten.</source>
         <translation>Met à jour le bootloader Ventoy sur place. La partition de données existante (avec vos ISO) est conservée ; seules la petite partition EFI et les fichiers de boot Ventoy sont réécrits.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="853"/>
+        <location filename="../../crates/gui/qml/main.qml" line="854"/>
         <source>Secure Boot support</source>
         <translation>Support du Secure Boot</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="859"/>
+        <location filename="../../crates/gui/qml/main.qml" line="860"/>
         <source>Install Ventoy with the Microsoft-signed shim so the stick boots on UEFI machines that have Secure Boot enabled. Off → smaller footprint and no MOK enrollment, but Secure Boot must be disabled.</source>
         <translation>Installe Ventoy avec le shim signé Microsoft pour que la clé démarre sur les machines UEFI où Secure Boot est activé. Désactivé → empreinte plus petite et pas d&apos;enrôlement MOK, mais Secure Boot doit être désactivé.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="864"/>
+        <location filename="../../crates/gui/qml/main.qml" line="865"/>
         <source>Ventoy makes a USB you drop ISOs onto and boot directly. A loaded ISO above (optional) is copied onto it.</source>
         <translation>Ventoy crée une clé sur laquelle vous déposez des ISO et que vous démarrez directement. Une ISO chargée ci-dessus (facultative) y est copiée.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="892"/>
+        <location filename="../../crates/gui/qml/main.qml" line="893"/>
         <source>Persistent storage:  off</source>
         <translation>Stockage persistant :  désactivé</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="894"/>
+        <location filename="../../crates/gui/qml/main.qml" line="895"/>
         <source>Persistent storage:  %1 MiB</source>
         <translation>Stockage persistant :  %1 Mio</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="895"/>
+        <location filename="../../crates/gui/qml/main.qml" line="896"/>
         <source>Persistent storage:  %1 GiB</source>
         <translation>Stockage persistant :  %1 Gio</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="920"/>
+        <location filename="../../crates/gui/qml/main.qml" line="921"/>
         <source>Off</source>
         <translation>Désactivé</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="921"/>
+        <location filename="../../crates/gui/qml/main.qml" line="922"/>
         <source>%1 MiB</source>
         <translation>%1 Mio</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="922"/>
+        <location filename="../../crates/gui/qml/main.qml" line="923"/>
         <source>%1 GiB</source>
         <translation>%1 Gio</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="925"/>
+        <location filename="../../crates/gui/qml/main.qml" line="926"/>
         <source>Max</source>
         <translation>Max</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="930"/>
+        <location filename="../../crates/gui/qml/main.qml" line="931"/>
         <source>Set the overlay to fill the device: uses every byte the chosen drive has left after the ISO and a small partition-table margin.</source>
         <translation>Étend l&apos;overlay pour remplir le périphérique : utilise chaque octet restant après l&apos;ISO et une petite marge de table de partitions.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="954"/>
+        <location filename="../../crates/gui/qml/main.qml" line="955"/>
         <source>Keeps your files and settings across reboots of this live USB.</source>
         <translation>Conserve vos fichiers et paramètres entre les redémarrages de cette USB live.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1008"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1009"/>
         <source>Cancelling…</source>
         <translation>Annulation…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1009"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1010"/>
         <source>Cancel</source>
         <translation>Annuler</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1009"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1010"/>
         <source>Start</source>
         <translation>Démarrer</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1175"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1176"/>
         <source>ETA %1</source>
         <translation>ETA %1</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1179"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1180"/>
         <source>%1 elapsed</source>
         <translation>%1 écoulées</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1264"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1265"/>
         <source>Activity log</source>
         <translation>Journal d&apos;activité</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1290"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1291"/>
         <source>Clear</source>
         <translation>Effacer</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1332"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1333"/>
         <source>Job output will appear here.</source>
         <translation>La sortie du travail s&apos;affichera ici.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1438"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1436"/>
         <source>Drop to load</source>
         <translation>Déposez pour charger</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1439"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1437"/>
         <source>Unsupported file</source>
         <translation>Fichier non pris en charge</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1455"/>
         <source>Only .iso and .img files are accepted</source>
-        <translation>Seuls les fichiers .iso et .img sont acceptés</translation>
+        <translation type="vanished">Seuls les fichiers .iso et .img sont acceptés</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1466"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1464"/>
         <source>Select an ISO image</source>
         <translation>Sélectionner une image ISO</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1468"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1466"/>
         <source>Disk images (*.iso *.img *.vhd *.iso.xz *.iso.gz *.iso.bz2 *.iso.zst *.iso.lzma *.iso.zip *.iso.Z *.img.xz *.img.gz *.img.bz2 *.img.zst *.img.lzma *.img.zip *.img.Z)</source>
         <translation>Images disque (*.iso *.img *.vhd *.iso.xz *.iso.gz *.iso.bz2 *.iso.zst *.iso.lzma *.iso.zip *.iso.Z *.img.xz *.img.gz *.img.bz2 *.img.zst *.img.lzma *.img.zip *.img.Z)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1469"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1467"/>
         <source>Compressed (*.xz *.gz *.bz2 *.zst *.lzma *.zip *.Z)</source>
         <translation>Compressé (*.xz *.gz *.bz2 *.zst *.lzma *.zip *.Z)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="964"/>
+        <location filename="../../crates/gui/qml/main.qml" line="965"/>
         <source>Detected distribution: %1</source>
         <translation>Distribution détectée : %1</translation>
     </message>
@@ -1475,52 +1489,52 @@ FreeDOS : télécharge la dernière version du noyau et du shell FreeDOS et cons
         <translation>USBooty : Créateur de clé USB amorçable</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="225"/>
+        <location filename="../../crates/gui/qml/main.qml" line="224"/>
         <source>Settings</source>
         <translation>Paramètres</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="236"/>
+        <location filename="../../crates/gui/qml/main.qml" line="235"/>
         <source>Always show activity log</source>
         <translation>Toujours afficher le journal d&apos;activité</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="362"/>
+        <location filename="../../crates/gui/qml/main.qml" line="363"/>
         <source>Not used: FreeDOS files are downloaded from upstream</source>
         <translation>Non utilisée : les fichiers FreeDOS sont téléchargés depuis l&apos;amont</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="370"/>
+        <location filename="../../crates/gui/qml/main.qml" line="371"/>
         <source>Drop an .iso / .img / .vhd / compressed image (.xz / .gz / .bz2 / .zst / .lzma / .zip / .Z) anywhere on the window, or use Browse… to pick one. Compressed and VHD images are unpacked into ~/.cache/usbooty/ before writing.</source>
         <translation>Déposez une image .iso / .img / .vhd / compressée (.xz / .gz / .bz2 / .zst / .lzma / .zip / .Z) n&apos;importe où sur la fenêtre, ou utilisez Parcourir… pour en choisir une. Les images compressées et VHD sont décompactées dans ~/.cache/usbooty/ avant écriture.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="569"/>
+        <location filename="../../crates/gui/qml/main.qml" line="570"/>
         <source>Verified: %1</source>
         <translation>Vérifié : %1</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="683"/>
+        <location filename="../../crates/gui/qml/main.qml" line="684"/>
         <source>FreeDOS bootable USB</source>
         <translation>USB amorçable FreeDOS</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="733"/>
+        <location filename="../../crates/gui/qml/main.qml" line="734"/>
         <source>MBR (BIOS)</source>
         <translation>MBR (BIOS)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="734"/>
+        <location filename="../../crates/gui/qml/main.qml" line="735"/>
         <source>MBR (BIOS+UEFI)</source>
         <translation>MBR (BIOS+UEFI)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="735"/>
+        <location filename="../../crates/gui/qml/main.qml" line="736"/>
         <source>Hybrid MBR+GPT (BIOS+UEFI)</source>
         <translation>MBR hybride+GPT (BIOS+UEFI)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="743"/>
+        <location filename="../../crates/gui/qml/main.qml" line="744"/>
         <source>How the disk is laid out for the firmware that boots it.
 
 • GPT (UEFI): modern default. Boots only on UEFI firmware. Required for disks larger than 2 TiB and for more than 4 partitions.
@@ -1541,99 +1555,104 @@ FreeDOS : télécharge la dernière version du noyau et du shell FreeDOS et cons
 • MBR hybride+GPT (BIOS+UEFI) : vrai GPT + un MBR synthétisé miroir de la partition de données (à la Apple). Compatibilité maximale, mais certains firmwares bogués refusent les MBR hybrides. À n&apos;utiliser que si MBR (BIOS+UEFI) ne démarre pas sur une machine particulière.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="976"/>
+        <location filename="../../crates/gui/qml/main.qml" line="977"/>
         <source>Persistent storage isn&apos;t supported for %1.</source>
         <translation>Le stockage persistant n&apos;est pas pris en charge pour %1.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="977"/>
+        <location filename="../../crates/gui/qml/main.qml" line="978"/>
         <source>Persistent storage isn&apos;t supported for this distribution.</source>
         <translation>Le stockage persistant n&apos;est pas pris en charge pour cette distribution.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="993"/>
+        <location filename="../../crates/gui/qml/main.qml" line="994"/>
         <source>Plug in or select a target device to set the persistence size.</source>
         <translation>Branchez ou sélectionnez un périphérique cible pour définir la taille de la persistance.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="994"/>
+        <location filename="../../crates/gui/qml/main.qml" line="995"/>
         <source>The selected device has no room left for a persistence partition once the ISO is written.</source>
         <translation>Le périphérique sélectionné n&apos;a plus de place pour une partition de persistance une fois l&apos;ISO écrite.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1016"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1017"/>
         <source>Ask the running helper to stop. The current sector finishes writing, then the partition table is left in whatever state the helper had got to. Expect a partially-written drive.</source>
         <translation>Demande au helper en cours d&apos;exécution de s&apos;arrêter. Le secteur en cours d&apos;écriture est terminé, puis la table de partitions reste dans l&apos;état où le helper en était. Attendez-vous à un disque partiellement écrit.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1020"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1021"/>
         <source>Opens the Windows-setup dialog first (TPM/Secure-Boot/RAM bypasses, local account, debloat, …); the actual write begins after you click OK there.</source>
         <translation>Ouvre d&apos;abord la boîte de dialogue de configuration Windows (contournements TPM / Secure Boot / RAM, compte local, debloat…) ; l&apos;écriture proprement dite commence après avoir cliqué sur OK.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1022"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1023"/>
         <source>Confirm and start writing. All data on the selected device is erased.</source>
         <translation>Confirme et démarre l&apos;écriture. Toutes les données du périphérique sélectionné sont effacées.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1276"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1277"/>
         <source>Save…</source>
         <translation>Enregistrer…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1286"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1287"/>
         <source>Write the current activity log to a text file. Useful for bug reports. Attach the file instead of pasting in the panel.</source>
         <translation>Écrit le journal d&apos;activité courant dans un fichier texte. Utile pour les rapports de bugs. Joignez le fichier plutôt que de coller le contenu du panneau.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1299"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1300"/>
         <source>Empty the activity log panel.</source>
         <translation>Vide le panneau du journal d&apos;activité.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1470"/>
-        <location filename="../../crates/gui/qml/main.qml" line="1485"/>
-        <location filename="../../crates/gui/qml/main.qml" line="1496"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1453"/>
+        <source>Only disk images (.iso, .img, .vhd), plain or compressed, are accepted</source>
+        <translation>Seules les images disque (.iso, .img, .vhd), brutes ou compressées, sont acceptées</translation>
+    </message>
+    <message>
+        <location filename="../../crates/gui/qml/main.qml" line="1468"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1483"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1494"/>
         <source>All files (*)</source>
         <translation>Tous les fichiers (*)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1479"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1477"/>
         <source>Save device snapshot</source>
         <translation>Enregistrer un instantané du périphérique</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1483"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1481"/>
         <source>Raw images (*.img)</source>
         <translation>Images brutes (*.img)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1484"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1482"/>
         <source>Compressed images (*.img.gz *.img.xz *.img.zst *.img.bz2)</source>
         <translation>Images compressées (*.img.gz *.img.xz *.img.zst *.img.bz2)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1493"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1491"/>
         <source>Save activity log</source>
         <translation>Enregistrer le journal d&apos;activité</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1496"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1494"/>
         <source>Log files (*.log *.txt)</source>
         <translation>Fichiers journal (*.log *.txt)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="940"/>
+        <location filename="../../crates/gui/qml/main.qml" line="941"/>
         <source>Enable persistent changes</source>
         <translation>Activer les modifications persistantes</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="945"/>
+        <location filename="../../crates/gui/qml/main.qml" line="946"/>
         <source>Persistence lives on the writable boot stick, with no separate partition. Slax saves to /slax/changes/ automatically; Alpine runs from RAM and persists with lbu, so run `lbu commit` inside Alpine to save the apkovl (an apk cache folder is prepared for you).</source>
         <translation>La persistance réside sur la clé de démarrage inscriptible, sans partition séparée. Slax enregistre dans /slax/changes/ automatiquement ; Alpine tourne en RAM et persiste avec lbu, exécutez donc `lbu commit` dans Alpine pour enregistrer l&apos;apkovl (un dossier de cache apk est préparé pour vous).</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="952"/>
+        <location filename="../../crates/gui/qml/main.qml" line="953"/>
         <source>Changes are saved to the writable boot stick; no separate partition is created.</source>
         <translation>Les modifications sont enregistrées sur la clé de démarrage inscriptible ; aucune partition séparée n&apos;est créée.</translation>
     </message>

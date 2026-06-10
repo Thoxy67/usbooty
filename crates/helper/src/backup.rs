@@ -59,28 +59,34 @@ pub fn run(
     let mut hasher = blake3::Hasher::new();
     let mut dev = dev;
     use std::io::Read;
-    while done < total {
-        if abort.load(Ordering::SeqCst) {
-            // Drop the partial output before bailing; half-written backups
-            // are confusing and easy to mistake for complete ones.
-            drop(writer);
-            let _ = std::fs::remove_file(image_path);
-            bail!("aborted by user");
+    let read_pass = (|| -> Result<()> {
+        while done < total {
+            if abort.load(Ordering::SeqCst) {
+                bail!("aborted by user");
+            }
+            let want = ((total - done) as usize).min(buf.len());
+            dev.read_exact(&mut buf[..want])
+                .context("reading from the device")?;
+            if opts.verify {
+                hasher.update(&buf[..want]);
+            }
+            writer
+                .write_all(&buf[..want])
+                .context("writing the backup image")?;
+            done += want as u64;
+            if last.elapsed() >= REPORT_EVERY {
+                emit::progress("Reading", done, total);
+                last = Instant::now();
+            }
         }
-        let want = ((total - done) as usize).min(buf.len());
-        dev.read_exact(&mut buf[..want])
-            .context("reading from the device")?;
-        if opts.verify {
-            hasher.update(&buf[..want]);
-        }
-        writer
-            .write_all(&buf[..want])
-            .context("writing the backup image")?;
-        done += want as u64;
-        if last.elapsed() >= REPORT_EVERY {
-            emit::progress("Reading", done, total);
-            last = Instant::now();
-        }
+        Ok(())
+    })();
+    if let Err(e) = read_pass {
+        // Drop the partial output before bailing, on abort and I/O errors
+        // alike; half-written backups are easy to mistake for complete ones.
+        drop(writer);
+        let _ = std::fs::remove_file(image_path);
+        return Err(e);
     }
     emit::progress("Reading", total, total);
 
@@ -96,7 +102,7 @@ pub fn run(
     drop(sync_fd);
 
     if opts.verify {
-        verify(device_path, image_path, total, hasher.finalize(), abort)?;
+        verify(image_path, total, hasher.finalize(), abort)?;
     }
 
     emit::log(format!(
@@ -106,11 +112,12 @@ pub fn run(
     Ok(())
 }
 
-/// Read the device back and the image back, hash both, and confirm they match.
-/// For a compressed image this re-decompresses on the fly via the existing
-/// streaming opener, so verification works end to end with no special-casing.
+/// Read the image back and confirm it hashes to what was read off the device
+/// (the device hash was computed during the read pass; the device itself is
+/// not re-read). For a compressed image this re-decompresses on the fly via
+/// the existing streaming opener, so verification works end to end with no
+/// special-casing.
 fn verify(
-    device: &Path,
     image: &Path,
     total: u64,
     expected_device_hash: blake3::Hash,
@@ -147,7 +154,6 @@ fn verify(
     }
     emit::progress("Verifying", total, total);
 
-    let _ = device; // device hash is computed during the read pass above
     if hasher.finalize() != expected_device_hash {
         bail!("verification failed; the image read back does not match the device");
     }

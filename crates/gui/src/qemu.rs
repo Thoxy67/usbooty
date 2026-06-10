@@ -61,11 +61,6 @@ pub fn detect() -> Caps {
     }
 }
 
-/// Whether `swtpm` is installed (so a virtual TPM 2.0 can back UEFI boots).
-pub fn tpm_available() -> bool {
-    swtpm_path().is_some()
-}
-
 /// The host's logical CPU count: the upper bound for the boot test's vCPU
 /// slider. At least 1.
 pub fn host_cpus() -> u32 {
@@ -476,5 +471,11 @@ pub fn launch(device: &str, cfg: &BootConfig, log: &mut dyn FnMut(&str)) -> Resu
             hint
         );
     }
+    // QEMU runs on detached; hand the child to a reaper thread so it doesn't
+    // linger as a zombie after the user closes the VM window (`Child` drop
+    // does not wait).
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
     Ok(())
 }

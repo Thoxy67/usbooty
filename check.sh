@@ -34,12 +34,29 @@ cargo build --workspace --locked
 step "cargo test --workspace"
 cargo test --workspace --locked
 
-step "translation catalog is finished and compiles"
+step "translation catalog is finished, current, and compiles"
 ts="$REPO_ROOT/data/translations/usbooty_fr.ts"
 qm="$REPO_ROOT/data/translations/usbooty_fr.qm"
 if grep -q 'type="unfinished"' "$ts"; then
     echo "ERROR: $ts has unfinished translations." >&2
     grep -n 'type="unfinished"' "$ts" | head -5 >&2
+    exit 1
+fi
+# Catch a *stale* catalog too: a qsTr string added or changed in QML but
+# never run through update-translations.sh is simply absent from the
+# committed .ts, so the grep above cannot see it. Re-running lupdate into a
+# scratch copy makes any such string show up as a fresh unfinished entry.
+tmp_ts="$(mktemp --suffix=.ts)"
+trap 'rm -f "$tmp_ts"' EXIT
+cp "$ts" "$tmp_ts"
+if ! lupdate6 -recursive "$REPO_ROOT/crates/gui/qml" -ts "$tmp_ts" >/dev/null 2>&1; then
+    echo "ERROR: lupdate6 failed to scan the QML tree." >&2
+    exit 1
+fi
+if grep -q 'type="unfinished"' "$tmp_ts"; then
+    echo "ERROR: $ts is stale: QML has new/changed qsTr strings." >&2
+    echo "Run data/translations/update-translations.sh and translate them:" >&2
+    grep -n 'type="unfinished"' "$tmp_ts" | head -5 >&2
     exit 1
 fi
 if ! lrelease6 "$ts" >/dev/null 2>&1; then

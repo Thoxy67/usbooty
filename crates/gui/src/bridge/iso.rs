@@ -17,8 +17,7 @@ impl qobject::AppController {
     /// that runs on a worker thread so the UI stays responsive while many
     /// gigabytes stream through. The plain-ISO fast path is unchanged.
     pub fn set_iso(mut self: core::pin::Pin<&mut Self>, path: &QString) {
-        let raw = path.to_string();
-        let path = raw.strip_prefix("file://").unwrap_or(&raw).to_string();
+        let path = super::helpers::local_path_from_url(&path.to_string());
         if path.is_empty() {
             return;
         }
@@ -109,30 +108,26 @@ impl qobject::AppController {
         self.as_mut().set_iso_adguard_badge(QString::default());
         self.as_mut().set_hash_progress(0.0);
         self.as_mut().set_revocation_warnings(QString::default());
+        // Invalidate any in-flight hash worker and stop the spinners; its
+        // results belong to the ISO that was just cleared.
+        self.as_mut().rust_mut().hash_generation += 1;
+        self.as_mut().set_hashing(false);
         self.as_mut().rust_mut().iso_report = None;
         self.as_mut().refresh_fit_warning();
         self.as_mut().refresh_persistence_max();
     }
 
-    /// Set the source ISO from a just-downloaded file whose digests were
-    /// already computed as it streamed, so no re-read of the ISO is needed.
-    pub fn set_downloaded_iso(
-        self: core::pin::Pin<&mut Self>,
-        path: &str,
-        hashes: &crate::iso::IsoHashes,
-    ) {
-        let report = crate::iso::analyze(std::path::Path::new(path));
-        self.apply_iso(path, report, Some(hashes));
-    }
-
     /// Apply an analyzed ISO to the UI state. When `hashes` is `Some` the
     /// digests are already known (a downloaded ISO); otherwise they are
-    /// computed off-thread. Marked `pub(crate)` so [`crate::runner`] can
-    /// call this from a Qt-thread closure after off-thread analysis.
+    /// computed off-thread. `win` is the WIM metadata pre-computed by the
+    /// analysis worker (parsing it here would block the Qt thread on a
+    /// multi-megabyte disk read). Marked `pub(crate)` so [`crate::runner`]
+    /// can call this from a Qt-thread closure after off-thread analysis.
     pub(crate) fn apply_iso(
         mut self: core::pin::Pin<&mut Self>,
         path: &str,
         report: IsoReport,
+        win: Option<crate::iso::WindowsMeta>,
         hashes: Option<&crate::iso::IsoHashes>,
     ) {
         let name = std::path::Path::new(path)
@@ -154,6 +149,11 @@ impl qobject::AppController {
         let is_windows = report.os_kind == OsKind::Windows;
         let is_linux = report.os_kind == OsKind::Linux;
 
+        // A different ISO is taking over: any hash worker still running for
+        // the previous one must not publish onto this one's panel.
+        self.as_mut().rust_mut().hash_generation += 1;
+        self.as_mut().set_hashing(false);
+
         self.as_mut().set_iso_path(QString::from(path));
         self.as_mut().set_iso_summary(QString::from(&summary));
         // Pre-fill the editable volume label from the image's own label.
@@ -165,21 +165,13 @@ impl qobject::AppController {
         self.as_mut().set_windows_iso(is_windows);
         self.as_mut().set_linux_iso(is_linux);
         // The install.wim build number gates version-specific installer options
-        // in QML (Windows 11 is build >= 22000). 0 for non-Windows / unknown.
-        let build = if is_windows {
-            crate::iso::windows_build(std::path::Path::new(path))
-        } else {
-            0
-        };
-        self.as_mut().set_windows_build(build as i32);
-        // Install-image arch lets the unattend target one architecture instead
-        // of emitting all three. Empty when unknown / non-Windows.
-        let arch = if is_windows {
-            crate::iso::windows_arch(std::path::Path::new(path)).unwrap_or_default()
-        } else {
-            String::new()
-        };
-        self.as_mut().set_windows_arch(QString::from(&arch));
+        // in QML (Windows 11 is build >= 22000); the arch lets the unattend
+        // target one architecture instead of emitting all three. Both come
+        // pre-computed from the worker; 0 / empty for non-Windows or unknown.
+        let win = if is_windows { win.unwrap_or_default() } else { Default::default() };
+        self.as_mut().set_windows_build(win.build as i32);
+        self.as_mut()
+            .set_windows_arch(QString::from(&win.arch.unwrap_or_default()));
 
         // Auto-pick the write method the image needs: the partition method for
         // a Windows/Linux installer, raw DD for a BSD/other image (DD is
@@ -239,7 +231,15 @@ impl qobject::AppController {
         self.as_mut().set_hash_progress(0.0);
         self.as_mut().set_hashing(true);
 
+        // Bind the worker to the current generation: bumping it (new ISO
+        // loaded, Compute clicked again) makes this worker's queued closures
+        // no-ops instead of publishing stale digests.
+        let generation = {
+            let mut rust = self.as_mut().rust_mut();
+            rust.hash_generation += 1;
+            rust.hash_generation
+        };
         let qt = self.qt_thread();
-        std::thread::spawn(move || crate::runner::compute_iso_hashes(qt, path));
+        std::thread::spawn(move || crate::runner::compute_iso_hashes(qt, path, generation));
     }
 }

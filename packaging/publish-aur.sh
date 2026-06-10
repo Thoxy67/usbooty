@@ -26,8 +26,12 @@ AUR_DIR="$AUR_DIR_DEFAULT"
 while [ $# -gt 0 ]; do
     case "$1" in
         --push)   DO_PUSH=1 ;;
-        --dir)    shift; AUR_DIR="$1" ;;
-        --remote) shift; AUR_REMOTE="$1" ;;
+        --dir)
+            [ $# -ge 2 ] || { echo "--dir needs a value" >&2; exit 2; }
+            shift; AUR_DIR="$1" ;;
+        --remote)
+            [ $# -ge 2 ] || { echo "--remote needs a value" >&2; exit 2; }
+            shift; AUR_REMOTE="$1" ;;
         -h|--help)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
             exit 0

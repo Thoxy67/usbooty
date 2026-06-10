@@ -17,6 +17,41 @@ pub(crate) fn non_empty_opt(s: &str) -> Option<String> {
     (!s.is_empty()).then(|| s.to_string())
 }
 
+/// Convert a `file://` URL string (what QML's FileDialog and drag-drop hand
+/// us) into a local filesystem path, percent-decoding any escaped bytes
+/// (`%23` for `#`, `%25` for `%`, ...). A plain path passes through
+/// unchanged: `%` sequences are only decoded after a `file://` prefix was
+/// actually present, so a local file literally named `100%23.iso` survives.
+pub(crate) fn local_path_from_url(raw: &str) -> String {
+    match raw.strip_prefix("file://") {
+        Some(stripped) => percent_decode(stripped),
+        None => raw.to_string(),
+    }
+}
+
+/// Decode `%XX` percent-escapes; malformed sequences pass through verbatim.
+fn percent_decode(s: &str) -> String {
+    fn hex(b: u8) -> Option<u8> {
+        (b as char).to_digit(16).map(|d| d as u8)
+    }
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(hi), Some(lo)) = (hex(bytes[i + 1]), hex(bytes[i + 2]))
+        {
+            out.push(hi * 16 + lo);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// Worker for [`AppController::request_inspect`]: shell out to lsblk,
 /// udevadm and smartctl, collate the output. Pure function (only depends
 /// on the device path) so it can run on a worker thread without touching
@@ -169,4 +204,22 @@ pub(crate) fn unmount_device_partitions(device_path: &str) -> Result<usize, Stri
         unmounted += 1;
     }
     Ok(unmounted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::local_path_from_url;
+
+    #[test]
+    fn file_urls_are_stripped_and_percent_decoded() {
+        assert_eq!(
+            local_path_from_url("file:///home/u/My%20ISOs/x%2364.iso"),
+            "/home/u/My ISOs/x#64.iso"
+        );
+        assert_eq!(local_path_from_url("file:///plain/path.iso"), "/plain/path.iso");
+        // Plain paths pass through untouched, escapes included.
+        assert_eq!(local_path_from_url("/literal/100%23.iso"), "/literal/100%23.iso");
+        // Malformed escapes survive verbatim.
+        assert_eq!(local_path_from_url("file:///a%2.iso"), "/a%2.iso");
+    }
 }

@@ -60,7 +60,6 @@ ApplicationWindow {
         // next job's Cancel button starts in the active state again.
         onBusyChanged: if (!app.busy) window.cancelling = false
         onJobFinished: function(success, message) {
-            resultDialog.title = success ? "Success" : "Failed"
             resultDialog.success = success
             resultDialog.message = message
             resultDialog.open()
@@ -299,9 +298,11 @@ ApplicationWindow {
             message: app.depWarning
         }
         Banner {
-            // The ISO cannot fit on the chosen drive.
+            // The ISO cannot fit on the chosen drive. Blanked for the
+            // methods that take no ISO (2 = Format only, 4 = FreeDOS),
+            // matching can_start, which ignores the warning for both.
             severity: "error"
-            message: app.method === 2 ? "" : app.fitWarning
+            message: (app.method === 2 || app.method === 4) ? "" : app.fitWarning
         }
         Banner {
             // SBAT / DBX revocation hits from scanning the ISO's EFI
@@ -333,7 +334,7 @@ ApplicationWindow {
             // asynchronously after select_device.
             severity: "error"
             message: app.smartWarning
-                ? "SMART: " + app.smartWarning + ". Consider replacing this drive."
+                ? qsTr("SMART: %1. Consider replacing this drive.").arg(app.smartWarning)
                 : ""
         }
 
@@ -1381,14 +1382,10 @@ ApplicationWindow {
     // any of the compressed variants the decompressor recognises.
     function looksLikeImage(url) {
         var u = url.toString().toLowerCase()
-        return u.endsWith(".iso") || u.endsWith(".img") || u.endsWith(".vhd")
-            || u.endsWith(".iso.xz") || u.endsWith(".img.xz") || u.endsWith(".xz")
-            || u.endsWith(".iso.gz") || u.endsWith(".img.gz") || u.endsWith(".gz")
-            || u.endsWith(".iso.bz2") || u.endsWith(".img.bz2") || u.endsWith(".bz2")
-            || u.endsWith(".iso.zst") || u.endsWith(".img.zst") || u.endsWith(".zst")
-            || u.endsWith(".iso.lzma") || u.endsWith(".img.lzma") || u.endsWith(".lzma")
-            || u.endsWith(".iso.zip") || u.endsWith(".img.zip") || u.endsWith(".zip")
-            || u.endsWith(".iso.z") || u.endsWith(".img.z") || u.endsWith(".z")
+        // The compressed suffixes subsume their `.iso.xz`-style spellings.
+        var suffixes = [".iso", ".img", ".vhd",
+                        ".xz", ".gz", ".bz2", ".zst", ".lzma", ".zip", ".z"]
+        return suffixes.some(function(s) { return u.endsWith(s) })
     }
     DropArea {
         id: isoDrop
@@ -1401,8 +1398,9 @@ ApplicationWindow {
             if (drag.hasUrls && drag.urls.length > 0) {
                 var u = drag.urls[0].toString()
                 hoverName = u.substring(u.lastIndexOf("/") + 1)
-                var l = hoverName.toLowerCase()
-                hoverIsoLike = l.endsWith(".iso") || l.endsWith(".img") || l.endsWith(".vhd")
+                // Same predicate the drop handler uses, so the overlay's
+                // verdict never contradicts what releasing would do.
+                hoverIsoLike = looksLikeImage(drag.urls[0])
             }
         }
         onExited: { hoverName = ""; hoverIsoLike = false }
@@ -1452,7 +1450,7 @@ ApplicationWindow {
                 Label {
                     Layout.alignment: Qt.AlignHCenter
                     visible: !isoDrop.hoverIsoLike && isoDrop.hoverName !== ""
-                    text: qsTr("Only .iso and .img files are accepted")
+                    text: qsTr("Only disk images (.iso, .img, .vhd), plain or compressed, are accepted")
                     font.pointSize: 9
                     color: palette.placeholderText
                 }

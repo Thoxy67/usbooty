@@ -111,6 +111,10 @@ pub struct AppControllerRust {
     pub win_option_list: Vec<crate::windisco::DownloadOption>,
     /// Present while a job runs; cleared by the runner when it finishes.
     pub job: Option<JobHandle>,
+    /// Bumped whenever the loaded ISO changes (or hashing restarts) so an
+    /// in-flight hash worker bound to a previous ISO discards its results
+    /// instead of publishing them under the wrong image.
+    pub(crate) hash_generation: u64,
     /// Plain-text activity log: the source of truth for "Save log".
     pub full_log: String,
     /// The same log accumulated as HTML, handed to the QML view via
@@ -229,6 +233,7 @@ impl Default for AppControllerRust {
             win_catalog: None,
             win_option_list: Vec::new(),
             job: None,
+            hash_generation: 0,
             full_log: String::new(),
             log_html: String::new(),
         }

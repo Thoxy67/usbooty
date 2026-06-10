@@ -76,6 +76,9 @@ fn run_cli(device: &Path, table: PartitionTable, secure_boot: bool, update: bool
         let _ = stdin.write_all(b"y\ny\ny\n");
         let _ = stdin.flush();
     }
+    // Drain stderr concurrently with the stdout loop; a child that fills the
+    // unread stderr pipe would block and `wait()` would never return.
+    let stderr_drain = fsutil::drain_to_string(child.stderr.take());
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             if !line.trim().is_empty() {
@@ -86,10 +89,7 @@ fn run_cli(device: &Path, table: PartitionTable, secure_boot: bool, update: bool
 
     let status = child.wait().context("waiting for the Ventoy CLI")?;
     if !status.success() {
-        let mut stderr = String::new();
-        if let Some(mut s) = child.stderr.take() {
-            let _ = s.read_to_string(&mut stderr);
-        }
+        let stderr = stderr_drain.join().unwrap_or_default();
         let stderr = stderr.trim();
         if stderr.is_empty() {
             bail!("the Ventoy CLI failed ({status})");
@@ -124,21 +124,30 @@ fn seed_iso(device: &Path, iso: &Path, abort: &AtomicBool) -> Result<()> {
     let mut buf = vec![0u8; fsutil::COPY_BUF];
     let mut done = 0u64;
     let mut last = Instant::now();
-    loop {
-        if abort.load(Ordering::SeqCst) {
-            bail!("aborted by user");
+    let copy = (|| -> Result<()> {
+        loop {
+            if abort.load(Ordering::SeqCst) {
+                bail!("aborted by user");
+            }
+            let n = src.read(&mut buf).context("reading the ISO")?;
+            if n == 0 {
+                return Ok(());
+            }
+            out.write_all(&buf[..n])
+                .context("writing to the Ventoy partition")?;
+            done += n as u64;
+            if last.elapsed() >= Duration::from_millis(100) {
+                emit::progress("Copying ISO", done, total.max(done));
+                last = Instant::now();
+            }
         }
-        let n = src.read(&mut buf).context("reading the ISO")?;
-        if n == 0 {
-            break;
-        }
-        out.write_all(&buf[..n])
-            .context("writing to the Ventoy partition")?;
-        done += n as u64;
-        if last.elapsed() >= Duration::from_millis(100) {
-            emit::progress("Copying ISO", done, total.max(done));
-            last = Instant::now();
-        }
+    })();
+    if let Err(e) = copy {
+        // A partial .iso would show up in Ventoy's boot menu and fail
+        // confusingly at boot; don't leave it behind.
+        drop(out);
+        let _ = std::fs::remove_file(&dest);
+        return Err(e);
     }
     emit::progress("Copying ISO", done, total.max(done));
     emit::phase("Flushing");

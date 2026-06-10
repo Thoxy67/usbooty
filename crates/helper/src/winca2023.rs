@@ -23,7 +23,6 @@
 
 use anyhow::{Context, Result};
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -33,9 +32,29 @@ use crate::{emit, fsutil};
 /// `\Windows\System32\SecureBootUpdates\` so the layout matches.
 const SOURCE_PATH: &str = "Windows/System32/SecureBootUpdates/SkuSiPolicy.p7b";
 
+/// Staging directory removed on every exit path, including errors.
+struct StagingDir(PathBuf);
+
+impl StagingDir {
+    fn new(path: PathBuf) -> Result<Self> {
+        fs::create_dir_all(&path).with_context(|| format!("creating {}", path.display()))?;
+        Ok(Self(path))
+    }
+}
+
+impl Drop for StagingDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 /// Extract `SkuSiPolicy.p7b` from `src_iso`'s install image and place it
-/// at `<dest_mount>/EFI/Microsoft/Boot/SkuSiPolicy.p7b`. Returns `Ok(())`
-/// on either a successful copy or a soft skip (with a log line).
+/// at `<dest_mount>/EFI/Microsoft/Boot/SkuSiPolicy.p7b`.
+///
+/// Always returns `Ok(())`: the flag is best-effort by contract (the GUI
+/// promises it silently no-ops when the policy can't be installed), so any
+/// failure is downgraded to a logged skip. Aborting here would fail the whole
+/// job *after* the copy and verify already succeeded.
 pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
     if !fsutil::wimlib_available() {
         emit::log(
@@ -44,12 +63,27 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
         );
         return Ok(());
     }
+    if let Err(e) = try_apply(src_iso, dest_mount) {
+        emit::warn(format!(
+            "Skipping the Windows CA 2023 policy install: {e:#}"
+        ));
+    }
+    Ok(())
+}
 
+fn try_apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
     let iso_mount = fsutil::LoopMount::open_iso(src_iso, "winca-iso")?;
-    let install_wim = fsutil::ci_path(iso_mount.path(), &["sources", "install.wim"])?;
+    // Media Creation Tool ISOs ship `install.esd` instead of `install.wim`;
+    // wimlib extracts from either.
+    let install_wim = fsutil::ci_path(iso_mount.path(), &["sources", "install.wim"])
+        .or_else(|_| fsutil::ci_path(iso_mount.path(), &["sources", "install.esd"]))
+        .context("the ISO has no sources/install.wim or sources/install.esd")?;
 
-    let staging = PathBuf::from(format!("/run/usbooty-winca-{}", std::process::id()));
-    fs::create_dir_all(&staging).with_context(|| format!("creating {}", staging.display()))?;
+    let staging_guard = StagingDir::new(PathBuf::from(format!(
+        "/run/usbooty-winca-{}",
+        std::process::id()
+    )))?;
+    let staging = &staging_guard.0;
 
     // wimlib-imagex extract <wim> <image-index> <internal-path> --dest-dir <dir>
     // Image index 1 is "Windows Setup / install" in every Microsoft WIM.
@@ -63,19 +97,20 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
         .arg("1")
         .arg(SOURCE_PATH)
         .arg("--dest-dir")
-        .arg(&staging)
+        .arg(staging)
         .arg("--no-acls")
         .arg("--nullglob")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .context("spawning wimlib-imagex extract")?;
+    // Drain both pipes while the child runs; an unread pipe that fills up
+    // would block the child and hang `wait()` forever.
+    let _stdout_drain = fsutil::drain_to_string(child.stdout.take());
+    let stderr_drain = fsutil::drain_to_string(child.stderr.take());
     let status = child.wait().context("waiting for wimlib-imagex")?;
     if !status.success() {
-        let mut stderr = String::new();
-        if let Some(mut s) = child.stderr.take() {
-            let _ = s.read_to_string(&mut stderr);
-        }
+        let stderr = stderr_drain.join().unwrap_or_default();
         let stderr = stderr.trim();
         // `SkuSiPolicy.p7b` is only present in some Windows builds, and at a
         // path that has shifted between releases. When the WIM simply doesn't
@@ -94,10 +129,8 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
                 "{SOURCE_PATH} not found inside install.wim; skipping \
                  Windows CA 2023 policy (this Windows build doesn't ship it)."
             ));
-            let _ = fs::remove_dir_all(&staging);
             return Ok(());
         }
-        let _ = fs::remove_dir_all(&staging);
         anyhow::bail!("wimlib-imagex extract failed: {stderr}");
     }
 
@@ -113,7 +146,6 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
             "SkuSiPolicy.p7b is not present in this install.wim; skipping \
              Windows CA 2023 policy (this Windows build doesn't ship it).",
         );
-        let _ = fs::remove_dir_all(&staging);
         return Ok(());
     }
 
@@ -128,7 +160,6 @@ pub fn apply(src_iso: &Path, dest_mount: &Path) -> Result<()> {
     }
     fs::copy(&staged_file, &dest)
         .with_context(|| format!("copying {} to {}", staged_file.display(), dest.display()))?;
-    let _ = fs::remove_dir_all(&staging);
 
     emit::log(format!(
         "Installed Windows CA 2023 policy at {}",

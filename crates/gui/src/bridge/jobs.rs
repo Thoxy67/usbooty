@@ -12,6 +12,26 @@ use usbooty_core::{
 use super::helpers::unmount_device_partitions;
 use super::{JobHandle, qobject};
 
+/// Unwind the "Running…" UI from a worker thread when a pre-flight check
+/// fails before the helper was ever spawned. With `refresh`, the device
+/// list is re-scanned too (used when the failure suggests the device set
+/// changed under us).
+fn abort_start(
+    qt: &cxx_qt::CxxQtThread<qobject::AppController>,
+    message: String,
+    refresh: bool,
+) {
+    let _ = qt.queue(move |mut ctrl: core::pin::Pin<&mut qobject::AppController>| {
+        ctrl.as_mut().set_busy(false);
+        ctrl.as_mut().set_phase(QString::default());
+        ctrl.as_mut().set_status(QString::from(&message));
+        ctrl.as_mut().rust_mut().job = None;
+        if refresh {
+            ctrl.as_mut().refresh_devices();
+        }
+    });
+}
+
 impl qobject::AppController {
     /// Whether [`start`](Self::start) would currently do anything useful.
     pub fn can_start(&self) -> bool {
@@ -55,46 +75,11 @@ impl qobject::AppController {
             return;
         }
 
-        // Re-scan the system and confirm the chosen device still exists exactly
-        // as it was enumerated. A USB drive swapped into this slot since the
-        // user picked it would reuse the same `/dev` node; writing to it would
-        // destroy the wrong disk. Any mismatch aborts and forces a fresh scan.
         let Some(selected) = self.selected_info().cloned() else {
             self.as_mut()
                 .set_status(QString::from("Select a target device first"));
             return;
         };
-        let current = crate::devices::enumerate(*self.show_fixed_disks());
-        if !current.contains(&selected) {
-            self.as_mut().set_status(QString::from(
-                "The selected device changed since it was chosen. \
-                 The device list has been refreshed; check the target and start again.",
-            ));
-            self.as_mut().refresh_devices();
-            return;
-        }
-
-        // Pre-flight: ask the desktop session (via udisksctl) to release any
-        // partition of the target it still has mounted. udisksctl runs as the
-        // user, notifies file managers, and triggers the polkit prompt when
-        // needed, which is friendlier than letting the helper's kernel-level
-        // unmount fight through a still-open mount. Anything left mounted
-        // afterwards is reported and the job aborts.
-        if let Err(err) = unmount_device_partitions(&selected.path) {
-            self.as_mut().set_status(QString::from(&format!(
-                "Could not unmount {}: {err} \
-                 Close any file manager that has it open and try again.",
-                selected.path,
-            )));
-            return;
-        }
-        if !std::path::Path::new(&selected.path).exists() {
-            self.as_mut().set_status(QString::from(&format!(
-                "{} no longer exists. Was the drive removed?",
-                selected.path,
-            )));
-            return;
-        }
 
         let iso = self.iso_path().to_string();
         let device = selected.path.clone();
@@ -250,8 +235,55 @@ impl qobject::AppController {
             download_abort: None,
         };
         let qt_thread = self.qt_thread();
+        let show_fixed = *self.show_fixed_disks();
 
+        // The safety re-scan and the udisksctl unmount below both block (the
+        // unmount syncs dirty pages, routinely for seconds on a part-written
+        // stick), so they run on the worker, before pkexec is spawned.
         std::thread::spawn(move || {
+            // Confirm the chosen device still exists exactly as it was
+            // enumerated. A USB drive swapped into this slot since the user
+            // picked it would reuse the same `/dev` node; writing to it
+            // would destroy the wrong disk. Any mismatch aborts and forces
+            // a fresh scan.
+            let current = crate::devices::enumerate(show_fixed);
+            if !current.contains(&selected) {
+                abort_start(
+                    &qt_thread,
+                    "The selected device changed since it was chosen. \
+                     The device list has been refreshed; check the target and start again."
+                        .into(),
+                    true,
+                );
+                return;
+            }
+            // Pre-flight: ask the desktop session (via udisksctl) to release
+            // any partition of the target it still has mounted. udisksctl
+            // runs as the user, notifies file managers, and triggers the
+            // polkit prompt when needed, which is friendlier than letting
+            // the helper's kernel-level unmount fight through a still-open
+            // mount. Anything left mounted afterwards is reported and the
+            // job aborts.
+            if let Err(err) = unmount_device_partitions(&selected.path) {
+                abort_start(
+                    &qt_thread,
+                    format!(
+                        "Could not unmount {}: {err} \
+                         Close any file manager that has it open and try again.",
+                        selected.path,
+                    ),
+                    false,
+                );
+                return;
+            }
+            if !std::path::Path::new(&selected.path).exists() {
+                abort_start(
+                    &qt_thread,
+                    format!("{} no longer exists. Was the drive removed?", selected.path),
+                    true,
+                );
+                return;
+            }
             crate::runner::run_job(job, qt_thread, stdin_slot);
         });
 
@@ -303,8 +335,7 @@ impl qobject::AppController {
                 .set_status(QString::from("Select a target device first"));
             return;
         };
-        let raw = image_path.to_string();
-        let path = raw.strip_prefix("file://").unwrap_or(&raw).to_string();
+        let path = super::helpers::local_path_from_url(&image_path.to_string());
         if path.is_empty() {
             self.as_mut()
                 .set_status(QString::from("Pick an output file for the backup"));

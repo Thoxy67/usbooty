@@ -158,12 +158,12 @@ EOF
 chmod +x "$QMAKE_WRAPPER"
 export QMAKE="$QMAKE_WRAPPER"
 
+# The cwd is already $REPO_ROOT (set at the top of the script), so
+# linuxdeploy writes usbooty-<arch>.AppImage straight into the repo root.
 "$TOOLS_DIR/linuxdeploy" \
     --appdir "$APPDIR" \
     --plugin qt \
     --output appimage
-
-mv -f "usbooty-${ARCH}.AppImage" "$REPO_ROOT/" 2>/dev/null || true
 
 echo
 echo "==> Done. AppImage at: $REPO_ROOT/usbooty-${ARCH}.AppImage"

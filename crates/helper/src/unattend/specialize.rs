@@ -152,11 +152,15 @@ pub(super) fn push_specialize(s: &mut String, setup: &WindowsSetup) {
         // some other drive that happens to contain a USBooty folder.
         // Destination is Default's Desktop so every new user account
         // created by OOBE inherits the folder on first sign-in.
+        // The destination is deliberately unquoted: it contains no spaces,
+        // and a quoted path ending in `\"` hits the classic Windows argv
+        // rule where `\"` is an escaped quote, mangling the argument and
+        // failing xcopy (which would fail Windows Setup's specialize pass).
         deploy_cmds.push((
             format!(
                 "cmd /c \"for %d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) \
                  do if exist %d:\\{dir}\\{sentinel} \
-                 xcopy /E /I /Y /Q %d:\\{dir} \"C:\\Users\\Default\\Desktop\\{dir}\\\" \"",
+                 xcopy /E /I /Y /Q %d:\\{dir} C:\\Users\\Default\\Desktop\\{dir}\"",
                 dir = DESKTOP_HELPERS_DIR,
                 sentinel = DESKTOP_HELPERS_SENTINEL,
             ),

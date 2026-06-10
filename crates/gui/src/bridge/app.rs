@@ -1,7 +1,7 @@
 //! `AppController` invokables for app-level UI: logging, settings toggles,
 //! boot verification, dependency reporting, and startup-arg replay.
 
-use cxx_qt::CxxQtType;
+use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
 use super::qobject;
@@ -100,32 +100,40 @@ impl qobject::AppController {
             network,
             snapshot,
         };
-        // Collect QEMU's log lines (full command, env, swtpm, any startup
-        // error) during the call, then flush them to the activity log.
-        let mut lines: Vec<String> = Vec::new();
-        let result = crate::qemu::launch(&path, &cfg, &mut |line| lines.push(line.to_string()));
-        for line in &lines {
-            let html = crate::runner::log_html(usbooty_core::LogLevel::Info, line);
-            self.as_mut().push_log_line(line, &html);
-        }
-        match result {
-            Ok(()) => self.as_mut().set_status(QString::from(&format!(
-                "Launched QEMU boot test for {path}{}",
-                if snapshot {
-                    " (snapshot mode: the device is not modified)"
-                } else {
-                    " (writes persist: the device IS modified)"
+        // `launch` spawns pkexec and sleeps a 700 ms grace poll; run it on a
+        // worker so the click doesn't freeze the UI (and the polkit prompt).
+        // QEMU's log lines (full command, env, swtpm, any startup error) are
+        // collected during the call and flushed to the activity log after.
+        let qt = self.qt_thread();
+        std::thread::spawn(move || {
+            let mut lines: Vec<String> = Vec::new();
+            let result =
+                crate::qemu::launch(&path, &cfg, &mut |line| lines.push(line.to_string()));
+            let _ = qt.queue(move |mut ctrl: core::pin::Pin<&mut Self>| {
+                for line in &lines {
+                    let html = crate::runner::log_html(usbooty_core::LogLevel::Info, line);
+                    ctrl.as_mut().push_log_line(line, &html);
                 }
-            ))),
-            Err(e) => {
-                let msg = format!("Boot test failed: {e:#}");
-                let html = crate::runner::log_html(usbooty_core::LogLevel::Error, &msg);
-                self.as_mut().push_log_line(&msg, &html);
-                self.as_mut().set_status(QString::from(&format!(
-                    "Could not start the boot test: {e:#}"
-                )));
-            }
-        }
+                match result {
+                    Ok(()) => ctrl.as_mut().set_status(QString::from(&format!(
+                        "Launched QEMU boot test for {path}{}",
+                        if snapshot {
+                            " (snapshot mode: the device is not modified)"
+                        } else {
+                            " (writes persist: the device IS modified)"
+                        }
+                    ))),
+                    Err(e) => {
+                        let msg = format!("Boot test failed: {e:#}");
+                        let html = crate::runner::log_html(usbooty_core::LogLevel::Error, &msg);
+                        ctrl.as_mut().push_log_line(&msg, &html);
+                        ctrl.as_mut().set_status(QString::from(&format!(
+                            "Could not start the boot test: {e:#}"
+                        )));
+                    }
+                }
+            });
+        });
     }
 
     /// Live dependency status for the Dependencies dialog (see the qinvokable
@@ -153,8 +161,7 @@ impl qobject::AppController {
     /// paths) and reports the outcome via the status bar so the user
     /// gets feedback without a modal popup.
     pub fn save_log_to(mut self: core::pin::Pin<&mut Self>, path: &QString) {
-        let raw = path.to_string();
-        let path = raw.strip_prefix("file://").unwrap_or(&raw).to_string();
+        let path = super::helpers::local_path_from_url(&path.to_string());
         if path.is_empty() {
             return;
         }
@@ -169,6 +176,22 @@ impl qobject::AppController {
         }
     }
 
+    /// Snapshot the three persisted properties and save them, logging a
+    /// warning (named after the toggle that triggered the save) on failure.
+    /// Shared by every settings toggle so they cannot drift apart.
+    fn persist_settings(mut self: core::pin::Pin<&mut Self>, toggle_name: &str) {
+        let s = crate::settings::Settings {
+            force_english: *self.force_english(),
+            show_logs_always: *self.show_logs_always(),
+            log_all_files: *self.log_all_files(),
+        };
+        if let Err(e) = s.save() {
+            let msg = format!("Could not persist '{toggle_name}' preference: {e:#}");
+            let html = crate::runner::log_html(usbooty_core::LogLevel::Warn, &msg);
+            self.as_mut().push_log_line(&msg, &html);
+        }
+    }
+
     /// Persist the *force English* state on the controller and route the
     /// underlying QTranslator swap to the translation module. Qt emits a
     /// LanguageChange event from removeTranslator/installTranslator, so the
@@ -177,18 +200,7 @@ impl qobject::AppController {
     pub fn apply_force_english(mut self: core::pin::Pin<&mut Self>, force: bool) {
         self.as_mut().set_force_english(force);
         crate::translations::set_force_english(force);
-        // Persist the choice. Round-trip the existing struct with the
-        // new value so any other persisted fields keep their state.
-        let s = crate::settings::Settings {
-            force_english: force,
-            show_logs_always: *self.show_logs_always(),
-            log_all_files: *self.log_all_files(),
-        };
-        if let Err(e) = s.save() {
-            let msg = format!("Could not persist 'Force English' preference: {e:#}");
-            let html = crate::runner::log_html(usbooty_core::LogLevel::Warn, &msg);
-            self.as_mut().push_log_line(&msg, &html);
-        }
+        self.persist_settings("Force English");
     }
 
     /// Save the "always show activity log" toggle and update the
@@ -196,16 +208,7 @@ impl qobject::AppController {
     /// so the panel appears / disappears immediately.
     pub fn apply_show_logs_always(mut self: core::pin::Pin<&mut Self>, on: bool) {
         self.as_mut().set_show_logs_always(on);
-        let s = crate::settings::Settings {
-            force_english: *self.force_english(),
-            show_logs_always: on,
-            log_all_files: *self.log_all_files(),
-        };
-        if let Err(e) = s.save() {
-            let msg = format!("Could not persist 'Always show logs' preference: {e:#}");
-            let html = crate::runner::log_html(usbooty_core::LogLevel::Warn, &msg);
-            self.as_mut().push_log_line(&msg, &html);
-        }
+        self.persist_settings("Always show logs");
     }
 
     /// Save the "log every copied file" toggle and update the matching Qt
@@ -213,16 +216,7 @@ impl qobject::AppController {
     /// names every file in the activity log instead of only the large ones.
     pub fn apply_log_all_files(mut self: core::pin::Pin<&mut Self>, on: bool) {
         self.as_mut().set_log_all_files(on);
-        let s = crate::settings::Settings {
-            force_english: *self.force_english(),
-            show_logs_always: *self.show_logs_always(),
-            log_all_files: on,
-        };
-        if let Err(e) = s.save() {
-            let msg = format!("Could not persist 'Log every file' preference: {e:#}");
-            let html = crate::runner::log_html(usbooty_core::LogLevel::Warn, &msg);
-            self.as_mut().push_log_line(&msg, &html);
-        }
+        self.persist_settings("Log every file");
     }
 
     /// One-click "copy from system" for the Windows-setup locale + timezone

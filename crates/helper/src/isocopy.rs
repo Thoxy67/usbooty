@@ -252,6 +252,16 @@ pub fn verify_iso(
     let iso = fsutil::LoopMount::open_iso(iso_path, "src")?;
     let total = tree_size(iso.path(), "", skip)?;
     emit::phase("Verifying");
+    // The copy just finished and the destination is still mounted, so its
+    // pages are sitting dirty in the page cache; hashing now would verify RAM
+    // against RAM. Write everything back first so the per-file
+    // POSIX_FADV_DONTNEED in `hash_file` can actually evict the pages and the
+    // reads hit the media.
+    {
+        let dest_dir =
+            fs::File::open(dest).with_context(|| format!("opening {}", dest.display()))?;
+        nix::unistd::syncfs(&dest_dir).context("syncing the destination before verify")?;
+    }
     let mut ctx = Ctx {
         phase: "Verifying",
         copied: 0,
@@ -292,10 +302,10 @@ fn verify_tree(src: &Path, dest: &Path, rel: &str, ctx: &mut Ctx) -> Result<()> 
             // when it's absent (blake3::Hash is Copy, so take it before the
             // mutable borrow of ctx.buf below).
             let expected = ctx.expected.and_then(|m| m.get(&child_rel)).copied();
-            let dest_hash = hash_file(&dest_path, &mut ctx.buf, ctx.abort)?;
+            let dest_hash = hash_file(&dest_path, &mut ctx.buf, ctx.abort, true)?;
             let src_hash = match expected {
                 Some(h) => h,
-                None => hash_file(&src_path, &mut ctx.buf, ctx.abort)?,
+                None => hash_file(&src_path, &mut ctx.buf, ctx.abort, false)?,
             };
             if src_hash != dest_hash {
                 bail!("verification failed: {child_rel} does not match the source ISO");
@@ -308,8 +318,28 @@ fn verify_tree(src: &Path, dest: &Path, rel: &str, ctx: &mut Ctx) -> Result<()> 
 }
 
 /// BLAKE3-hash a file, streaming it in chunks through the reused `buf`.
-fn hash_file(path: &Path, buf: &mut [u8], abort: &AtomicBool) -> Result<blake3::Hash> {
+///
+/// With `drop_cache` set, the file's cached pages are evicted first (used for
+/// destination files, which were just written: without the eviction the hash
+/// would be computed over the page cache instead of the media).
+fn hash_file(
+    path: &Path,
+    buf: &mut [u8],
+    abort: &AtomicBool,
+    drop_cache: bool,
+) -> Result<blake3::Hash> {
     let mut file = fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
+    if drop_cache {
+        use std::os::fd::AsFd;
+        // Best-effort: a filesystem that ignores the advice just verifies
+        // from cache, which is no worse than before.
+        let _ = nix::fcntl::posix_fadvise(
+            file.as_fd(),
+            0,
+            0,
+            nix::fcntl::PosixFadviseAdvice::POSIX_FADV_DONTNEED,
+        );
+    }
     let mut hasher = blake3::Hasher::new();
     loop {
         if abort.load(Ordering::SeqCst) {

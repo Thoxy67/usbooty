@@ -103,7 +103,12 @@ pub fn strip_footer_to_cache(src: &Path) -> Result<PathBuf> {
         && let Ok(m) = fs::metadata(&out_path)
         && m.len() == data_size
     {
-        let _ = fs::OpenOptions::new().write(true).open(&out_path);
+        // Bump the mtime so prune_cache sees the entry as recently used;
+        // merely opening the file would not update it.
+        let _ = fs::OpenOptions::new()
+            .write(true)
+            .open(&out_path)
+            .and_then(|f| f.set_modified(std::time::SystemTime::now()));
         return Ok(out_path);
     }
 

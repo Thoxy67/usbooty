@@ -53,14 +53,20 @@ pub fn open(path: &Path) -> Result<Image> {
         .unwrap_or("")
         .to_ascii_lowercase();
 
+    // Multi-member/multi-stream decoders throughout: the single-stream
+    // variants stop at the first member, silently truncating images produced
+    // by pbzip2/lbzip2/bgzip or by concatenating compressed chunks.
     let (reader, compressed): (Box<dyn Read + Send>, bool) = match ext.as_str() {
-        "gz" => (Box::new(flate2::read::GzDecoder::new(counter)), true),
-        "xz" => (Box::new(xz2::read::XzDecoder::new(counter)), true),
+        "gz" => (Box::new(flate2::read::MultiGzDecoder::new(counter)), true),
+        "xz" => (
+            Box::new(xz2::read::XzDecoder::new_multi_decoder(counter)),
+            true,
+        ),
         "zst" | "zstd" => (
             Box::new(zstd::stream::read::Decoder::new(counter).context("zstd init")?),
             true,
         ),
-        "bz2" => (Box::new(bzip2::read::BzDecoder::new(counter)), true),
+        "bz2" => (Box::new(bzip2::read::MultiBzDecoder::new(counter)), true),
         // VHD: virtual disk size differs from file size, but we still know it
         // up front so the fit-check works. The byte counter is dropped here
         // because the VHD reader does its own seeking; progress tracks the

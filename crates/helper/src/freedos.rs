@@ -25,7 +25,7 @@ use std::sync::atomic::AtomicBool;
 
 use usbooty_core::{FileSystem, JobOptions, PartitionTable};
 
-use crate::{emit, fsutil};
+use crate::emit;
 
 /// Inputs to [`run`]. Grouped into one struct so the function signature
 /// stays under the clippy `too_many_arguments` threshold and so callers
@@ -75,7 +75,7 @@ pub fn run(layout: FreedosLayout<'_>, abort: &AtomicBool) -> Result<()> {
         crate::partitioned::setup_single_partition(device, table, filesystem, 0, opts, abort)?;
 
     emit::phase("Installing FreeDOS boot sector");
-    mformat_boot_sector(&partition, boot_bin)?;
+    mformat_boot_sector(&partition, boot_bin, filesystem, &opts.label)?;
 
     emit::phase("Copying FreeDOS files");
     mcopy_to_root(&partition, &[kernel_sys, command_com])?;
@@ -88,18 +88,56 @@ pub fn run(layout: FreedosLayout<'_>, abort: &AtomicBool) -> Result<()> {
     Ok(())
 }
 
-/// Run `mformat -B <boot.bin> -i <partition> ::` to overwrite the FAT
-/// volume's boot sector while preserving the BPB. mtools merges the BPB
-/// from the partition with the boot code from `boot.bin`, which is the
-/// only way to install a foreign boot sector onto a freshly-formatted
-/// FAT volume without corrupting cluster-size / sector-count fields.
-fn mformat_boot_sector(partition: &str, boot_bin: &Path) -> Result<()> {
+/// Run `mformat -B <boot.bin> -i <partition> ::` to install the FreeDOS
+/// boot sector. mformat re-formats the volume (new BPB, FATs and root
+/// directory), choosing the FAT width by drive size when not told
+/// otherwise, so the user's FAT16/FAT32 choice is passed explicitly with
+/// `-F` (FAT32) and the volume label is re-applied with `-v` (the re-format
+/// would otherwise discard what mkfs.vfat set). A boot sector whose FAT
+/// width does not match the volume produces a stick that silently fails to
+/// boot, so the result is verified afterwards.
+fn mformat_boot_sector(
+    partition: &str,
+    boot_bin: &Path,
+    filesystem: FileSystem,
+    label: &str,
+) -> Result<()> {
     let boot_bin_str = boot_bin.to_string_lossy();
-    crate::fsutil::run_tool(
-        "mformat",
-        &["-B", &boot_bin_str, "-i", partition, "::"],
-        "installing the FreeDOS boot sector",
-    )
+    let label = crate::label::fat(label);
+    let mut args = vec!["-B", &boot_bin_str, "-v", label.as_str()];
+    if filesystem == FileSystem::Fat32 {
+        args.push("-F");
+    }
+    args.extend_from_slice(&["-i", partition, "::"]);
+    crate::fsutil::run_tool("mformat", &args, "installing the FreeDOS boot sector")?;
+    verify_fat_width(partition, filesystem)
+}
+
+/// Confirm the boot sector mformat wrote matches the requested FAT width.
+/// mformat has no flag forcing FAT16, so on a large partition it can lay
+/// down FAT32 under a FAT16 boot sector; better to fail loudly here than
+/// hand the user a non-booting stick.
+fn verify_fat_width(partition: &str, filesystem: FileSystem) -> Result<()> {
+    use std::io::Read;
+    let mut sector = [0u8; 512];
+    std::fs::File::open(partition)
+        .and_then(|mut f| f.read_exact(&mut sector))
+        .with_context(|| format!("reading the boot sector of {partition}"))?;
+    // The informational FS-type string lives at offset 54 (FAT12/16) or 82
+    // (FAT32); mformat fills it in.
+    let is_fat32 = sector[82..90].starts_with(b"FAT32");
+    let want_fat32 = filesystem == FileSystem::Fat32;
+    if is_fat32 != want_fat32 {
+        bail!(
+            "mformat produced a {} volume but {} was requested; pick {} instead \
+             (this partition size is outside what mtools supports for {})",
+            if is_fat32 { "FAT32" } else { "FAT16" },
+            filesystem.label(),
+            if is_fat32 { "FAT32" } else { "FAT16" },
+            filesystem.label(),
+        );
+    }
+    Ok(())
 }
 
 /// Copy each `file` to the FAT root with `mcopy -i <partition> <file> ::`.
@@ -113,13 +151,9 @@ fn mcopy_to_root(partition: &str, files: &[&Path]) -> Result<()> {
         )?;
     }
 
-    // Keep the freshly-mounted-then-immediately-unmounted invariant the
-    // rest of the helper uses: borrow the partition briefly to fsync the
-    // FAT, so the boot files hit disk before we move on to writing the MBR.
-    let mount = fsutil::Mount::for_filesystem(partition, FileSystem::Fat32).ok();
-    if let Some(m) = mount {
-        nix::unistd::sync();
-        drop(m);
-    }
+    // mtools writes through the block device's page cache; flush it so the
+    // boot files hit disk before we move on to writing the MBR. `sync()` is
+    // global, no mount needed.
+    nix::unistd::sync();
     Ok(())
 }

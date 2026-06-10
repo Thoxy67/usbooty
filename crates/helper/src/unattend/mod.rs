@@ -593,7 +593,12 @@ mod tests {
         let xml = generate(&setup);
         assert!(xml.contains("xcopy"));
         assert!(xml.contains("USBooty"));
-        assert!(xml.contains("C:\\Users\\Default\\Desktop\\USBooty"));
+        // The destination must stay unquoted and without a trailing
+        // backslash: a quoted path ending in `\"` is the classic Windows
+        // argv escaped-quote hazard that mangles the argument and fails
+        // xcopy (and with it Setup's specialize pass).
+        assert!(xml.contains("C:\\Users\\Default\\Desktop\\USBooty&quot;"));
+        assert!(!xml.contains("Desktop\\USBooty\\"));
         // Sentinel (a top-level file) guards against false-positive matches on
         // non-USB drives; it lives at the USBooty root, not in a subfolder.
         assert!(xml.contains("README.txt"));

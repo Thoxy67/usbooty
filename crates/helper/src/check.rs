@@ -14,7 +14,6 @@
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
-use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -75,11 +74,7 @@ pub fn run(device: &Path, mode: CheckMode, abort: &AtomicBool) -> Result<()> {
 /// read them back and check. The first mismatch (counting from the end of the
 /// device) reveals the fake-capacity boundary.
 fn quick(device: &Path, abort: &AtomicBool) -> Result<CheckReport> {
-    let mut dev = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(device)
-        .with_context(|| format!("opening {} read/write", device.display()))?;
+    let mut dev = blockdev::open_exclusive(device)?;
     let size = blockdev::device_size(&dev)?;
     if size < BLOCK as u64 * 2 {
         bail!("device too small for the quick check");
@@ -113,8 +108,11 @@ fn quick(device: &Path, abort: &AtomicBool) -> Result<CheckReport> {
             last = Instant::now();
         }
     }
-    dev.flush().ok();
-    nix::unistd::fsync(&dev).ok();
+    dev.flush().context("flushing sample writes")?;
+    nix::unistd::fsync(&dev).context("syncing sample writes to the device")?;
+    // Drop the cached pages so the read-back hits the media; without this the
+    // whole pass is served from RAM and a fake-capacity drive always "passes".
+    blockdev::flush_page_cache(&dev)?;
 
     emit::phase("Reading samples back");
     let mut bad_offsets = Vec::new();
@@ -180,11 +178,7 @@ fn quick(device: &Path, abort: &AtomicBool) -> Result<CheckReport> {
 /// Destructive two-pattern bad-blocks scan. Returns offsets of any sectors
 /// that did not survive both passes.
 fn full(device: &Path, abort: &AtomicBool) -> Result<CheckReport> {
-    let mut dev = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(device)
-        .with_context(|| format!("opening {} read/write", device.display()))?;
+    let mut dev = blockdev::open_exclusive(device)?;
     let size = blockdev::device_size(&dev)?;
 
     let bad_a = scan_pattern(&mut dev, size, 0xAA, "Pattern 0xAA", abort)?;
@@ -237,8 +231,11 @@ fn scan_pattern(
             last = Instant::now();
         }
     }
-    dev.flush().ok();
-    nix::unistd::fsync(&*dev).ok();
+    dev.flush().context("flushing the test pattern")?;
+    nix::unistd::fsync(&*dev).context("syncing the test pattern to the device")?;
+    // Invalidate the page cache so the read-back hits the media, not the
+    // pages the write pass just dirtied.
+    blockdev::flush_page_cache(dev)?;
 
     // Read-back pass: hashes are pointless here (we only care *where* it
     // went wrong); compare the buffer byte-for-byte and record mismatches.

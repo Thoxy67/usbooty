@@ -18,6 +18,10 @@ HELPER="$SRC_DIR/target/release/usbooty-helper"
 WORK="$(mktemp -d)"
 LOOP=""
 cleanup() {
+    # Unmount first: with the filesystem still mounted, losetup -d fails
+    # (device busy) and rm -rf would recurse into the live mount, leaking
+    # both the mount and the loop device under a deleted directory.
+    umount "$WORK/mnt" 2>/dev/null || true
     [ -n "$LOOP" ] && losetup -d "$LOOP" 2>/dev/null || true
     rm -rf "$WORK"
 }

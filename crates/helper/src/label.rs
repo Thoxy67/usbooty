@@ -33,40 +33,40 @@ pub fn exfat(raw: &str) -> String {
 /// An ext4 volume label: up to 16 bytes. Reused for ext2 and ext3, which
 /// share the e2fsprogs label limit.
 pub fn ext4(raw: &str) -> String {
-    or_default(bounded(raw, 16))
+    or_default(bounded_bytes(raw, 16))
 }
 
 /// A UDF volume label: up to 30 bytes of UTF-8. UDF natively supports Unicode,
 /// but we trim to the bound `mkudffs` actually accepts on the command line.
 pub fn udf(raw: &str) -> String {
-    or_default(bounded(raw, 30))
+    or_default(bounded_bytes(raw, 30))
 }
 
 /// A Btrfs volume label: up to 255 bytes; we cap shorter so the label fits
 /// inside any reasonable display.
 pub fn btrfs(raw: &str) -> String {
-    or_default(bounded(raw, 64))
+    or_default(bounded_bytes(raw, 64))
 }
 
 /// An XFS volume label: hard 12-byte limit (mkfs.xfs refuses anything more).
 pub fn xfs(raw: &str) -> String {
-    or_default(bounded(raw, 12))
+    or_default(bounded_bytes(raw, 12))
 }
 
 /// An F2FS volume label: up to 512 bytes; we cap at the same 64 as Btrfs
 /// for consistency in the UI.
 pub fn f2fs(raw: &str) -> String {
-    or_default(bounded(raw, 64))
+    or_default(bounded_bytes(raw, 64))
 }
 
 /// A JFS volume label: 16 bytes.
 pub fn jfs(raw: &str) -> String {
-    or_default(bounded(raw, 16))
+    or_default(bounded_bytes(raw, 16))
 }
 
 /// A NILFS2 volume label: 80 bytes; cap at 64 for UI consistency.
 pub fn nilfs2(raw: &str) -> String {
-    or_default(bounded(raw, 64))
+    or_default(bounded_bytes(raw, 64))
 }
 
 /// A GPT partition name: up to 36 UTF-16 code units (36 chars for ASCII labels,
@@ -75,13 +75,31 @@ pub fn partition(raw: &str) -> String {
     or_default(bounded(raw, 36))
 }
 
-/// Trim `raw`, drop control characters, and cap at `max` characters.
+/// Trim `raw`, drop control characters, and cap at `max` characters. For
+/// filesystems whose limit counts UTF-16 code units (NTFS, exFAT, GPT
+/// names); labels with non-BMP characters are vanishingly rare, so
+/// chars approximate code units well there.
 fn bounded(raw: &str, max: usize) -> String {
     raw.trim()
         .chars()
         .filter(|c| !c.is_control())
         .take(max)
         .collect()
+}
+
+/// Like [`bounded`] but capped at `max` *bytes* of UTF-8, truncating on a
+/// character boundary. For mkfs tools that enforce byte limits (e2fsprogs,
+/// mkfs.xfs, mkudffs, ...): a multi-byte label capped by characters could
+/// exceed the byte limit and fail the format mid-job.
+fn bounded_bytes(raw: &str, max: usize) -> String {
+    let mut out = String::with_capacity(max);
+    for c in raw.trim().chars().filter(|c| !c.is_control()) {
+        if out.len() + c.len_utf8() > max {
+            break;
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// Trim `value` and substitute the default when it is empty.
@@ -112,5 +130,17 @@ mod tests {
         assert_eq!(ntfs("Win11_25H2_English_x64").len(), 22);
         assert!(partition(&"x".repeat(80)).len() <= 36);
         assert_eq!(partition(""), "USBOOTY");
+    }
+
+    #[test]
+    fn byte_limited_labels_count_bytes_not_chars() {
+        // "é" is 2 bytes in UTF-8: 12 of them would be 12 chars but 24 bytes,
+        // which mkfs.xfs (hard 12-byte limit) rejects.
+        let accented = "é".repeat(12);
+        assert!(xfs(&accented).len() <= 12);
+        assert_eq!(xfs(&accented), "é".repeat(6));
+        // Truncation never splits a character.
+        assert!(ext4(&"日".repeat(10)).is_char_boundary(16.min(ext4(&"日".repeat(10)).len())));
+        assert_eq!(ext4(&"日".repeat(10)).len(), 15); // 5 chars * 3 bytes
     }
 }

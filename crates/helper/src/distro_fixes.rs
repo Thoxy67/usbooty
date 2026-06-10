@@ -89,15 +89,11 @@ fn fixes_for(family: DistroFamily) -> Vec<fn(&Path, &str) -> Result<()>> {
 /// file is missing; distros that ship their own EFI fallback config are
 /// left untouched.
 fn write_efi_grub_redirect(mount: &Path, volume_label: &str) -> Result<()> {
-    let efi_boot = mount.join("EFI").join("BOOT");
+    // Resolve the directory case-insensitively: ISO9660 may collapse to
+    // upper case while ext4/UDF/ntfs3 preserve whatever mixed casing the
+    // ISO shipped (`EFI/Boot`, `efi/boot`, ...).
+    let efi_boot = crate::fsutil::ci_join(mount, &["EFI", "BOOT"]);
     if !efi_boot.is_dir() {
-        // Some derivatives use a lower-case `efi/boot` directory; ISO9660
-        // collapses to upper case but ext4/UDF preserve the original. Try
-        // both before giving up.
-        let lower = mount.join("efi").join("boot");
-        if lower.is_dir() {
-            return write_efi_grub_redirect_at(&lower, volume_label);
-        }
         anyhow::bail!("no /EFI/BOOT directory found; skipping grub redirect");
     }
     write_efi_grub_redirect_at(&efi_boot, volume_label)

@@ -72,11 +72,22 @@ pub fn detect(path: &Path) -> Compression {
         .map(str::to_lowercase)
         .unwrap_or_default();
 
-    let by_ext = if lower.ends_with(".xz") || lower.ends_with(".txz") {
+    // Tarball spellings (.tgz/.txz/.tbz2/.tz and .tar.*) are deliberately
+    // excluded: they decompress to a tar archive, not a disk image, and
+    // caching one as `<key>.img` would let it be DD-written verbatim.
+    if lower.ends_with(".tgz")
+        || lower.ends_with(".txz")
+        || lower.ends_with(".tbz2")
+        || lower.ends_with(".tz")
+        || lower.contains(".tar.")
+    {
+        return Compression::None;
+    }
+    let by_ext = if lower.ends_with(".xz") {
         Compression::Xz
-    } else if lower.ends_with(".gz") || lower.ends_with(".tgz") {
+    } else if lower.ends_with(".gz") {
         Compression::Gz
-    } else if lower.ends_with(".bz2") || lower.ends_with(".tbz2") {
+    } else if lower.ends_with(".bz2") {
         Compression::Bz2
     } else if lower.ends_with(".zst") || lower.ends_with(".zstd") {
         Compression::Zst
@@ -84,7 +95,7 @@ pub fn detect(path: &Path) -> Compression {
         Compression::Lzma
     } else if lower.ends_with(".zip") {
         Compression::Zip
-    } else if lower.ends_with(".z") || lower.ends_with(".tz") {
+    } else if lower.ends_with(".z") {
         // Unix `compress(1)`: extension is case-sensitive by convention
         // (always uppercase `.Z`), but `lower` here matches both spellings.
         Compression::Z
@@ -186,9 +197,10 @@ pub fn decompress_to_cache(
         && prev.source_mtime == source_mtime
         && prev.algorithm == algo.name()
     {
-        // Treat the touch as a "reuse" event so prune_cache sees it
-        // as recently-used.
-        let _ = fs::OpenOptions::new().write(true).open(&out_path);
+        // Bump the mtimes so prune_cache sees the entry (and its sidecar) as
+        // recently-used. Merely opening the file would not update them.
+        touch(&out_path);
+        touch(&meta_path);
         progress(source_size, source_size);
         return Ok(out_path);
     }
@@ -217,7 +229,9 @@ pub fn decompress_to_cache(
             &mut progress,
         )?,
         Compression::Gz => {
-            let mut dec = flate2::read::GzDecoder::new(counter);
+            // Multi-member decoder: the plain one stops at the first gzip
+            // member, silently truncating bgzip/concatenated images.
+            let mut dec = flate2::read::MultiGzDecoder::new(counter);
             copy_with_progress(
                 &mut dec,
                 tmp.as_file_mut(),
@@ -227,7 +241,9 @@ pub fn decompress_to_cache(
             )?
         }
         Compression::Bz2 => {
-            let mut dec = bzip2::read::BzDecoder::new(counter);
+            // Multi-stream decoder: pbzip2/lbzip2 output is concatenated
+            // streams, which the single-stream decoder would truncate.
+            let mut dec = bzip2::read::MultiBzDecoder::new(counter);
             copy_with_progress(
                 &mut dec,
                 tmp.as_file_mut(),
@@ -291,6 +307,15 @@ pub fn decompress_to_cache(
     // One final progress tick at 100 % so the UI lands cleanly.
     progress(source_size, source_size);
     Ok(out_path)
+}
+
+/// Best-effort mtime bump, marking a cache entry as recently used so
+/// [`prune_cache`] keeps it.
+fn touch(path: &Path) {
+    let _ = fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .and_then(|f| f.set_modified(SystemTime::now()));
 }
 
 /// Drop cached entries that haven't been touched in `max_age_days` days.
@@ -383,7 +408,9 @@ impl<R: BufRead> BufRead for ProgressReader<R> {
     }
 }
 
-/// Stream `src` to `dst` in 1 MiB chunks, calling `progress` between chunks.
+/// Stream `src` to `dst` in 1 MiB chunks, calling `progress` between chunks
+/// (throttled: a fast decompressor can push ~1000 chunks/s, and every call
+/// queues a Qt event plus string formatting on the GUI side).
 fn copy_with_progress<R: Read, W: Write>(
     src: &mut R,
     dst: &mut W,
@@ -391,8 +418,10 @@ fn copy_with_progress<R: Read, W: Write>(
     total: u64,
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<u64> {
+    const PROGRESS_EVERY: Duration = Duration::from_millis(150);
     let mut buf = vec![0u8; 1024 * 1024];
     let mut written = 0u64;
+    let mut last_report = std::time::Instant::now();
     loop {
         let n = src.read(&mut buf).context("reading decompressed bytes")?;
         if n == 0 {
@@ -401,17 +430,25 @@ fn copy_with_progress<R: Read, W: Write>(
         dst.write_all(&buf[..n])
             .context("writing decompressed bytes")?;
         written += n as u64;
-        progress(consumed.load(Ordering::Relaxed).min(total), total);
+        if last_report.elapsed() >= PROGRESS_EVERY {
+            progress(consumed.load(Ordering::Relaxed).min(total), total);
+            last_report = std::time::Instant::now();
+        }
     }
     Ok(written)
 }
 
+/// Extensions an entry inside a zip must carry to be treated as the disk
+/// image. `.wim`/`.esd` cover Windows downloads that ship a lone image file.
+const ZIP_IMAGE_EXTS: &[&str] = &[".iso", ".img", ".raw", ".vhd", ".wim", ".esd", ".bin"];
+
 /// Pick the disk-image entry out of a ZIP archive and stream it to `dst`.
 ///
 /// `read_zipfile_from_stream` walks local file headers without needing the
-/// central directory, so the whole archive never lives in memory. The first
-/// regular file entry is taken; we prefer `.iso` / `.img` but accept anything
-/// else (some Windows downloads ship a single `.wim` inside a zip).
+/// central directory, so the whole archive never lives in memory. Only an
+/// entry with a disk-image extension is accepted: taking the first regular
+/// file blindly would cache a stray `README.txt` or checksum file as the
+/// image and let it be DD-written to the drive.
 fn extract_zip<R: Read>(
     src: R,
     dst: &mut std::fs::File,
@@ -420,14 +457,26 @@ fn extract_zip<R: Read>(
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<u64> {
     let mut src = src;
+    let mut skipped: Vec<String> = Vec::new();
     while let Some(mut entry) = zip::read::read_zipfile_from_stream(&mut src)? {
         let name = entry.name().to_lowercase();
         if name.ends_with('/') {
             continue; // directory entry
         }
-        return copy_with_progress(&mut entry, dst, consumed, total, progress);
+        if ZIP_IMAGE_EXTS.iter().any(|ext| name.ends_with(ext)) {
+            return copy_with_progress(&mut entry, dst, consumed, total, progress);
+        }
+        skipped.push(entry.name().to_string());
+        // Dropping the entry advances the stream past its data.
     }
-    bail!("the zip archive contains no usable disk image")
+    if skipped.is_empty() {
+        bail!("the zip archive contains no usable disk image");
+    }
+    bail!(
+        "the zip archive contains no disk image (expected one of {}); found: {}",
+        ZIP_IMAGE_EXTS.join(" "),
+        skipped.join(", ")
+    )
 }
 
 /// Streaming `.xz` decoder backed by `xz2::read::XzDecoder` (system liblzma).
@@ -439,11 +488,10 @@ struct XzAdapter<R: BufRead> {
 
 impl<R: BufRead> XzAdapter<R> {
     fn new(reader: R) -> Result<Self> {
-        // 256 MiB memory limit; modern .xz streams typically use a single
-        // dictionary of 8-64 MiB, so this is comfortable headroom without
-        // letting a malicious stream exhaust RAM.
+        // Multi-stream decoder: concatenated .xz streams are legal and the
+        // single-stream decoder would silently truncate after the first.
         Ok(Self {
-            inner: xz2::read::XzDecoder::new(reader),
+            inner: xz2::read::XzDecoder::new_multi_decoder(reader),
         })
     }
 }

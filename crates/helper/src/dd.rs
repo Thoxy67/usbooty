@@ -96,6 +96,9 @@ pub fn run(
     nix::unistd::fsync(&dev).context("fsync on the target device")?;
 
     if opts.verify {
+        // Invalidate the page cache so the verify pass reads the media, not
+        // the gigabytes of pages the write just dirtied.
+        blockdev::flush_page_cache(&dev)?;
         verify(device_path, decompressed, src_hash.finalize(), abort)?;
     }
 

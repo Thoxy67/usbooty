@@ -227,29 +227,43 @@ pub fn download(
     let mut sha256 = Sha256::new();
     let mut sha512 = Sha512::new();
     let mut blake3 = blake3::Hasher::new();
-    loop {
-        if abort.load(Ordering::SeqCst) {
-            let _ = std::fs::remove_file(&dest);
-            bail!("download cancelled");
+    let stream = (|| -> Result<()> {
+        loop {
+            if abort.load(Ordering::SeqCst) {
+                bail!("download cancelled");
+            }
+            let n = reader
+                .read(&mut buf)
+                .context("reading the download stream")?;
+            if n == 0 {
+                break;
+            }
+            out.write_all(&buf[..n]).context("writing the ISO")?;
+            let chunk = &buf[..n];
+            md5.update(chunk);
+            sha1.update(chunk);
+            sha256.update(chunk);
+            sha512.update(chunk);
+            blake3.update(chunk);
+            done += n as u64;
+            if last.elapsed() >= Duration::from_millis(150) {
+                progress(done, total);
+                last = Instant::now();
+            }
         }
-        let n = reader
-            .read(&mut buf)
-            .context("reading the download stream")?;
-        if n == 0 {
-            break;
+        // A server that closes the stream early would otherwise hand the
+        // user a truncated ISO that looks complete by name.
+        if total > 0 && done < total {
+            bail!("the connection closed after {done} of {total} bytes");
         }
-        out.write_all(&buf[..n]).context("writing the ISO")?;
-        let chunk = &buf[..n];
-        md5.update(chunk);
-        sha1.update(chunk);
-        sha256.update(chunk);
-        sha512.update(chunk);
-        blake3.update(chunk);
-        done += n as u64;
-        if last.elapsed() >= Duration::from_millis(150) {
-            progress(done, total);
-            last = Instant::now();
-        }
+        Ok(())
+    })();
+    if let Err(e) = stream {
+        // Cancelled or failed mid-stream: don't leave a multi-GB truncated
+        // ISO in the Downloads folder looking complete.
+        drop(out);
+        let _ = std::fs::remove_file(&dest);
+        return Err(e);
     }
     progress(done, total.max(done));
 

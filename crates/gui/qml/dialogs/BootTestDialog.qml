@@ -22,7 +22,14 @@ Dialog {
         // Default to UEFI when OVMF is available, else BIOS.
         property int firmware: app.qemuUefi ? 1 : 0
         readonly property bool isUefi: firmware !== 0
-        onAboutToShow: firmware = app.qemuUefi ? 1 : 0
+        onAboutToShow: {
+            firmware = app.qemuUefi ? 1 : 0
+            // Re-sync the combo: it is only initialised once (the content
+            // item survives close/reopen), so without this a reopened dialog
+            // would *display* the previous choice while `firmware` silently
+            // launched the default.
+            fwCombo.currentIndex = fwCombo.indexOfValue(firmware)
+        }
         header: DialogHeader {
             // Teal, matching the "Ventoy" phase accent and distinct from the
             // blue (Microsoft), red (erase) and green/red (result) headers.
@@ -114,7 +121,7 @@ Dialog {
                     Layout.fillWidth: true
                     // Index 0 = i440fx (legacy "pc"), 1 = q35 (modern). q35
                     // default, better for Windows 11 and modern guests.
-                    model: ["i440fx (legacy)", "q35 (modern)"]
+                    model: [qsTr("i440fx (legacy)"), qsTr("q35 (modern)")]
                     currentIndex: 1
                 }
             }

@@ -35,9 +35,16 @@ impl DeviceLock {
     /// `device`. Returns an error containing the device basename when
     /// another usbooty job is already in flight against it.
     pub fn acquire(device: &Path) -> Result<Self> {
+        // Canonicalize so `/dev/sdb` and a `/dev/disk/by-id/...` symlink to it
+        // derive the same lock name; otherwise two helpers given different
+        // spellings of the same device would both pass the lock and only
+        // collide later, after polkit (and possibly after an erase began).
+        let device = device.canonicalize().unwrap_or_else(|_| device.to_path_buf());
         let basename = device
             .file_name()
             .and_then(|s| s.to_str())
+            // Pathological paths with no usable basename share one lock name;
+            // over-locking is the safe direction.
             .unwrap_or("device");
         let lock_path = format!("/run/usbooty-{basename}.lock");
 

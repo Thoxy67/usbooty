@@ -242,10 +242,12 @@ impl qobject::AppController {
 
     /// Try to power off the currently-selected USB device. Best-effort: prefers
     /// `udisksctl power-off` (the desktop standard, handles unmount + safe
-    /// removal in one call), falling back to `eject -F`. Either tool runs as
-    /// the user; no helper hop needed. The selection is cleared and the
-    /// device list refreshed on success so the now-detached device disappears
-    /// from the combo.
+    /// removal in one call), falling back to `eject -F` when udisksctl is
+    /// missing *or* fails. Either tool runs as the user; no helper hop needed.
+    /// Runs on a worker thread: `power-off` syncs dirty pages and routinely
+    /// takes over a second, which would freeze the UI. The device list is
+    /// refreshed on success so the now-detached device disappears from the
+    /// combo.
     pub fn eject_device(mut self: core::pin::Pin<&mut Self>) {
         let Some(device) = self.selected_info().cloned() else {
             self.as_mut()
@@ -253,29 +255,41 @@ impl qobject::AppController {
             return;
         };
         let path = device.path.clone();
-        let result = std::process::Command::new("udisksctl")
-            .args(["power-off", "-b", &path])
-            .output()
-            .or_else(|_| {
-                std::process::Command::new("eject")
+        self.as_mut()
+            .set_status(QString::from(&format!("Ejecting {path}…")));
+        let qt = self.qt_thread();
+        std::thread::spawn(move || {
+            let primary = std::process::Command::new("udisksctl")
+                .args(["power-off", "-b", &path])
+                .output();
+            let outcome = if matches!(&primary, Ok(o) if o.status.success()) {
+                Ok(())
+            } else {
+                match std::process::Command::new("eject")
                     .args(["-F", &path])
                     .output()
+                {
+                    Ok(o) if o.status.success() => Ok(()),
+                    _ => {
+                        // Both failed; udisksctl's stderr is the richer message.
+                        Err(match &primary {
+                            Ok(o) => String::from_utf8_lossy(&o.stderr).trim().to_string(),
+                            Err(e) => e.to_string(),
+                        })
+                    }
+                }
+            };
+            let _ = qt.queue(move |mut ctrl: core::pin::Pin<&mut Self>| match outcome {
+                Ok(()) => {
+                    ctrl.as_mut()
+                        .set_status(QString::from(&format!("Ejected {path}")));
+                    ctrl.refresh_devices();
+                }
+                Err(err) => {
+                    ctrl.as_mut()
+                        .set_status(QString::from(&format!("Eject failed: {err}")));
+                }
             });
-        match result {
-            Ok(out) if out.status.success() => {
-                self.as_mut()
-                    .set_status(QString::from(&format!("Ejected {path}")));
-                self.refresh_devices();
-            }
-            Ok(out) => {
-                let err = String::from_utf8_lossy(&out.stderr);
-                self.as_mut()
-                    .set_status(QString::from(&format!("Eject failed: {}", err.trim())));
-            }
-            Err(e) => {
-                self.as_mut()
-                    .set_status(QString::from(&format!("Eject failed: {e}")));
-            }
-        }
+        });
     }
 }

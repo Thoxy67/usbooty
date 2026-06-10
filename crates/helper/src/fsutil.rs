@@ -235,6 +235,26 @@ pub(crate) fn run_tool(tool: &str, args: &[&str], doing: &str) -> Result<()> {
     Ok(())
 }
 
+/// Drain a child's piped output stream on a background thread, returning a
+/// handle that yields the collected text.
+///
+/// Reading concurrently with the child is what prevents the classic pipe
+/// deadlock: once the ~64 KiB pipe buffer fills, an undrained child blocks in
+/// `write()` and never exits, so a parent that only reads after `wait()`
+/// hangs forever. Dropping the returned handle without joining is fine; the
+/// thread keeps draining until the child closes the stream.
+pub(crate) fn drain_to_string<R: std::io::Read + Send + 'static>(
+    stream: Option<R>,
+) -> std::thread::JoinHandle<String> {
+    std::thread::spawn(move || {
+        let mut s = String::new();
+        if let Some(mut r) = stream {
+            let _ = r.read_to_string(&mut s);
+        }
+        s
+    })
+}
+
 /// An RAII mount: mounts on construction, unmounts and cleans up on drop.
 pub struct Mount {
     mountpoint: PathBuf,
@@ -267,16 +287,16 @@ impl Mount {
         Ok(Mount { mountpoint, what })
     }
 
-    /// Mount an NTFS volume. Tries the in-kernel drivers first (`ntfs3`, then
-    /// the legacy read-only `ntfs`), and finally the FUSE `ntfs-3g` helper for
-    /// kernels built without any in-kernel NTFS support (e.g. some CachyOS /
-    /// custom kernels expose only FUSE). The `mount(2)` syscall cannot use a
-    /// FUSE filesystem, so that last step must shell out to `ntfs-3g`.
+    /// Mount an NTFS volume. Tries the in-kernel `ntfs3` driver first, then
+    /// the FUSE `ntfs-3g` helper for kernels built without it (e.g. some
+    /// CachyOS / custom kernels expose only FUSE). The `mount(2)` syscall
+    /// cannot use a FUSE filesystem, so that last step must shell out to
+    /// `ntfs-3g`. The legacy in-kernel `ntfs` driver is deliberately not in
+    /// the chain: it mounts read-only (it cannot create files), and every
+    /// mount in this crate is for writing, so succeeding with it would just
+    /// fail the job later with a confusing mid-copy EROFS.
     pub fn new_ntfs(device: &str) -> Result<Self> {
         if let Ok(mount) = Self::new(device, "ntfs3") {
-            return Ok(mount);
-        }
-        if let Ok(mount) = Self::new(device, "ntfs") {
             return Ok(mount);
         }
         Self::new_fuse_ntfs(device)

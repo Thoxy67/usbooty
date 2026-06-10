@@ -94,10 +94,21 @@ impl VhdReader {
         let data_offset = read_u64_be(&footer, 16);
 
         let kind = match disk_type {
-            2 => Kind::Fixed {
-                payload_size: file_size - 512,
-            },
-            3 => parse_dynamic(&mut file, data_offset, virtual_size)?,
+            2 => {
+                // The payload must cover the declared virtual size, otherwise
+                // we would stream the footer (and then hit EOF) as disk data.
+                if virtual_size > file_size - 512 {
+                    bail!(
+                        "VHD is truncated: footer declares {virtual_size} bytes but the file \
+                         only holds {}",
+                        file_size - 512
+                    );
+                }
+                Kind::Fixed {
+                    payload_size: file_size - 512,
+                }
+            }
+            3 => parse_dynamic(&mut file, data_offset, virtual_size, file_size)?,
             4 => bail!(
                 "differencing VHDs need their parent image and cannot be written directly; \
                  convert to a flat image first, for example with: \
@@ -121,7 +132,12 @@ impl VhdReader {
 }
 
 /// Parse the dynamic header + BAT, producing a `Kind::Dynamic`.
-fn parse_dynamic(file: &mut File, data_offset: u64, virtual_size: u64) -> Result<Kind> {
+fn parse_dynamic(
+    file: &mut File,
+    data_offset: u64,
+    virtual_size: u64,
+    file_size: u64,
+) -> Result<Kind> {
     file.seek(SeekFrom::Start(data_offset))
         .context("seeking VHD dynamic header")?;
     let mut hdr = [0u8; 1024];
@@ -149,6 +165,11 @@ fn parse_dynamic(file: &mut File, data_offset: u64, virtual_size: u64) -> Result
 
     // Read the BAT itself: each entry is a 4-byte big-endian sector number
     // pointing at the block's bitmap + data area, or 0xFFFFFFFF if absent.
+    // Validate the declared extent against the file before allocating: a
+    // corrupt header could otherwise demand a multi-GiB buffer.
+    if table_offset.saturating_add(max_entries as u64 * 4) > file_size {
+        bail!("VHD BAT extends past the end of the file (corrupt or truncated image)");
+    }
     file.seek(SeekFrom::Start(table_offset))
         .context("seeking BAT")?;
     let mut raw = vec![0u8; max_entries as usize * 4];
@@ -194,7 +215,8 @@ impl Read for VhdReader {
 
         let n = match &self.kind {
             Kind::Fixed { payload_size } => {
-                // Bounds already enforced by `want`; payload_size == virtual_size.
+                // `new()` checked payload_size >= virtual_size, and `want`
+                // keeps us inside virtual_size, so reads stay in the payload.
                 let _ = payload_size;
                 self.file.seek(SeekFrom::Start(self.pos))?;
                 self.file.read(dst)?
@@ -223,6 +245,16 @@ impl Read for VhdReader {
                 }
             }
         };
+        // A zero-byte read before the virtual end means the file ran out
+        // under us (truncated download, BAT pointing past EOF). Surfacing it
+        // as EOF would let the consumer write a short image and report
+        // success.
+        if n == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "VHD is truncated: the file ended before the declared virtual size",
+            ));
+        }
         self.pos += n as u64;
         Ok(n)
     }

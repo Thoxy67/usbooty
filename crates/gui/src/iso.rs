@@ -356,19 +356,31 @@ fn read_wim_xml(path: &Path) -> Option<String> {
     Some(decode_utf16le(&xml_bytes))
 }
 
-/// The Windows build number of the ISO's `install.wim` / `install.esd` (e.g.
-/// 26100), or 0 when it can't be determined. Used to gate version-specific
-/// installer customization options by Windows version, the way Rufus does
-/// (Windows 11 is build >= 22000; the Microsoft-account-bypass option, >= 22500).
-pub fn windows_build(path: &Path) -> u32 {
-    read_wim_xml(path).map_or(0, |xml| parse_windows_build(&xml))
+/// Windows install-image metadata derived from the WIM XML.
+#[derive(Clone, Debug, Default)]
+pub struct WindowsMeta {
+    /// Build number (e.g. 26100), or 0 when it can't be determined. Used to
+    /// gate version-specific installer customization options by Windows
+    /// version, the way Rufus does (Windows 11 is build >= 22000; the
+    /// Microsoft-account-bypass option, >= 22500).
+    pub build: u32,
+    /// Unattend processor-architecture name (`"x86"`, `"amd64"`, `"arm64"`),
+    /// or `None` if undetermined. Lets the unattend emit a single
+    /// arch-matched `<component>` instead of one per architecture.
+    pub arch: Option<String>,
 }
 
-/// The unattend processor-architecture name (`"x86"`, `"amd64"`, or `"arm64"`)
-/// of the ISO's install image, or `None` if undetermined. Lets the unattend
-/// emit a single arch-matched `<component>` instead of one per architecture.
-pub fn windows_arch(path: &Path) -> Option<String> {
-    parse_windows_arch(&read_wim_xml(path)?)
+/// Read the install image's build number and architecture in one pass.
+/// Parsing the WIM XML re-opens the file and walks the UDF descriptors,
+/// which is disk-bound; call this from a worker thread, once per ISO.
+pub fn windows_meta(path: &Path) -> WindowsMeta {
+    match read_wim_xml(path) {
+        Some(xml) => WindowsMeta {
+            build: parse_windows_build(&xml),
+            arch: parse_windows_arch(&xml),
+        },
+        None => WindowsMeta::default(),
+    }
 }
 
 /// Decode a UTF-16LE byte buffer (with an optional leading BOM) to a `String`,
