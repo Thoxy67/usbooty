@@ -18,10 +18,14 @@ impl qobject::AppController {
             rust.full_log.push('\n');
             rust.log_html.push_str(html);
         }
+        // Emit the live append BEFORE flipping `log_non_empty`: the flip
+        // synchronously auto-expands the log panel, whose freshly-created
+        // TextArea repopulates from the snapshot (which already holds this
+        // line). Appending afterwards would deliver the first line twice.
+        self.as_mut().append_log_html(QString::from(html));
         if !*self.as_ref().log_non_empty() {
             self.as_mut().set_log_non_empty(true);
         }
-        self.as_mut().append_log_html(QString::from(html));
     }
 
     /// Empty the activity log. The view clears itself when `log_non_empty`
@@ -109,12 +113,16 @@ impl qobject::AppController {
             let mut lines: Vec<String> = Vec::new();
             let result =
                 crate::qemu::launch(&path, &cfg, &mut |line| lines.push(line.to_string()));
+            let (child, outcome) = match result {
+                Ok(child) => (Some(child), Ok(())),
+                Err(e) => (None, Err(format!("{e:#}"))),
+            };
             let _ = qt.queue(move |mut ctrl: core::pin::Pin<&mut Self>| {
                 for line in &lines {
                     let html = crate::runner::log_html(usbooty_core::LogLevel::Info, line);
                     ctrl.as_mut().push_log_line(line, &html);
                 }
-                match result {
+                match outcome {
                     Ok(()) => ctrl.as_mut().set_status(QString::from(&format!(
                         "Launched QEMU boot test for {path}{}",
                         if snapshot {
@@ -124,15 +132,24 @@ impl qobject::AppController {
                         }
                     ))),
                     Err(e) => {
-                        let msg = format!("Boot test failed: {e:#}");
+                        let msg = format!("Boot test failed: {e}");
                         let html = crate::runner::log_html(usbooty_core::LogLevel::Error, &msg);
                         ctrl.as_mut().push_log_line(&msg, &html);
                         ctrl.as_mut().set_status(QString::from(&format!(
-                            "Could not start the boot test: {e:#}"
+                            "Could not start the boot test: {e}"
                         )));
                     }
                 }
             });
+            // pkexec arms a parent-death watch on the exact thread that
+            // spawned it and SIGTERMs itself when that thread exits — which
+            // cancels the polkit password prompt mid-typing and kills the
+            // running VM. Park this worker on wait() until the QEMU session
+            // ends, however long the user takes to authenticate; this also
+            // reaps the process so no zombie is left behind.
+            if let Some(mut child) = child {
+                let _ = child.wait();
+            }
         });
     }
 

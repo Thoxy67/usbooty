@@ -13,7 +13,7 @@
 //! real device.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
 
 use anyhow::{Context, Result, bail};
 
@@ -184,8 +184,16 @@ fn ovmf_paths() -> Option<(PathBuf, PathBuf)> {
     })
 }
 
-/// Launch QEMU to boot `device`. Non-blocking: spawns the process and returns
-/// immediately (the QEMU window then runs independently).
+/// Launch QEMU to boot `device`. Spawns `pkexec qemu-system-x86_64 …`, waits a
+/// short grace period to catch immediate startup failures, and returns the
+/// still-running child.
+///
+/// The caller MUST `wait()` on the returned child from the same thread that
+/// called `launch`, and that thread must stay alive until QEMU exits: pkexec
+/// arms a parent-death watch on the exact *task* (thread) that spawned it, and
+/// terminates itself with SIGTERM the moment that thread exits — which cancels
+/// the polkit password prompt mid-authentication and kills the running VM.
+/// (Waiting also reaps the process, so no zombie is left behind.)
 ///
 /// All the knobs come from [`BootConfig`] (the dialog's controls): vCPUs,
 /// memory, firmware (BIOS / UEFI / UEFI+Secure Boot), chipset (q35 / i440fx),
@@ -194,7 +202,7 @@ fn ovmf_paths() -> Option<(PathBuf, PathBuf)> {
 /// particular) loops in OOBE without one. Runs under `pkexec` because reading a
 /// raw block device needs root; the user's desktop-session environment is
 /// forwarded so the root-owned QEMU window appears on their display.
-pub fn launch(device: &str, cfg: &BootConfig, log: &mut dyn FnMut(&str)) -> Result<()> {
+pub fn launch(device: &str, cfg: &BootConfig, log: &mut dyn FnMut(&str)) -> Result<Child> {
     if device.is_empty() {
         bail!("no device selected");
     }
@@ -424,10 +432,11 @@ pub fn launch(device: &str, cfg: &BootConfig, log: &mut dyn FnMut(&str)) -> Resu
     // Capture stderr so an immediate failure (image-lock conflict, bad args,
     // audio backend that can't connect) surfaces in the app instead of only the
     // terminal. QEMU fails fast at startup; if it's still alive after a short
-    // grace period we treat the launch as a success and let it run detached.
-    // (When pkexec has to prompt for a password the grace window just sees
-    // pkexec still waiting, so this is best-effort; it reliably catches
-    // failures once polkit auth is cached, i.e. while iterating on boot tests.)
+    // grace period we treat the launch as a success and hand the child back to
+    // the caller to wait on. (When pkexec has to prompt for a password the
+    // grace window just sees pkexec still waiting, so this is best-effort; it
+    // reliably catches failures once polkit auth is cached, i.e. while
+    // iterating on boot tests.)
     let mut errfile = tempfile::tempfile().context("creating a temp file for QEMU stderr")?;
     cmd.stderr(errfile.try_clone().context("cloning the stderr handle")?);
     let mut child = cmd.spawn().context("launching pkexec qemu-system-x86_64")?;
@@ -471,11 +480,5 @@ pub fn launch(device: &str, cfg: &BootConfig, log: &mut dyn FnMut(&str)) -> Resu
             hint
         );
     }
-    // QEMU runs on detached; hand the child to a reaper thread so it doesn't
-    // linger as a zombie after the user closes the VM window (`Child` drop
-    // does not wait).
-    std::thread::spawn(move || {
-        let _ = child.wait();
-    });
-    Ok(())
+    Ok(child)
 }
