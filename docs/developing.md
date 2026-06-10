@@ -25,7 +25,7 @@ into the binary at compile time via `include_str!`:
 crates/helper/src/
   debloat.reg              The Group-Policy + Default-user debloat
                            profile imported by the `unattend` module.
-  desktop_helpers/         The eighteen `.bat` post-install helpers
+  desktop_helpers/         The twenty-six `.bat` post-install helpers
                            plus a README, dropped on the new user's
                            Desktop when the matching checkbox is on.
 ```
@@ -110,10 +110,11 @@ It runs:
   warning fails the gate; this is the single source of truth for "is
   clippy happy?".
 * `cargo test --workspace --locked`. Catches regressions in the unit
-  and integration test suite (107 tests at last count).
+  and integration test suite.
 * A scan of `data/translations/usbooty_fr.ts` for `type="unfinished"`
-  entries and a `lrelease6` smoke compile, so unfinished translations
-  don't slip through.
+  entries, a re-run of `lupdate6` into a scratch copy to catch a
+  *stale* catalog (a qsTr string added in QML but never run through
+  `update-translations.sh`), and a `lrelease6` smoke compile.
 * A `grep` for the em-dash character (U+2014) under `docs/`. The
   project rule is that docs contain none.
 
@@ -169,9 +170,10 @@ HTML entity instead when writing a literal backslash inside `qsTr()`.
 3. In `crates/helper/src/main.rs`, dispatch on the new variant and
    call into a new module that does the work. Reuse `blockdev`,
    `partition`, `fsutil`, and `emit` rather than rolling your own.
-4. In `crates/gui/src/runner.rs`, build the new `Job` variant from
-   the QML state. Add any new properties to
-   `crates/gui/src/bridge.rs`.
+4. In `crates/gui/src/bridge/jobs.rs`, build the new `Job` variant
+   from the QML state. Add any new properties in
+   `crates/gui/src/bridge/mod.rs` and their state in
+   `crates/gui/src/bridge/state.rs`.
 5. In `crates/gui/qml/main.qml`, surface the new option in the
    Options card.
 
@@ -185,11 +187,11 @@ HTML entity instead when writing a literal backslash inside `qsTr()`.
    XML for the pass it belongs to (`windowsPE`, `specialize`, or
    `oobeSystem`). Add a unit test under `unattend::mod::tests` that
    asserts the expected XML fragment.
-3. In `crates/gui/src/bridge.rs`, add a `#[qproperty(bool, ...)]`
+3. In `crates/gui/src/bridge/mod.rs`, add a `#[qproperty(bool, ...)]`
    line, the field in `AppControllerRust`, the default, and wire
    it into the `WindowsSetup { ... }` builder in `start()`.
-4. In `crates/gui/qml/main.qml`, add a `WrapCheckBox` (or matching
-   control) inside the Windows-setup dialog. Give it a tooltip
+4. In `crates/gui/qml/dialogs/WindowsSetupDialog.qml`, add a
+   `WrapCheckBox` (or matching control). Give it a tooltip
    that explains what the user actually gets.
 5. Refresh translations
    (`./data/translations/update-translations.sh`) and translate

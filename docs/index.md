@@ -11,18 +11,22 @@ bootable-media logic is ported from
   privilege boundary between the GUI and the helper.
 * [Write methods](write-methods.md): when to pick DD, partitioned copy,
   format only, Ventoy, or FreeDOS. Includes the hybrid MBR table option,
-  read-back verify, the bad-blocks / fake-flash scan, and the SMART
-  probe.
+  read-back verify, the bad-blocks / fake-flash scan, the SMART probe,
+  the QEMU boot test (BIOS / UEFI / Secure Boot, virtual TPM), and the
+  drive snapshot backup.
 * [Windows ISOs](windows-iso.md): WIM strategy (split vs UEFI:NTFS),
   every `autounattend.xml` option, the debloat profile, the Windows CA
   2023 fix, automatic BitLocker disable, the post-install desktop
-  helpers (eighteen ready-to-run `.bat` scripts on the new user's
+  helpers (twenty-six ready-to-run `.bat` scripts on the new user's
   desktop), the rg-adguard SHA-1 lookup, and the Microsoft ISO
   downloader.
 * [Linux ISOs](linux-iso.md): ISO classification, partition-based
-  persistence for the Ubuntu, Debian, Fedora, openSUSE, and Arch
-  families, Slax inline persistence, and the per-distro fix table
-  (the archiso GRUB-redirect and the Knoppix safe-boot flags).
+  persistence for the Ubuntu/casper, Debian-live (incl. Kali), Fedora
+  overlayfs, RHEL-rebuild overlay, openSUSE, Arch/archiso (incl.
+  Manjaro's miso), and Knoppix families, inline persistence for Slax
+  and Alpine, the self-managed cases (Tails, Puppy, antiX / MX), and
+  the per-distro fix table (the archiso GRUB-redirect and the Knoppix
+  safe-boot flags).
 * [Other systems](other-systems.md): how USBooty classifies and writes
   BSD, FreeDOS, ReactOS, and other niche images.
 * [Installation](installation.md): build from source, the install

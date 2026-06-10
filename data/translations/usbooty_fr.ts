@@ -1034,7 +1034,7 @@
 <context>
     <name>main</name>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1154"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1165"/>
         <source>Working</source>
         <translation>Travail en cours</translation>
     </message>
@@ -1410,52 +1410,67 @@ FreeDOS : télécharge la dernière version du noyau et du shell FreeDOS et cons
         <translation>Conserve vos fichiers et paramètres entre les redémarrages de cette USB live.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1009"/>
+        <location filename="../../crates/gui/qml/main.qml" line="981"/>
+        <source>Tails manages its own encrypted Persistent Storage: create it from inside Tails after the first boot.</source>
+        <translation>Tails gère son propre stockage persistant chiffré : créez-le depuis Tails après le premier démarrage.</translation>
+    </message>
+    <message>
+        <location filename="../../crates/gui/qml/main.qml" line="983"/>
+        <source>Puppy Linux offers to create its save file on first shutdown; nothing to set up here.</source>
+        <translation>Puppy Linux propose de créer son fichier de sauvegarde à la première extinction ; rien à configurer ici.</translation>
+    </message>
+    <message>
+        <location filename="../../crates/gui/qml/main.qml" line="985"/>
+        <source>antiX / MX Linux set up persistence from their own live boot menu (the Persist options) on first boot.</source>
+        <translation>antiX / MX Linux configurent la persistance depuis leur propre menu de démarrage live (les options Persist) au premier démarrage.</translation>
+    </message>
+    <message>
+        <location filename="../../crates/gui/qml/main.qml" line="1020"/>
         <source>Cancelling…</source>
         <translation>Annulation…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1010"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1021"/>
         <source>Cancel</source>
         <translation>Annuler</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1010"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1021"/>
         <source>Start</source>
         <translation>Démarrer</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1176"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1187"/>
         <source>ETA %1</source>
         <translation>ETA %1</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1180"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1191"/>
         <source>%1 elapsed</source>
         <translation>%1 écoulées</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1265"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1276"/>
         <source>Activity log</source>
         <translation>Journal d&apos;activité</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1291"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1302"/>
         <source>Clear</source>
         <translation>Effacer</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1333"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1344"/>
         <source>Job output will appear here.</source>
         <translation>La sortie du travail s&apos;affichera ici.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1436"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1447"/>
         <source>Drop to load</source>
         <translation>Déposez pour charger</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1437"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1448"/>
         <source>Unsupported file</source>
         <translation>Fichier non pris en charge</translation>
     </message>
@@ -1464,17 +1479,17 @@ FreeDOS : télécharge la dernière version du noyau et du shell FreeDOS et cons
         <translation type="vanished">Seuls les fichiers .iso et .img sont acceptés</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1464"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1475"/>
         <source>Select an ISO image</source>
         <translation>Sélectionner une image ISO</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1466"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1477"/>
         <source>Disk images (*.iso *.img *.vhd *.iso.xz *.iso.gz *.iso.bz2 *.iso.zst *.iso.lzma *.iso.zip *.iso.Z *.img.xz *.img.gz *.img.bz2 *.img.zst *.img.lzma *.img.zip *.img.Z)</source>
         <translation>Images disque (*.iso *.img *.vhd *.iso.xz *.iso.gz *.iso.bz2 *.iso.zst *.iso.lzma *.iso.zip *.iso.Z *.img.xz *.img.gz *.img.bz2 *.img.zst *.img.lzma *.img.zip *.img.Z)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1467"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1478"/>
         <source>Compressed (*.xz *.gz *.bz2 *.zst *.lzma *.zip *.Z)</source>
         <translation>Compressé (*.xz *.gz *.bz2 *.zst *.lzma *.zip *.Z)</translation>
     </message>
@@ -1555,89 +1570,89 @@ FreeDOS : télécharge la dernière version du noyau et du shell FreeDOS et cons
 • MBR hybride+GPT (BIOS+UEFI) : vrai GPT + un MBR synthétisé miroir de la partition de données (à la Apple). Compatibilité maximale, mais certains firmwares bogués refusent les MBR hybrides. À n&apos;utiliser que si MBR (BIOS+UEFI) ne démarre pas sur une machine particulière.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="977"/>
+        <location filename="../../crates/gui/qml/main.qml" line="987"/>
         <source>Persistent storage isn&apos;t supported for %1.</source>
         <translation>Le stockage persistant n&apos;est pas pris en charge pour %1.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="978"/>
+        <location filename="../../crates/gui/qml/main.qml" line="988"/>
         <source>Persistent storage isn&apos;t supported for this distribution.</source>
         <translation>Le stockage persistant n&apos;est pas pris en charge pour cette distribution.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="994"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1005"/>
         <source>Plug in or select a target device to set the persistence size.</source>
         <translation>Branchez ou sélectionnez un périphérique cible pour définir la taille de la persistance.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="995"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1006"/>
         <source>The selected device has no room left for a persistence partition once the ISO is written.</source>
         <translation>Le périphérique sélectionné n&apos;a plus de place pour une partition de persistance une fois l&apos;ISO écrite.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1017"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1028"/>
         <source>Ask the running helper to stop. The current sector finishes writing, then the partition table is left in whatever state the helper had got to. Expect a partially-written drive.</source>
         <translation>Demande au helper en cours d&apos;exécution de s&apos;arrêter. Le secteur en cours d&apos;écriture est terminé, puis la table de partitions reste dans l&apos;état où le helper en était. Attendez-vous à un disque partiellement écrit.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1021"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1032"/>
         <source>Opens the Windows-setup dialog first (TPM/Secure-Boot/RAM bypasses, local account, debloat, …); the actual write begins after you click OK there.</source>
         <translation>Ouvre d&apos;abord la boîte de dialogue de configuration Windows (contournements TPM / Secure Boot / RAM, compte local, debloat…) ; l&apos;écriture proprement dite commence après avoir cliqué sur OK.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1023"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1034"/>
         <source>Confirm and start writing. All data on the selected device is erased.</source>
         <translation>Confirme et démarre l&apos;écriture. Toutes les données du périphérique sélectionné sont effacées.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1277"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1288"/>
         <source>Save…</source>
         <translation>Enregistrer…</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1287"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1298"/>
         <source>Write the current activity log to a text file. Useful for bug reports. Attach the file instead of pasting in the panel.</source>
         <translation>Écrit le journal d&apos;activité courant dans un fichier texte. Utile pour les rapports de bugs. Joignez le fichier plutôt que de coller le contenu du panneau.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1300"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1311"/>
         <source>Empty the activity log panel.</source>
         <translation>Vide le panneau du journal d&apos;activité.</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1453"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1464"/>
         <source>Only disk images (.iso, .img, .vhd), plain or compressed, are accepted</source>
         <translation>Seules les images disque (.iso, .img, .vhd), brutes ou compressées, sont acceptées</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1468"/>
-        <location filename="../../crates/gui/qml/main.qml" line="1483"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1479"/>
         <location filename="../../crates/gui/qml/main.qml" line="1494"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1505"/>
         <source>All files (*)</source>
         <translation>Tous les fichiers (*)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1477"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1488"/>
         <source>Save device snapshot</source>
         <translation>Enregistrer un instantané du périphérique</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1481"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1492"/>
         <source>Raw images (*.img)</source>
         <translation>Images brutes (*.img)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1482"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1493"/>
         <source>Compressed images (*.img.gz *.img.xz *.img.zst *.img.bz2)</source>
         <translation>Images compressées (*.img.gz *.img.xz *.img.zst *.img.bz2)</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1491"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1502"/>
         <source>Save activity log</source>
         <translation>Enregistrer le journal d&apos;activité</translation>
     </message>
     <message>
-        <location filename="../../crates/gui/qml/main.qml" line="1494"/>
+        <location filename="../../crates/gui/qml/main.qml" line="1505"/>
         <source>Log files (*.log *.txt)</source>
         <translation>Fichiers journal (*.log *.txt)</translation>
     </message>

@@ -56,6 +56,11 @@ Responsibilities:
 * Download Windows 10 / 11 ISOs from Microsoft (the ported Fido
   logic).
 * Build a `Job`, prompt for confirmation, and launch the helper.
+* Boot-test the written drive in QEMU (BIOS / UEFI / UEFI+Secure
+  Boot, optional virtual TPM 2.0 via swtpm), via its own one-shot
+  `pkexec` since reading the raw device needs root (`qemu.rs`).
+* Inspect a device (`lsblk` / `udevadm` / `smartctl` collation) and
+  power it off cleanly after a write (`udisksctl` / `eject`).
 * Live-switch the GUI language between French and forced English.
 
 ### `usbooty-helper`
@@ -87,9 +92,14 @@ Key helper modules:
   parts on a FAT32 target.
 * `persistence.rs`, `distro_fixes.rs`: per-distro persistence overlays
   (casper `persistent`, Debian `persistence.conf`, Fedora
-  `rd.live.overlay`, archiso `cow_label`, Slax inline `slax/changes/`)
-  and post-copy quirk fixes (the archiso GRUB-redirect, Knoppix
-  safe-boot flags).
+  `rd.live.overlay` / overlayfs, archiso and miso `cow_label`,
+  openSUSE `cow`, Knoppix `KNOPPIX-DATA`, Slax inline
+  `slax/changes/`) and post-copy quirk fixes (the archiso
+  GRUB-redirect, Knoppix safe-boot flags).
+* `blockdev.rs`: exclusive device open (`O_EXCL`), size and logical
+  sector size probes (`BLKGETSIZE64`, `BLKSSZGET` for 4Kn
+  enclosures), partition-table reread, and fast zeroing
+  (`BLKZEROOUT`).
 * `backup.rs`: drive-to-image snapshot, the inverse of writing.
 * `check.rs`: Quick (F3-style fake-capacity / fake-flash) and Full
   (two-pattern bad-blocks) device check modes.
@@ -148,9 +158,10 @@ bails cleanly, leaving the device in a partial but predictable state.
 crates/
   core/        usbooty-core: shared types and pure logic
   gui/         usbooty-gui: the Qt 6 / QML binary
-    qml/       main.qml
+    qml/       main.qml plus components/ and dialogs/ (boot test,
+               Windows setup, Windows download, inspect, ...)
     qrc/       Qt resource bundles (icon, translations)
-    src/       Rust source (bridge, runner, decompress, etc.)
+    src/       Rust source (bridge/, runner, qemu, decompress, etc.)
   helper/      usbooty-helper: the privileged CLI binary
     src/
 data/          desktop file, AppStream metadata, icons, polkit policy,
@@ -160,7 +171,8 @@ tests/         loop-test.sh (hardware-free end-to-end driver)
 docs/          you are here
 ```
 
-User preferences (Force English, Always show activity log) live in
+User preferences (Force English, Always show activity log, Log every
+copied file) live in
 `~/.config/usbooty/settings.json` via `directories::ProjectDirs`.
 Cached downloads (the UEFI:NTFS image, FreeDOS kernel and shell, the
 DBX revocation file) live under `$XDG_CACHE_HOME/usbooty/` and are

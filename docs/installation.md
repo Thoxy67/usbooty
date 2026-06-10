@@ -90,8 +90,12 @@ marked "optional" are nice-to-haves.
 | `wimlib-imagex`  | `wimlib`              | `WimStrategy::Split`, Windows CA 2023 extraction.   | Optional  |
 | `ventoy`         | `ventoy-bin`          | The Ventoy method.                                  | Optional  |
 | `mtools`         | `mtools`              | FreeDOS bootable USB (`mformat`, `mcopy`).          | Optional  |
+| `syslinux`       | `syslinux`            | BIOS bootloader install for partitioned Linux ISOs. | Optional  |
 | `smartmontools`  | `smartmontools`       | SMART probe of the selected device.                 | Optional  |
 | `udisksctl` or `eject` | `udisks2` / `util-linux` | Powering off the drive cleanly after a write.  | Optional  |
+| `qemu-system-x86_64` | `qemu-full` / `qemu-system-x86` | The QEMU boot test (Device menu).       | Optional  |
+| OVMF firmware    | `edk2-ovmf` / `ovmf`  | UEFI (and Secure Boot) modes of the boot test.      | Optional  |
+| `swtpm`          | `swtpm`               | Virtual TPM 2.0 in UEFI boot tests (Windows 11 OOBE). | Optional |
 
 USBooty does not bundle any of these tools. Missing optionals just
 mean the matching features stay disabled (the filesystem combo only
@@ -107,7 +111,7 @@ can use the PKGBUILD as a checklist for the bigger optional set.
 
 ## User preferences
 
-USBooty persists two preferences in `~/.config/usbooty/settings.json`:
+USBooty persists three preferences in `~/.config/usbooty/settings.json`:
 
 * **Force English**: opts out of the locale-based French translation
   and runs the GUI in its English source language. Toggled from the
@@ -115,8 +119,11 @@ USBooty persists two preferences in `~/.config/usbooty/settings.json`:
 * **Always show activity log**: keeps the activity log column open
   even when the buffer is empty, instead of auto-expanding on the
   first log line. Toggled from the `?` menu.
+* **Log every copied file**: names every file in the activity log
+  during a partitioned copy, instead of only the large ones. Toggled
+  from the `?` menu.
 
-Both preferences live-apply (no restart needed).
+All preferences live-apply (no restart needed).
 
 ## Cache
 

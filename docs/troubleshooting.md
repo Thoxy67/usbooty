@@ -24,6 +24,27 @@ If the second command returns nothing, the policy is not registered.
 Restart the polkit daemon (`systemctl restart polkit`) or log out
 and back in.
 
+## The QEMU boot test does not appear in the Device menu
+
+The **Verify boot device (QEMU)** entry is shown only when
+`qemu-system-x86_64` is installed and `/dev/kvm` exists (KVM
+acceleration available). Install `qemu-full` (Arch) or
+`qemu-system-x86` (Debian/Ubuntu). Inside the dialog:
+
+* The UEFI firmware options need OVMF (`edk2-ovmf` / `ovmf`); the
+  Secure Boot variant additionally needs the `.secboot` OVMF build.
+* The virtual TPM 2.0 (needed by Windows 11 OOBE) needs `swtpm`.
+
+Launching a boot test asks for your password once (pkexec): reading
+a raw block device needs root. In snapshot mode (the default) the
+device itself is never modified; all guest writes go to a throwaway
+overlay.
+
+If QEMU exits immediately, the reason lands in the activity log. The
+two common ones: the device is held by another process (close any
+other QEMU window using it), and a guest-audio backend failure (try
+unchecking Guest audio).
+
 ## The Windows titlebar icon is the generic Wayland one
 
 Wayland compositors look up the window icon from an installed
@@ -196,8 +217,8 @@ applies live, no restart needed. The preference is saved in
 
 ## A post-install Windows desktop script does nothing or errors out
 
-The eighteen `.bat` scripts dropped by **Drop a USBooty folder on the
-user's Desktop** are thin wrappers around well-known upstream
+The twenty-six `.bat` scripts dropped by **Drop a USBooty folder on
+the user's Desktop** are thin wrappers around well-known upstream
 PowerShell snippets. They all download code from the public
 internet on first run, so:
 

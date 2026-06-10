@@ -215,7 +215,7 @@ unplugged before first logon without breaking it.
 
 Each script is a right-click "Run as administrator" launcher with a
 `pause` at the end so the user sees the result. The bundle ships
-twenty-five scripts plus a README, sorted into five category
+twenty-six scripts plus a README, sorted into five category
 subfolders (so `xcopy /E` recreates the whole tree on the Desktop):
 
 **`1 Debloat and Privacy/`**

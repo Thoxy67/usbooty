@@ -8,14 +8,25 @@
 
 ## What it does
 
-* Raw DD, partitioned copy (FAT32 / NTFS / exFAT / ext4), plain format, and
-  Ventoy multi-boot installs.
-* Windows install media with the UEFI:NTFS dual-partition layout for ISOs
-  whose `install.wim` is larger than the FAT32 4 GiB file limit.
+* Raw DD, partitioned copy (FAT32 / NTFS / exFAT / ext4 / and more),
+  plain format, Ventoy multi-boot, and FreeDOS builds.
+* Windows install media with the UEFI:NTFS dual-partition layout (or a
+  wimlib split) for ISOs whose `install.wim` is larger than the FAT32
+  4 GiB file limit.
 * Windows 11 setup customisation via `autounattend.xml`: hardware-check
-  bypass, local account, locale, time zone, and a debloat profile.
-* Direct Windows 11 ISO download from Microsoft (a port of Rufus's Fido).
-* Persistent overlay partitions for Debian and Ubuntu family live USBs.
+  bypass, local account, locale, time zone, BitLocker auto-encryption
+  guard, a debloat profile, and post-install desktop helper scripts.
+* Direct Windows 10 / 11 ISO download from Microsoft (a port of Rufus's
+  Fido).
+* Persistent live USBs for the Ubuntu/casper, Debian-live (incl. Kali),
+  Fedora, RHEL-rebuild, openSUSE, Arch/archiso (incl. Manjaro), Knoppix,
+  Slax, and Alpine families.
+* A QEMU boot test (BIOS, UEFI, UEFI + Secure Boot, virtual TPM 2.0) to
+  verify the stick boots without rebooting your machine.
+* Device health tooling: fake-capacity quick check, full bad-blocks
+  scan, SMART warnings, read-back verify, and drive snapshot backups.
+* Transparent decompression of `.xz` / `.gz` / `.bz2` / `.zst` /
+  `.lzma` / `.zip` / `.Z` inputs and fixed `.vhd` images.
 
 ## Quick install
 

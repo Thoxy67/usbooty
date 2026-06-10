@@ -48,6 +48,18 @@ You explicitly choose the partition scheme:
 | MBR (BIOS+UEFI)   | Older boards in CSM mode that boot MBR partitions on UEFI. |
 | Hybrid MBR / GPT  | One stick that boots on both legacy BIOS and UEFI.         |
 
+Two hardware corner cases are handled automatically:
+
+* **Old BIOSes**: MBR partition entries carry real CHS geometry
+  values (saturated past the ~8 GiB horizon) instead of zeros, and
+  FAT16 partitions switch from type `0x06` to the LBA variant `0x0E`
+  past that horizon. Pre-2010 firmware that infers disk geometry from
+  partition 1 boots correctly.
+* **4Kn enclosures**: the device's logical sector size is probed
+  (`BLKSSZGET`), and every LBA in the partition table is expressed in
+  that unit, so native-4K USB enclosures get a valid table instead of
+  garbage offsets.
+
 The filesystem is picked automatically based on the ISO type and the
 size of the largest file. The combo only shows filesystems whose
 `mkfs.*` tool is installed on the host, so the choice is never a
@@ -160,6 +172,41 @@ A background SMART probe runs against the selected device using
 `smartctl` if it is installed. Reallocated sectors, high
 temperatures, and failing-prediction flags surface as a short
 yellow warning under the device picker. No probe means no warning.
+
+## Boot-testing the finished stick (QEMU)
+
+**Device → Verify boot device (QEMU)** boots the selected drive in a
+virtual machine, so you can confirm the stick actually boots without
+restarting your computer. The menu entry appears when
+`qemu-system-x86_64` is installed and `/dev/kvm` is available. The
+dialog offers:
+
+* **Firmware**: BIOS (SeaBIOS), UEFI (OVMF), or UEFI + Secure Boot
+  when a `.secboot` OVMF build is installed (`edk2-ovmf` / `ovmf`).
+* **Machine**: q35 (modern, default; right for Windows 11) or i440fx
+  (legacy).
+* **Memory and processors**: sliders bounded by the host's RAM and
+  logical CPU count.
+* **KVM hardware acceleration**, **user-mode networking**, and
+  **guest audio** (Intel HD Audio routed to your PipeWire /
+  PulseAudio) toggles.
+* **Snapshot mode** (default on): every write the guest makes goes to
+  a throwaway overlay and the real device is never modified. Turn it
+  off to let writes persist, which a multi-reboot flow like Windows
+  OOBE needs to run to completion; this DOES modify the stick.
+
+For UEFI boots, a virtual TPM 2.0 is attached automatically when
+`swtpm` is installed; Windows 11 (24H2 in particular) loops in OOBE
+without one. Reading the raw device needs root, so launching the test
+shows one pkexec prompt.
+
+## Drive snapshot (backup)
+
+**Device → Save snapshot to file** reads the whole device into an
+image file, the inverse of writing: raw `.img`, footer-correct
+`.vhd`, or compressed `.img.gz` / `.img.xz` / `.img.zst` /
+`.img.bz2`. Useful before a destructive experiment, or to clone a
+configured stick.
 
 ## Conflicting-job guard (devlock)
 
