@@ -38,6 +38,11 @@ const INSTANCE_ID: &str = "560dc9f3-1aa5-4a2f-b63c-9e18f8d0e175";
 /// The public download page, loaded to seed cookies, and used as the Referer.
 const DOWNLOAD_PAGE: &str = "https://www.microsoft.com/software-download/windows11";
 
+/// Whole-call timeout for the small catalog / anti-bot requests. `ureq` 3
+/// defaults to *no* timeout, so without this a stalled connection wedges the
+/// app in its busy state forever.
+const API_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Selectable Windows releases: `(display name, Microsoft product-edition ID)`.
 /// Update the IDs from the Fido script when Microsoft ships a new release.
 pub const RELEASES: &[(&str, u32)] = &[("Windows 11", 3321), ("Windows 10", 2618)];
@@ -75,7 +80,13 @@ pub struct Catalog {
 /// Fetch the list of languages available for a Windows product edition.
 pub fn fetch_languages(edition_id: u32) -> Result<Catalog> {
     // A single agent with a cookie jar is reused for every request below.
-    let agent = ureq::Agent::new_with_defaults();
+    // Every call through it carries the catalog timeout; these are all small
+    // JSON / page fetches.
+    let agent = ureq::Agent::new_with_config(
+        ureq::Agent::config_builder()
+            .timeout_global(Some(API_TIMEOUT))
+            .build(),
+    );
     let session_id = new_guid();
 
     // Seed cookies by loading the public download page, like a browser would.
@@ -193,6 +204,11 @@ impl Catalog {
 /// Each digest is computed from the bytes as they stream past, free and ready
 /// the instant the download finishes, so no re-read of the ISO is needed.
 /// `progress` is called with `(downloaded, total)` and is throttled internally.
+///
+/// The stream lands in a hidden `.part` temp file that is renamed into place
+/// only on success (uniquified if the name is taken), so an existing ISO of
+/// the same name is never truncated, and a failed or cancelled download
+/// never leaves a plausible-looking partial file behind.
 pub fn download(
     url: &str,
     dest_dir: &Path,
@@ -203,7 +219,14 @@ pub fn download(
     use sha1::Sha1;
     use sha2::{Digest, Sha256, Sha512};
 
+    // Connect/first-byte timeouts only: the body itself legitimately takes
+    // however long a multi-GB transfer takes on the user's link, so it gets
+    // no global deadline (cancellation covers a user-visible stall).
     let mut response = ureq::get(url)
+        .config()
+        .timeout_connect(Some(Duration::from_secs(30)))
+        .timeout_recv_response(Some(Duration::from_secs(30)))
+        .build()
         .header("User-Agent", USER_AGENT)
         .call()
         .context("starting the download")?;
@@ -215,8 +238,13 @@ pub fn download(
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(0);
 
-    let dest = dest_dir.join(file_name_from_url(url));
-    let mut out = File::create(&dest).with_context(|| format!("creating {}", dest.display()))?;
+    let final_name = file_name_from_url(url);
+    let mut tmp = tempfile::Builder::new()
+        .prefix(&format!(".{final_name}."))
+        .suffix(".part")
+        .tempfile_in(dest_dir)
+        .with_context(|| format!("creating a download temp file in {}", dest_dir.display()))?;
+    let out = tmp.as_file_mut();
 
     let mut reader = response.body_mut().as_reader();
     let mut buf = vec![0u8; 256 * 1024];
@@ -258,14 +286,16 @@ pub fn download(
         }
         Ok(())
     })();
-    if let Err(e) = stream {
-        // Cancelled or failed mid-stream: don't leave a multi-GB truncated
-        // ISO in the Downloads folder looking complete.
-        drop(out);
-        let _ = std::fs::remove_file(&dest);
-        return Err(e);
-    }
+    // Cancelled or failed mid-stream: dropping `tmp` deletes the `.part`
+    // file, so nothing truncated is left looking like a complete ISO.
+    stream?;
     progress(done, total.max(done));
+
+    // Move the finished download into place under a name that does not
+    // clobber anything already there.
+    let dest = unique_dest(dest_dir, &final_name);
+    tmp.persist(&dest)
+        .with_context(|| format!("moving the download to {}", dest.display()))?;
 
     Ok((
         dest,
@@ -373,6 +403,31 @@ fn get_json(agent: &ureq::Agent, url: &str) -> Result<serde_json::Value> {
         .and_then(|mut r| r.body_mut().read_to_vec())
         .context("HTTP request failed")?;
     serde_json::from_slice(&bytes).context("response was not valid JSON")
+}
+
+/// A path in `dir` for `name` that does not collide with an existing file:
+/// the name itself when free, otherwise `name (1).iso`, `name (2).iso`, ...
+/// (the counter lands before the extension). A prior good download is never
+/// overwritten by a re-download of the same release.
+fn unique_dest(dir: &Path, name: &str) -> PathBuf {
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s, Some(e)),
+        _ => (name, None),
+    };
+    for n in 1u32.. {
+        let candidate = match ext {
+            Some(ext) => dir.join(format!("{stem} ({n}).{ext}")),
+            None => dir.join(format!("{stem} ({n})")),
+        };
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!("u32 exhausted while uniquifying a file name")
 }
 
 /// Derive a `.iso` file name from a download URL.
@@ -484,6 +539,25 @@ mod tests {
         let v = json!({ "Errors": [ { "Type": 1, "Value": "Something broke" } ] });
         let err = check_errors(&v).unwrap_err();
         assert!(format!("{err:#}").contains("Something broke"));
+    }
+
+    #[test]
+    fn unique_dest_does_not_clobber_existing_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            unique_dest(dir.path(), "Win11.iso"),
+            dir.path().join("Win11.iso")
+        );
+        std::fs::write(dir.path().join("Win11.iso"), b"x").unwrap();
+        assert_eq!(
+            unique_dest(dir.path(), "Win11.iso"),
+            dir.path().join("Win11 (1).iso")
+        );
+        std::fs::write(dir.path().join("Win11 (1).iso"), b"x").unwrap();
+        assert_eq!(
+            unique_dest(dir.path(), "Win11.iso"),
+            dir.path().join("Win11 (2).iso")
+        );
     }
 
     #[test]

@@ -33,6 +33,7 @@ mod label;
 mod partition;
 mod partitioned;
 mod persistence;
+mod safety;
 mod syslinux;
 mod uefi_ntfs;
 mod unattend;
@@ -77,6 +78,12 @@ fn install_signal_handlers() {
 
 /// Read stdin for the lifetime of the process: first line is the job, any
 /// later line (or EOF) requests cancellation.
+///
+/// CONTRACT: the GUI must keep its write end of this pipe open for the whole
+/// job (it parks the `ChildStdin` in the job handle until the job finishes).
+/// EOF here is deliberately indistinguishable from the GUI dying, and both
+/// set [`ABORT`]; a client that writes the job and immediately closes stdin
+/// would have its job aborted before any work starts.
 fn stdin_watcher(tx: Sender<Job>) {
     // SAFETY: fd 0 is this process's stdin; we own it for the process lifetime.
     let stdin = unsafe { File::from_raw_fd(0) };
@@ -129,6 +136,12 @@ fn run() -> Result<()> {
         env!("CARGO_PKG_VERSION")
     ));
     emit::log(describe_job(&job));
+
+    // The job arrived over stdin from an unprivileged process; nothing in it
+    // is trusted. Refuse anything but a real, non-system, whole-disk block
+    // device, and refuse relative auxiliary paths, before any module runs.
+    safety::validate_target_device(job.device_path())?;
+    safety::validate_job_paths(&job)?;
 
     // Block a second helper from racing this one on the same device. Released
     // on drop at the end of the function (success or failure path alike).

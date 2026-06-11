@@ -23,8 +23,18 @@ use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
+
+/// Headroom left on the cache filesystem: decompression stops once free
+/// space would drop below this, so a zstd/xz bomb (or just an oversized
+/// image) cannot fill `$HOME` to the brim and wedge the desktop session.
+const FREE_SPACE_MARGIN: u64 = 1024 * 1024 * 1024;
+
+/// Absolute ceiling on decompressed output. Far above any real installer
+/// image (the largest Windows/Linux media decompress to tens of GB), low
+/// enough that a decompression bomb is cut off in bounded time.
+const MAX_OUTPUT_BYTES: u64 = 256 * 1024 * 1024 * 1024;
 
 /// The supported compression algorithms.
 ///
@@ -161,11 +171,14 @@ struct Meta {
 
 /// Decompress `src` into the user cache and return the cached file's path.
 ///
+/// `abort` is polled between output chunks; setting it makes the function
+/// bail out promptly (the staged tempfile is dropped, never half-cached).
 /// `progress` is invoked roughly once per read with `(consumed, total)` where
 /// `total` is the source file size. The closure runs on the worker thread that
 /// called this function, so anything it touches must be `Sync`.
 pub fn decompress_to_cache(
     src: &Path,
+    abort: &AtomicBool,
     mut progress: impl FnMut(u64, u64) + Send,
 ) -> Result<PathBuf> {
     let algo = detect(src);
@@ -211,6 +224,14 @@ pub fn decompress_to_cache(
     let mut tmp = tempfile::NamedTempFile::new_in(&dir)
         .with_context(|| format!("creating tempfile in {}", dir.display()))?;
 
+    // Bound the output: stop before the cache filesystem runs out of space
+    // (a decompression bomb expands without bound; ENOSPC at the brim would
+    // wedge the whole desktop session) and never exceed the absolute cap.
+    let max_out = free_space(&dir)
+        .map(|free| free.saturating_sub(FREE_SPACE_MARGIN))
+        .unwrap_or(u64::MAX)
+        .min(MAX_OUTPUT_BYTES);
+
     let consumed = Arc::new(AtomicU64::new(0));
     let counter = ProgressReader {
         inner: BufReader::with_capacity(1024 * 1024, File::open(src)?),
@@ -227,6 +248,8 @@ pub fn decompress_to_cache(
             &consumed,
             source_size,
             &mut progress,
+            abort,
+            max_out,
         )?,
         Compression::Gz => {
             // Multi-member decoder: the plain one stops at the first gzip
@@ -238,6 +261,8 @@ pub fn decompress_to_cache(
                 &consumed,
                 source_size,
                 &mut progress,
+                abort,
+                max_out,
             )?
         }
         Compression::Bz2 => {
@@ -250,6 +275,8 @@ pub fn decompress_to_cache(
                 &consumed,
                 source_size,
                 &mut progress,
+                abort,
+                max_out,
             )?
         }
         Compression::Zst => {
@@ -261,6 +288,8 @@ pub fn decompress_to_cache(
                 &consumed,
                 source_size,
                 &mut progress,
+                abort,
+                max_out,
             )?
         }
         Compression::Lzma => copy_with_progress(
@@ -269,6 +298,8 @@ pub fn decompress_to_cache(
             &consumed,
             source_size,
             &mut progress,
+            abort,
+            max_out,
         )?,
         Compression::Zip => extract_zip(
             counter,
@@ -276,6 +307,8 @@ pub fn decompress_to_cache(
             &consumed,
             source_size,
             &mut progress,
+            abort,
+            max_out,
         )?,
         Compression::Z => copy_with_progress(
             &mut DotZAdapter::new(counter)?,
@@ -283,6 +316,8 @@ pub fn decompress_to_cache(
             &consumed,
             source_size,
             &mut progress,
+            abort,
+            max_out,
         )?,
         Compression::None => unreachable!(),
     };
@@ -408,28 +443,49 @@ impl<R: BufRead> BufRead for ProgressReader<R> {
     }
 }
 
+/// Free space (in bytes) available to unprivileged writes on the filesystem
+/// holding `dir`. `None` when the probe itself fails; callers degrade to
+/// "no free-space limit" rather than refusing to work.
+fn free_space(dir: &Path) -> Option<u64> {
+    let stat = nix::sys::statvfs::statvfs(dir).ok()?;
+    Some(stat.blocks_available() as u64 * stat.fragment_size() as u64)
+}
+
 /// Stream `src` to `dst` in 1 MiB chunks, calling `progress` between chunks
 /// (throttled: a fast decompressor can push ~1000 chunks/s, and every call
-/// queues a Qt event plus string formatting on the GUI side).
+/// queues a Qt event plus string formatting on the GUI side). Honours
+/// `abort` between chunks and fails once the output exceeds `max_out`.
 fn copy_with_progress<R: Read, W: Write>(
     src: &mut R,
     dst: &mut W,
     consumed: &AtomicU64,
     total: u64,
     progress: &mut dyn FnMut(u64, u64),
+    abort: &AtomicBool,
+    max_out: u64,
 ) -> Result<u64> {
     const PROGRESS_EVERY: Duration = Duration::from_millis(150);
     let mut buf = vec![0u8; 1024 * 1024];
     let mut written = 0u64;
     let mut last_report = std::time::Instant::now();
     loop {
+        if abort.load(Ordering::SeqCst) {
+            bail!("cancelled");
+        }
         let n = src.read(&mut buf).context("reading decompressed bytes")?;
         if n == 0 {
             break;
         }
+        written += n as u64;
+        if written > max_out {
+            bail!(
+                "decompressed output exceeds the available space / size limit \
+                 ({} max); the file may be a decompression bomb",
+                usbooty_core::device::format_size(max_out)
+            );
+        }
         dst.write_all(&buf[..n])
             .context("writing decompressed bytes")?;
-        written += n as u64;
         if last_report.elapsed() >= PROGRESS_EVERY {
             progress(consumed.load(Ordering::Relaxed).min(total), total);
             last_report = std::time::Instant::now();
@@ -455,6 +511,8 @@ fn extract_zip<R: Read>(
     consumed: &AtomicU64,
     total: u64,
     progress: &mut dyn FnMut(u64, u64),
+    abort: &AtomicBool,
+    max_out: u64,
 ) -> Result<u64> {
     let mut src = src;
     let mut skipped: Vec<String> = Vec::new();
@@ -464,7 +522,7 @@ fn extract_zip<R: Read>(
             continue; // directory entry
         }
         if ZIP_IMAGE_EXTS.iter().any(|ext| name.ends_with(ext)) {
-            return copy_with_progress(&mut entry, dst, consumed, total, progress);
+            return copy_with_progress(&mut entry, dst, consumed, total, progress, abort, max_out);
         }
         skipped.push(entry.name().to_string());
         // Dropping the entry advances the stream past its data.
@@ -527,24 +585,29 @@ impl<R: BufRead> Read for LzmaAdapter<R> {
     }
 }
 
-/// Adapter for Unix `compress(1)` (`.Z`) streams.
+/// Streaming adapter for Unix `compress(1)` (`.Z`) streams.
 ///
 /// `.Z` wraps an LZW bitstream in a 3-byte header: `1F 9D` plus a flag byte
 /// whose low 5 bits hold the maximum code width (typically 16). Producers
 /// pack codes LSB-first and start at 9 bits, growing as the dictionary fills.
-/// `weezl` handles that LZW dialect; we just strip the header and pass the
-/// rest through.
-///
-/// Decode-into-memory pattern, same as `XzAdapter` and `LzmaAdapter`: `weezl`
-/// is buffer-oriented and `.Z` images are tiny in practice (no modern distro
-/// ships gigabyte-class Unix-compress media). If a user ever feeds in a
-/// monstrous one, switching to a streaming `weezl` adapter is mechanical.
-struct DotZAdapter {
-    inner: io::Cursor<Vec<u8>>,
+/// `weezl` handles that LZW dialect; we strip the header and feed the rest
+/// through its incremental `decode_bytes` API, so neither the compressed
+/// payload nor the decoded output ever has to live in memory whole (a
+/// crafted few-MB `.Z` can expand to many GB).
+struct DotZAdapter<R: Read> {
+    decoder: weezl::decode::Decoder,
+    src: R,
+    /// Compressed input staging buffer and the `[pos, len)` window of bytes
+    /// in it that the decoder has not consumed yet.
+    inbuf: Vec<u8>,
+    pos: usize,
+    len: usize,
+    /// The source hit EOF; drain whatever the decoder still buffers.
+    eof: bool,
 }
 
-impl DotZAdapter {
-    fn new<R: Read>(mut reader: R) -> Result<Self> {
+impl<R: Read> DotZAdapter<R> {
+    fn new(mut reader: R) -> Result<Self> {
         let mut hdr = [0u8; 3];
         reader.read_exact(&mut hdr).context("reading .Z header")?;
         if hdr[0] != 0x1F || hdr[1] != 0x9D {
@@ -556,25 +619,54 @@ impl DotZAdapter {
         if !(9..=16).contains(&max_bits) {
             anyhow::bail!(".Z header reports an out-of-range max-bits value: {max_bits}");
         }
-        let mut compressed = Vec::new();
-        reader
-            .read_to_end(&mut compressed)
-            .context("reading .Z payload")?;
-
         // BitOrder::Lsb + size 8: matches Unix compress (256-symbol alphabet,
         // codes packed LSB-first, dictionary grows from 9 bits up to max_bits).
-        let mut decoder = weezl::decode::Decoder::new(weezl::BitOrder::Lsb, 8);
-        let out = decoder
-            .decode(&compressed)
-            .map_err(|e| anyhow::anyhow!(".Z decode failed: {e:?}"))?;
         Ok(Self {
-            inner: io::Cursor::new(out),
+            decoder: weezl::decode::Decoder::new(weezl::BitOrder::Lsb, 8),
+            src: reader,
+            inbuf: vec![0u8; 64 * 1024],
+            pos: 0,
+            len: 0,
+            eof: false,
         })
     }
 }
 
-impl Read for DotZAdapter {
+impl<R: Read> Read for DotZAdapter<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(buf)
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        loop {
+            if self.pos == self.len && !self.eof {
+                self.pos = 0;
+                self.len = self.src.read(&mut self.inbuf)?;
+                self.eof = self.len == 0;
+            }
+            let result = self
+                .decoder
+                .decode_bytes(&self.inbuf[self.pos..self.len], buf);
+            self.pos += result.consumed_in;
+            match result.status {
+                Err(e) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(".Z decode failed: {e:?}"),
+                    ));
+                }
+                Ok(weezl::LzwStatus::Done) => return Ok(result.consumed_out),
+                Ok(weezl::LzwStatus::Ok) | Ok(weezl::LzwStatus::NoProgress) => {
+                    if result.consumed_out > 0 {
+                        return Ok(result.consumed_out);
+                    }
+                    if self.eof {
+                        // No more input and nothing buffered: clean end for
+                        // streams that omit an explicit end marker.
+                        return Ok(0);
+                    }
+                    // Otherwise loop: refill the input buffer and retry.
+                }
+            }
+        }
     }
 }

@@ -44,6 +44,9 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 # `.Z` into the decompress dispatch alongside xz / gz / bz2 / zst.
 weezl = "0.2"
 tempfile = "3"
+# statvfs for the decompression free-space guard (a zstd/xz bomb must stop
+# before it fills the cache filesystem). Same version the helper pins.
+nix = { version = "0.31", features = ["fs"] }
 
 [build-dependencies]
 # The translator C++ shim (include/translator_bridge.cpp) is added to

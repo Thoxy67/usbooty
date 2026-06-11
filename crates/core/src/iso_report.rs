@@ -246,7 +246,16 @@ impl DistroFamily {
             ("arch_", DistroFamily::Arch),
             ("arch-", DistroFamily::Arch),
         ] {
-            if label_low.contains(needle) {
+            // The loosest needles are common English substrings; require
+            // token boundaries for them so "...details..." never reads as
+            // Tails and "rockyou" never reads as Rocky. The rest stay plain
+            // substring scans (they are distinctive enough, and several are
+            // deliberate infixes like "kubuntu" ⊃ "ubuntu").
+            let hit = match needle {
+                "tails" | "rocky" => contains_token(&label_low, needle),
+                _ => label_low.contains(needle),
+            };
+            if hit {
                 return family;
             }
         }
@@ -367,6 +376,30 @@ impl DistroFamily {
             _ => None,
         }
     }
+}
+
+/// Whether `haystack` contains `needle` as a whole token: neither neighbour
+/// of the match may be ASCII alphanumeric. Used for the label needles that
+/// are common English substrings (see [`DistroFamily::detect`]).
+fn contains_token(haystack: &str, needle: &str) -> bool {
+    let mut from = 0;
+    while let Some(pos) = haystack[from..].find(needle) {
+        let start = from + pos;
+        let end = start + needle.len();
+        let before_ok = !haystack[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_ascii_alphanumeric());
+        let after_ok = !haystack[end..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric());
+        if before_ok && after_ok {
+            return true;
+        }
+        from = end;
+    }
+    false
 }
 
 /// The kind of operating system an ISO contains.
@@ -579,6 +612,25 @@ mod distro_family_tests {
                 "label `{label}` should detect as {expected:?}"
             );
         }
+    }
+
+    #[test]
+    fn loose_needles_require_token_boundaries() {
+        // "details" contains "tails"; "rockyou" contains "rocky". Neither
+        // may classify; the real labels (token-delimited) still must.
+        assert_eq!(
+            DistroFamily::detect("project details disc", &[]),
+            DistroFamily::Unknown
+        );
+        assert_eq!(
+            DistroFamily::detect("rockyou wordlists", &[]),
+            DistroFamily::Unknown
+        );
+        assert_eq!(DistroFamily::detect("TAILS 6.5", &[]), DistroFamily::Tails);
+        assert_eq!(
+            DistroFamily::detect("Rocky-10-1-x86_64-dvd", &[]),
+            DistroFamily::Rocky
+        );
     }
 
     #[test]

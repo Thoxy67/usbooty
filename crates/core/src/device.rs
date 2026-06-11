@@ -62,7 +62,9 @@ impl DeviceInfo {
         if let Some(s) = self.serial.as_ref().filter(|s| !s.is_empty()) {
             // Short serials show in full; long enclosure serials get truncated
             // so the dropdown row doesn't bloat past the combo's width.
-            let shown = if s.len() > 14 { &s[..14] } else { s.as_str() };
+            // Truncate on a char count, not a byte index: a multibyte char
+            // straddling the cut would panic the whole device picker.
+            let shown: String = s.chars().take(14).collect();
             parts.push(format!("S/N {shown}"));
         }
         parts.push(self.path.clone());
@@ -76,6 +78,12 @@ pub fn format_size(bytes: u64) -> String {
     let mut value = bytes as f64;
     let mut unit = 0;
     while value >= 1000.0 && unit < UNITS.len() - 1 {
+        value /= 1000.0;
+        unit += 1;
+    }
+    // `{:.1}` rounds, so 999.95..1000.0 would render as "1000.0"; bump it
+    // into the next unit instead.
+    if value >= 999.95 && unit < UNITS.len() - 1 {
         value /= 1000.0;
         unit += 1;
     }
@@ -94,5 +102,28 @@ mod tests {
     fn formats_sizes() {
         assert_eq!(format_size(512), "512 B");
         assert_eq!(format_size(30_752_000_000), "30.8 GB");
+    }
+
+    #[test]
+    fn rounding_never_crosses_a_unit_boundary() {
+        // 999_950 B would render as "1000.0 KB" without the bump.
+        assert_eq!(format_size(999_950), "1.0 MB");
+        assert_eq!(format_size(999_949), "999.9 KB");
+        assert_eq!(format_size(999_950_000_000), "1.0 TB");
+    }
+
+    #[test]
+    fn multibyte_serials_do_not_panic_the_detail_line() {
+        let dev = DeviceInfo {
+            path: "/dev/sdz".into(),
+            model: "Test".into(),
+            size: 1,
+            removable: true,
+            bus: None,
+            // 13 ASCII bytes then a 3-byte char straddling byte index 14.
+            serial: Some("0123456789012\u{20AC}xyz".into()),
+            vendor: None,
+        };
+        assert!(dev.detail().contains("S/N 0123456789012\u{20AC}"));
     }
 }

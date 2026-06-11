@@ -1265,7 +1265,7 @@ ApplicationWindow {
             // The TextArea renders a potentially large RichText document.
             // Don't build it until the panel is actually shown; when the user
             // collapses the log we unload it again (it repopulates from
-            // app.logHtmlSnapshot() on the next load).
+            // app.logHtmlTail() on the next load).
             contentItem: Loader {
                 active: window.logVisible
                 sourceComponent: ColumnLayout {
@@ -1350,16 +1350,34 @@ ApplicationWindow {
                         // line via `appendLogHtml` (so appends stay cheap and the
                         // whole document is never re-parsed). This panel is in a
                         // Loader that unloads when collapsed, so on (re)load we
-                        // repopulate from the snapshot, then append live lines.
-                        Component.onCompleted: text = app.logHtmlSnapshot()
+                        // repopulate from the tail snapshot, then append live
+                        // lines. The rendered document is capped: each append
+                        // re-lays-out the whole RichText document, so a job
+                        // that logs 10^4+ lines would degrade the UI. When the
+                        // cap is hit the view reloads a half-cap tail; "Save
+                        // log" still writes the full Rust-side buffer.
+                        property int maxRenderedLines: 2000
+                        property int renderedLines: 0
+                        function loadTail(lines) {
+                            var html = app.logHtmlTail(lines)
+                            renderedLines = (html.match(/<div>/g) || []).length
+                            text = html
+                        }
+                        Component.onCompleted: loadTail(maxRenderedLines)
                         Connections {
                             target: app
                             function onAppendLogHtml(html) {
+                                if (logArea.renderedLines >= logArea.maxRenderedLines) {
+                                    logArea.loadTail(logArea.maxRenderedLines / 2)
+                                }
                                 logArea.append(html)
+                                logArea.renderedLines++
                             }
                             function onLogNonEmptyChanged() {
-                                if (!app.logNonEmpty)
+                                if (!app.logNonEmpty) {
                                     logArea.clear()
+                                    logArea.renderedLines = 0
+                                }
                             }
                         }
                         // Smart autoscroll: only snap to the bottom when the

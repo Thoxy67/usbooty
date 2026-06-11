@@ -15,6 +15,21 @@ use std::time::{Duration, SystemTime};
 /// How long a cached resource is trusted before a fresh check is made.
 const TTL: Duration = Duration::from_secs(7 * 24 * 3600);
 
+/// Whole-call timeout for every fetch in this module. The payloads are small
+/// (a 1 MiB bootloader image, DBX updates, FreeDOS zips of a few MiB), and
+/// `ureq` 3 defaults to *no* timeout: without this a stalled connection
+/// inside `run_job`'s resource phase wedges the app in `busy` forever, with
+/// no helper stdin for Cancel to reach.
+const HTTP_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// A GET request builder for `url` carrying the module-wide timeout.
+fn http_get(url: &str) -> ureq::RequestBuilder<ureq::typestate::WithoutBody> {
+    ureq::get(url)
+        .config()
+        .timeout_global(Some(HTTP_TIMEOUT))
+        .build()
+}
+
 /// A resource that can be fetched from the Rufus repository.
 #[derive(Clone, Copy, Debug)]
 pub enum Resource {
@@ -175,7 +190,7 @@ enum Fetch {
 
 /// Perform a conditional HTTP GET for `resource`.
 fn download(resource: Resource, etag: Option<&str>) -> Result<Fetch> {
-    let mut request = ureq::get(resource.url());
+    let mut request = http_get(resource.url());
     if let Some(tag) = etag {
         request = request.header("If-None-Match", tag);
     }
@@ -352,7 +367,7 @@ fn ensure_url(url: &str, name: &str) -> Result<PathBuf> {
         return Ok(file);
     }
 
-    let mut req = ureq::get(url);
+    let mut req = http_get(url);
     if let Some(tag) = meta.etag.as_deref() {
         req = req.header("If-None-Match", tag);
     }
@@ -415,7 +430,7 @@ fn latest_release_zip(repo: &str) -> Result<String> {
     }
 
     let api = format!("https://api.github.com/repos/{repo}/releases/latest");
-    let mut response = ureq::get(&api)
+    let mut response = http_get(&api)
         // GitHub requires a User-Agent; ureq sets one by default but be explicit.
         .header("User-Agent", concat!("usbooty/", env!("CARGO_PKG_VERSION")))
         .header("Accept", "application/vnd.github+json")

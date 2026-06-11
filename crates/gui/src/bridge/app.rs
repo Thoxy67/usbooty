@@ -70,9 +70,25 @@ impl qobject::AppController {
         self.as_mut().set_log_non_empty(false);
     }
 
-    /// The full activity log as HTML, for the QML view to repopulate on load.
-    pub fn log_html_snapshot(&self) -> QString {
-        QString::from(&self.rust().log_html)
+    /// The last `max_lines` activity-log lines as HTML, for the QML view to
+    /// (re)populate from. Bounding what the view renders keeps the RichText
+    /// document's relayout cost flat on jobs that log every copied file; the
+    /// plain-text buffer behind "Save log" stays complete.
+    pub fn log_html_tail(&self, max_lines: i32) -> QString {
+        let html = &self.rust().log_html;
+        // Each line is one `<div>…</div>` block (see push_log_line); walk
+        // backwards over the opening tags to find where the tail starts.
+        let mut pos = html.len();
+        for _ in 0..max_lines.max(0) {
+            match html[..pos].rfind("<div>") {
+                Some(p) if p > 0 => pos = p,
+                _ => {
+                    pos = 0;
+                    break;
+                }
+            }
+        }
+        QString::from(&html[pos..])
     }
 
     /// Apply CLI startup args after the QML engine has loaded.

@@ -1,12 +1,10 @@
 //! `AppController` methods that build a [`usbooty_core::Job`] and drive the
 //! privileged helper: the write/format/check/backup lifecycle and cancellation.
 
-use std::sync::{Arc, Mutex};
-
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use usbooty_core::{
-    CheckMode, FileSystem, Job, JobOptions, PartitionTable, Persistence, WimStrategy,
+    CheckMode, DeviceInfo, FileSystem, Job, JobOptions, PartitionTable, Persistence, WimStrategy,
 };
 
 use super::helpers::unmount_device_partitions;
@@ -228,12 +226,18 @@ impl qobject::AppController {
         };
 
         self.as_mut().init_job_ui("Running…");
+        self.spawn_helper_job(job, selected);
+    }
 
-        let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
-        let handle = JobHandle {
-            stdin: stdin_slot.clone(),
-            download_abort: None,
-        };
+    /// Park a [`JobHandle`] and run the shared destructive-job pre-flight on
+    /// a worker thread: re-enumerate and re-verify the chosen device, ask the
+    /// desktop session to unmount its partitions, then hand off to the
+    /// runner. Shared by `start`, `start_check`, and `start_backup` so every
+    /// device-touching job gets the same safety re-scan.
+    fn spawn_helper_job(mut self: core::pin::Pin<&mut Self>, job: Job, selected: DeviceInfo) {
+        let handle = JobHandle::new();
+        let stdin_slot = handle.stdin.clone();
+        let cancel = handle.cancel.clone();
         let qt_thread = self.qt_thread();
         let show_fixed = *self.show_fixed_disks();
 
@@ -284,7 +288,14 @@ impl qobject::AppController {
                 );
                 return;
             }
-            crate::runner::run_job(job, qt_thread, stdin_slot);
+            // A cancel clicked during the (multi-second) pre-flight above has
+            // no helper stdin to land on; honour the flag before any further
+            // work. The runner re-checks it around the helper spawn too.
+            if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                abort_start(&qt_thread, "Cancelled.".into(), false);
+                return;
+            }
+            crate::runner::run_job(job, qt_thread, stdin_slot, cancel);
         });
 
         self.as_mut().rust_mut().job = Some(handle);
@@ -312,17 +323,9 @@ impl qobject::AppController {
         };
 
         self.as_mut().init_job_ui("Checking device…");
-
-        let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
-        let handle = JobHandle {
-            stdin: stdin_slot.clone(),
-            download_abort: None,
-        };
-        let qt_thread = self.qt_thread();
-        std::thread::spawn(move || {
-            crate::runner::run_job(job, qt_thread, stdin_slot);
-        });
-        self.as_mut().rust_mut().job = Some(handle);
+        // The pattern check overwrites the device; give it the same
+        // pre-flight (identity re-verify + unmount) as start().
+        self.spawn_helper_job(job, selected);
     }
 
     /// Build a [`Job::Backup`] for the currently-selected device and run it.
@@ -354,33 +357,27 @@ impl qobject::AppController {
         };
 
         self.as_mut().init_job_ui("Backing up…");
-
-        let stdin_slot: Arc<Mutex<Option<std::process::ChildStdin>>> = Arc::new(Mutex::new(None));
-        let handle = JobHandle {
-            stdin: stdin_slot.clone(),
-            download_abort: None,
-        };
-        let qt_thread = self.qt_thread();
-        std::thread::spawn(move || {
-            crate::runner::run_job(job, qt_thread, stdin_slot);
-        });
-        self.as_mut().rust_mut().job = Some(handle);
+        // Reading the device is non-destructive, but the unmount pre-flight
+        // still matters: a backup taken while dirty pages are unflushed
+        // snapshots an inconsistent filesystem.
+        self.spawn_helper_job(job, selected);
     }
 
-    /// Ask the running job to abort. Helper-driven jobs hear about it through
-    /// a `cancel` line on the helper's stdin; the Windows-ISO downloader
-    /// polls an atomic flag instead, so flip both.
+    /// Ask the running job to abort. A running helper hears about it through
+    /// a `cancel` line on its stdin; everything that happens before or
+    /// without a helper (pre-flight, resource downloads, decompression,
+    /// the Windows-ISO download) polls the handle's atomic flag, so flip
+    /// both unconditionally; a cancel must never be lost just because the
+    /// helper isn't up yet.
     pub fn cancel(mut self: core::pin::Pin<&mut Self>) {
         if let Some(job) = &self.rust().job {
+            job.cancel.store(true, std::sync::atomic::Ordering::SeqCst);
             if let Ok(mut guard) = job.stdin.lock()
                 && let Some(stdin) = guard.as_mut()
             {
                 use std::io::Write;
                 let _ = writeln!(stdin, "cancel");
                 let _ = stdin.flush();
-            }
-            if let Some(abort) = &job.download_abort {
-                abort.store(true, std::sync::atomic::Ordering::SeqCst);
             }
         }
         self.as_mut().set_status(QString::from("Cancelling…"));

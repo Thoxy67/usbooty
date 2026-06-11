@@ -243,8 +243,22 @@ fn unescape_proc_mounts(field: &str) -> String {
     String::from_utf8(out).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
+/// Mountpoint locations the helper is allowed to unmount on its own:
+/// the standard removable-media directories. A target partition mounted
+/// anywhere else (`/`, `/home`, a custom `/data`, ...) means the device
+/// hosts more than removable media; the job must refuse to proceed rather
+/// than unmount (or worse, lazily detach) a live system path as root.
+fn may_unmount(mountpoint: &str) -> bool {
+    mountpoint == "/mnt"
+        || ["/run/media/", "/media/", "/mnt/"]
+            .iter()
+            .any(|prefix| mountpoint.starts_with(prefix))
+}
+
 /// Unmount every filesystem currently mounted from `device` or any of its
-/// partitions. Returns the number of filesystems unmounted.
+/// partitions. Returns the number of filesystems unmounted. Refuses (errors
+/// out) when any of those mounts sits outside the removable-media
+/// directories; see [`may_unmount`].
 pub fn unmount_all(device: &Path) -> Result<usize> {
     let device = device.to_string_lossy();
     let mounts = std::fs::read_to_string("/proc/mounts").context("reading /proc/mounts")?;
@@ -271,6 +285,13 @@ pub fn unmount_all(device: &Path) -> Result<usize> {
     let mut count = 0;
     for mountpoint in targets {
         let mountpoint = mountpoint.as_str();
+        if !may_unmount(mountpoint) {
+            bail!(
+                "{} is mounted at {mountpoint}, which is not a removable-media \
+                 location; unmount it manually and try again",
+                device,
+            );
+        }
         match nix::mount::umount(mountpoint) {
             Ok(()) => {
                 emit::log(format!("Unmounted {mountpoint}"));

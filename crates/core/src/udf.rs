@@ -28,6 +28,18 @@ use std::io::{Read, Result as IoResult, Seek, SeekFrom};
 /// UDF block size for optical and install media.
 pub const BLOCK: u64 = 2048;
 
+/// Ceiling on the bytes materialized for one file by [`UdfFs::read_file`] /
+/// [`UdfFs::read_file_range`]. `information_length` comes straight from
+/// untrusted image bytes, and sparse extents zero-fill without any disk
+/// read, so an uncapped read is an instant multi-gigabyte allocation from a
+/// few crafted descriptor bytes. Everything this reader is used for (EFI
+/// binaries, boot configs, WIM headers/tails) is far below this.
+const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Same ceiling for a directory's File Identifier area; a real directory
+/// of this size would hold hundreds of thousands of entries.
+const MAX_DIR_BYTES: u64 = 16 * 1024 * 1024;
+
 /// Tag identifiers we recognise (ECMA-167 / OSTA UDF).
 const TAG_PVD: u16 = 1;
 const TAG_AVDP: u16 = 2;
@@ -165,7 +177,7 @@ impl<R: Read + Seek> UdfFs<R> {
         let entry = parent
             .into_iter()
             .find(|e| !e.is_dir && e.name.eq_ignore_ascii_case(name))?;
-        self.read_file_data(entry.icb).ok()
+        self.read_file_data(entry.icb, MAX_FILE_BYTES).ok()
     }
 
     /// Read up to `len` bytes of a file starting at byte `start`, reading only
@@ -221,7 +233,7 @@ impl<R: Read + Seek> UdfFs<R> {
         if let Some(cached) = self.dir_cache.get(&icb.block) {
             return Some(cached.clone());
         }
-        let data = self.read_file_data(icb).ok()?;
+        let data = self.read_file_data(icb, MAX_DIR_BYTES).ok()?;
         let mut out = Vec::new();
         let mut p = 0;
         while p + 38 <= data.len() {
@@ -277,9 +289,16 @@ impl<R: Read + Seek> UdfFs<R> {
     }
 
     /// Read the data bytes of a file whose File Entry lives at `icb`.
-    fn read_file_data(&mut self, icb: ExtentRef) -> IoResult<Vec<u8>> {
+    /// `max_bytes` bounds the allocation: `information_length` is untrusted
+    /// image data, so a claim past the cap is rejected instead of honoured.
+    fn read_file_data(&mut self, icb: ExtentRef, max_bytes: u64) -> IoResult<Vec<u8>> {
         let (ad_type, ads, information_length) = self.file_entry_ads(icb)?;
-        let mut out = Vec::with_capacity(information_length.min(64 * 1024 * 1024) as usize);
+        if information_length > max_bytes {
+            return Err(std::io::Error::other(format!(
+                "refusing to materialize {information_length} bytes (cap {max_bytes})"
+            )));
+        }
+        let mut out = Vec::with_capacity(information_length as usize);
         match ad_type {
             // Inline / embedded data: the file's bytes live where the
             // allocation descriptors would be. Common for very small files.
@@ -303,11 +322,16 @@ impl<R: Read + Seek> UdfFs<R> {
     /// reading only the overlapping extents. See [`Self::read_file_range`].
     fn read_file_data_range(&mut self, icb: ExtentRef, start: u64, len: u64) -> IoResult<Vec<u8>> {
         let (ad_type, ads, information_length) = self.file_entry_ads(icb)?;
-        let end = start.saturating_add(len).min(information_length);
+        // The window length is caller-controlled and small in practice; the
+        // cap keeps a future caller (or a hostile `information_length`
+        // stretching the clamp below) from materializing gigabytes.
+        let end = start
+            .saturating_add(len.min(MAX_FILE_BYTES))
+            .min(information_length);
         if start >= end {
             return Ok(Vec::new());
         }
-        let mut out = Vec::with_capacity((end - start).min(64 * 1024 * 1024) as usize);
+        let mut out = Vec::with_capacity((end - start) as usize);
         match ad_type {
             3 => {
                 let s = (start as usize).min(ads.len());

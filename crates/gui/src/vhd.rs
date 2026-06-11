@@ -77,7 +77,12 @@ pub fn inspect(path: &Path) -> Result<VhdKind> {
 ///
 /// Cache key follows the same shape as [`crate::decompress`]: a stable hash
 /// of the source's canonical path / size / mtime so repeated picks are free.
-pub fn strip_footer_to_cache(src: &Path) -> Result<PathBuf> {
+/// `abort` is polled between copy chunks so a Cancel click stops the
+/// (potentially many-GB) unwrap promptly.
+pub fn strip_footer_to_cache(
+    src: &Path,
+    abort: &std::sync::atomic::AtomicBool,
+) -> Result<PathBuf> {
     let kind = inspect(src)?;
     let data_size = match kind {
         VhdKind::Fixed { data_size } => data_size,
@@ -119,6 +124,9 @@ pub fn strip_footer_to_cache(src: &Path) -> Result<PathBuf> {
     let mut remaining = data_size;
     let mut buf = vec![0u8; 1024 * 1024];
     while remaining > 0 {
+        if abort.load(std::sync::atomic::Ordering::SeqCst) {
+            bail!("cancelled");
+        }
         let want = remaining.min(buf.len() as u64) as usize;
         input
             .read_exact(&mut buf[..want])

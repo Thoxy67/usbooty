@@ -48,9 +48,14 @@ impl qobject::AppController {
                     self.as_mut().set_iso_path(QString::default());
                     self.as_mut()
                         .set_status(QString::from("Unwrapping fixed VHD…"));
+                    // Park a JobHandle so the Cancel button can abort the
+                    // (potentially many-GB) unwrap loop.
+                    let handle = super::JobHandle::new();
+                    let abort = handle.cancel.clone();
+                    self.as_mut().rust_mut().job = Some(handle);
                     let qt = self.qt_thread();
                     std::thread::spawn(move || {
-                        crate::runner::strip_vhd_then_analyze(qt, path_buf);
+                        crate::runner::strip_vhd_then_analyze(qt, path_buf, abort);
                     });
                     return;
                 }
@@ -65,9 +70,14 @@ impl qobject::AppController {
                     .set_iso_summary(QString::from("Analyzing source image…"));
                 self.as_mut()
                     .set_status(QString::from("Analyzing source image…"));
+                // Analysis is bounded but can still take seconds on a large
+                // image; a parked handle lets Cancel discard the result.
+                let handle = super::JobHandle::new();
+                let abort = handle.cancel.clone();
+                self.as_mut().rust_mut().job = Some(handle);
                 let qt = self.qt_thread();
                 std::thread::spawn(move || {
-                    crate::runner::analyze_then_apply(qt, path_buf);
+                    crate::runner::analyze_then_apply(qt, path_buf, Some(abort));
                 });
             }
             _ => {
@@ -80,9 +90,14 @@ impl qobject::AppController {
                 self.as_mut().set_iso_path(QString::default());
                 self.as_mut()
                     .set_status(QString::from("Decompressing source image…"));
+                // Park a JobHandle so the Cancel button can abort the
+                // decompression of a many-GB image picked by mistake.
+                let handle = super::JobHandle::new();
+                let abort = handle.cancel.clone();
+                self.as_mut().rust_mut().job = Some(handle);
                 let qt = self.qt_thread();
                 std::thread::spawn(move || {
-                    crate::runner::decompress_then_analyze(qt, path_buf);
+                    crate::runner::decompress_then_analyze(qt, path_buf, abort);
                 });
             }
         }

@@ -1670,6 +1670,7 @@ dependencies = [
  "directories",
  "flate2",
  "md-5",
+ "nix",
  "serde",
  "serde_json",
  "sha1",

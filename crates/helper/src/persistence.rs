@@ -129,6 +129,63 @@ pub fn setup_inline(data_mount: &Path, kind: PersistenceKind) -> Result<()> {
     }
 }
 
+/// A filename/argument character: an occurrence of an anchor followed by one
+/// of these is a *longer* token (e.g. `/casper/vmlinuz` inside
+/// `/casper/vmlinuz.efi`), not a match. `/` is deliberately not included so
+/// prefix anchors like `file=/cdrom/preseed` keep matching the full
+/// `file=/cdrom/preseed/ubuntu.seed` argument, as Rufus's anchors do.
+fn is_token_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')
+}
+
+/// Whether an occurrence of `marker` ending at byte `end` of `content` sits
+/// on a token boundary. Markers that already end in a delimiter (such as the
+/// `archisobasedir=` prefix anchors) match anywhere by design.
+fn anchored_at(content: &str, marker: &str, end: usize) -> bool {
+    if !marker.chars().next_back().is_some_and(is_token_char) {
+        return true;
+    }
+    !content[end..].chars().next().is_some_and(is_token_char)
+}
+
+/// Whether `content` contains `marker` on a token boundary (see
+/// [`anchored_at`]). A bare substring `contains` would also match inside a
+/// longer token, e.g. the `/casper/vmlinuz` anchor inside
+/// `/casper/vmlinuz.efi`, and the subsequent replace would corrupt that
+/// kernel path into `/casper/vmlinuz persistent.efi`.
+fn contains_anchored(content: &str, marker: &str) -> bool {
+    let mut from = 0;
+    while let Some(pos) = content[from..].find(marker) {
+        let start = from + pos;
+        let end = start + marker.len();
+        if anchored_at(content, marker, end) {
+            return true;
+        }
+        from = end;
+    }
+    false
+}
+
+/// `content.replace(marker, replacement)` restricted to occurrences on a
+/// token boundary; the counterpart of [`contains_anchored`].
+fn replace_anchored(content: &str, marker: &str, replacement: &str) -> String {
+    let mut out = String::with_capacity(content.len() + replacement.len());
+    let mut from = 0;
+    while let Some(pos) = content[from..].find(marker) {
+        let start = from + pos;
+        let end = start + marker.len();
+        out.push_str(&content[from..start]);
+        if anchored_at(content, marker, end) {
+            out.push_str(replacement);
+        } else {
+            out.push_str(marker);
+        }
+        from = end;
+    }
+    out.push_str(&content[from..]);
+    out
+}
+
 /// An ordered anchor cascade: for each boot-config file, the *first* pair
 /// whose marker is present is applied and the rest are skipped. Mirrors
 /// Rufus's `iso.c` fallback chain, where one config syntax (say, Mint's
@@ -271,14 +328,14 @@ fn patch_dir(dir: &Path, cascade: PatchCascade, scrub: &[&str], patched: &mut u3
                 continue;
             };
             for (marker, replacement) in cascade {
-                if !content.contains(marker) {
+                if !contains_anchored(&content, marker) {
                     continue;
                 }
                 // First matching anchor decides this file; if its
                 // replacement is already present the file was patched on a
                 // previous run (idempotence).
                 if !content.contains(replacement) {
-                    let mut new_content = content.replace(marker, replacement);
+                    let mut new_content = replace_anchored(&content, marker, replacement);
                     for token in scrub {
                         new_content = new_content.replace(token, "");
                     }
@@ -392,6 +449,53 @@ mod tests {
         let out = std::fs::read_to_string(&cfg).unwrap();
         assert_eq!(out.matches("persistent").count(), 1, "{out}");
         assert!(out.contains("boot=casper persistent"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn anchors_do_not_match_inside_longer_tokens() {
+        // `/casper/vmlinuz` must not match inside `/casper/vmlinuz.efi`:
+        // patching there would corrupt the kernel path into
+        // `/casper/vmlinuz persistent.efi` and the stick would not boot.
+        assert!(!contains_anchored(
+            "linux /casper/vmlinuz.efi quiet",
+            "/casper/vmlinuz"
+        ));
+        assert_eq!(
+            replace_anchored(
+                "linux /casper/vmlinuz.efi quiet",
+                "/casper/vmlinuz",
+                "/casper/vmlinuz persistent"
+            ),
+            "linux /casper/vmlinuz.efi quiet"
+        );
+        // Plain occurrences (followed by whitespace or end) still match.
+        assert!(contains_anchored("linux /casper/vmlinuz quiet", "/casper/vmlinuz"));
+        assert!(contains_anchored("linux /casper/vmlinuz", "/casper/vmlinuz"));
+        // Prefix anchors that continue with `/` (deeper path) still match,
+        // mirroring Rufus's `file=/cdrom/preseed` behaviour.
+        assert!(contains_anchored(
+            "file=/cdrom/preseed/ubuntu.seed boot=casper",
+            "file=/cdrom/preseed"
+        ));
+        // Anchors ending in a delimiter are prefix anchors by design.
+        assert!(contains_anchored(
+            "cow_label=X archisobasedir=arch",
+            "archisobasedir="
+        ));
+    }
+
+    #[test]
+    fn vmlinuz_efi_config_is_left_unpatched() {
+        let dir = std::env::temp_dir().join(format!("usbooty-efi-cfg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("boot/grub")).unwrap();
+        let cfg = dir.join("boot/grub/grub.cfg");
+        let original = "linux /casper/vmlinuz.efi quiet splash ---\n";
+        std::fs::write(&cfg, original).unwrap();
+
+        patch_boot_config(&dir, PersistenceKind::CasperRw).unwrap();
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), original);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

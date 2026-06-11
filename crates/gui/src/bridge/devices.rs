@@ -45,11 +45,21 @@ impl qobject::AppController {
         // Re-find the previously-selected device; fall back to the first entry
         // only when it is gone (or nothing was selected yet).
         let selected = prev_path
+            .clone()
             .and_then(|path| devices.iter().position(|d| d.path == path))
             .map(|i| i as i32)
             .unwrap_or(if devices.is_empty() { -1 } else { 0 });
         if *self.selected_device() != selected {
             self.as_mut().set_selected_device(selected);
+        }
+        // The selection landed on a *different* device (the old one is gone,
+        // or nothing was selected before): any SMART warning on screen
+        // belongs to the previous device, not this one.
+        let now_path = (selected >= 0)
+            .then(|| devices.get(selected as usize).map(|d| d.path.clone()))
+            .flatten();
+        if now_path != prev_path {
+            self.as_mut().set_smart_warning(QString::default());
         }
 
         self.as_mut().rust_mut().device_list = devices;
@@ -111,6 +121,12 @@ impl qobject::AppController {
             }
             let _ = qt.queue(
                 move |mut ctrl: core::pin::Pin<&mut qobject::AppController>| {
+                    // A slow probe can land after the user moved to another
+                    // device; only publish if the probed path is still the
+                    // selected one, so device B never wears device A's warning.
+                    if ctrl.selected_info().map(|d| d.path.as_str()) != Some(device.path.as_str()) {
+                        return;
+                    }
                     ctrl.as_mut().set_smart_warning(QString::from(&warning));
                 },
             );
@@ -245,6 +261,11 @@ impl qobject::AppController {
         std::thread::spawn(move || {
             let text = collect_inspect_text(&path);
             let _ = qt.queue(move |mut ctrl: core::pin::Pin<&mut Self>| {
+                // Two rapid inspects race; only the one matching the current
+                // selection may paint the dialog (same guard as probe_smart).
+                if ctrl.selected_info().map(|d| d.path.as_str()) != Some(path.as_str()) {
+                    return;
+                }
                 ctrl.as_mut().set_inspect_text(QString::from(&text));
             });
         });

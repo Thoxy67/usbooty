@@ -1,9 +1,6 @@
 //! `AppController` methods for the Windows-ISO download dialog (a port of
 //! Rufus's Fido) and assembling the installer customization.
 
-use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
-
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use usbooty_core::WindowsSetup;
@@ -101,17 +98,13 @@ impl qobject::AppController {
         let url = option.url.clone();
         self.as_mut().init_job_ui("Downloading Windows ISO…");
 
-        let qt = self.qt_thread();
-        let abort = Arc::new(AtomicBool::new(false));
-        let abort_clone = abort.clone();
-        std::thread::spawn(move || crate::runner::download_windows_url(qt, url, abort_clone));
-
         // Park a JobHandle so cancel() can reach the download; the
         // stdin slot stays empty because there is no helper to talk to.
-        self.as_mut().rust_mut().job = Some(JobHandle {
-            stdin: Arc::new(Mutex::new(None)),
-            download_abort: Some(abort),
-        });
+        let handle = JobHandle::new();
+        let abort = handle.cancel.clone();
+        let qt = self.qt_thread();
+        std::thread::spawn(move || crate::runner::download_windows_url(qt, url, abort));
+        self.as_mut().rust_mut().job = Some(handle);
     }
 
     /// Open Microsoft's official download page in the system browser: the

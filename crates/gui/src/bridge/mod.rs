@@ -334,11 +334,14 @@ pub mod qobject {
         /// Called from QML once the engine has finished loading.
         #[qinvokable]
         fn apply_startup_args(self: Pin<&mut AppController>);
-        /// Return the activity log as accumulated HTML. The QML view calls
-        /// this to repopulate itself when its (lazily-loaded) panel is shown,
-        /// since the live `append_log_html` stream only carries new lines.
+        /// Return the last `max_lines` activity-log lines as accumulated
+        /// HTML. The QML view calls this to repopulate itself when its
+        /// (lazily-loaded) panel is shown, and to reload a trimmed tail when
+        /// the rendered line cap is reached, since the live
+        /// `append_log_html` stream only carries new lines. "Save log"
+        /// always writes the full Rust-side buffer regardless.
         #[qinvokable]
-        fn log_html_snapshot(self: &AppController) -> QString;
+        fn log_html_tail(self: &AppController, max_lines: i32) -> QString;
         /// Empty the activity log (both the saved plain text and the HTML
         /// buffer) and clear the non-empty flag; the view reacts by clearing.
         #[qinvokable]
@@ -386,12 +389,33 @@ pub mod qobject {
 /// Handle to a running job, kept so [`AppController::cancel`] can reach it.
 ///
 /// Helper-driven jobs (DD, partitioned, format, backup, check) cancel by
-/// writing `cancel` to the helper's stdin. The Windows-ISO download runs in
-/// a plain worker thread instead, with no helper, so it uses an atomic flag
-/// that the download loop polls.
+/// writing `cancel` to the helper's stdin, but the helper only exists once
+/// the pre-flight (device re-scan, desktop unmount, resource downloads,
+/// polkit prompt) has finished. The `cancel` flag covers that whole window:
+/// it is always set by [`AppController::cancel`] and polled by the
+/// pre-flight worker, the runner (before and right after spawning the
+/// helper), the decompress / VHD-unwrap loops, and the Windows-ISO
+/// downloader, none of which have a helper stdin to write to.
 pub struct JobHandle {
-    /// The helper's stdin; writing `cancel` here aborts it.
+    /// The helper's stdin; writing `cancel` here aborts a running helper.
     pub stdin: Arc<Mutex<Option<std::process::ChildStdin>>>,
-    /// Cancellation flag for the Windows-ISO download.
-    pub download_abort: Option<Arc<AtomicBool>>,
+    /// Cross-thread cancellation flag for everything that happens outside
+    /// (or before) the helper process.
+    pub cancel: Arc<AtomicBool>,
+}
+
+impl JobHandle {
+    /// A fresh handle with an empty stdin slot and an unset cancel flag.
+    pub fn new() -> Self {
+        JobHandle {
+            stdin: Arc::new(Mutex::new(None)),
+            cancel: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+impl Default for JobHandle {
+    fn default() -> Self {
+        Self::new()
+    }
 }

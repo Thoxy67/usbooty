@@ -190,10 +190,22 @@ fn write_mbr<D: Read + Write + Seek>(
     filesystem: FileSystem,
     sector_size: u64,
 ) -> Result<()> {
+    // Mirror the guard the other MBR builders carry: past 2^32 sectors the
+    // type can't express the size and `mbr.disk_size` would be silently
+    // wrong, so reject instead of writing a mis-sized table.
+    let device_bytes = device.seek(SeekFrom::End(0)).context("sizing the device")?;
+    device.seek(SeekFrom::Start(0))?;
+    u32::try_from(device_bytes / sector_size)
+        .context("the device exceeds the MBR 2 TiB sector limit; use GPT instead")?;
+
     let mut mbr = mbrman::MBR::new_from(device, sector_size as u32, random_bytes::<4>()?)
         .context("creating MBR")?;
     let start = align_sectors(sector_size) as u32;
     let sectors = mbr.disk_size.saturating_sub(start);
+    anyhow::ensure!(
+        sectors > 0,
+        "the device is too small for an MBR partition (under 1 MiB)"
+    );
     let end = start + sectors - 1;
 
     mbr[1] = mbrman::MBRPartitionEntry {
@@ -609,6 +621,22 @@ mod tests {
         // FAT16 type byte: CHS variant inside the horizon, LBA variant past it.
         assert_eq!(mbr_type_byte(FileSystem::Fat16, CHS_HORIZON - 1), 0x06);
         assert_eq!(mbr_type_byte(FileSystem::Fat16, CHS_HORIZON), 0x0E);
+    }
+
+    #[test]
+    fn mbr_on_a_sub_1mib_device_fails_loudly() {
+        // Smaller than the 1 MiB alignment: zero usable sectors. The old
+        // code underflowed `start + sectors - 1` here instead of erroring.
+        let mut disk = disk(512 * 1024);
+        let err = write_single_partition(
+            &mut disk,
+            PartitionTable::Mbr,
+            FileSystem::Fat32,
+            "X",
+            SECTOR,
+        )
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("too small"), "{err:#}");
     }
 
     #[test]

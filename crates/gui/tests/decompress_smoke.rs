@@ -38,7 +38,8 @@ fn assert_roundtrip(compressed_name: &str) {
     };
     // Re-export the GUI crate's modules; these tests live in the crate's
     // own `tests/` so they only see the public surface.
-    let out = usbooty_gui::decompress::decompress_to_cache(&src, |_, _| {})
+    let abort = std::sync::atomic::AtomicBool::new(false);
+    let out = usbooty_gui::decompress::decompress_to_cache(&src, &abort, |_, _| {})
         .unwrap_or_else(|e| panic!("decompress {compressed_name}: {e:#}"));
     let actual = std::fs::read(&out).expect("reading cached output");
     assert_eq!(
@@ -109,7 +110,8 @@ fn z_roundtrip_synthetic() {
     let dot_z = dir.path().join("synthetic.Z");
     std::fs::write(&dot_z, &bytes).unwrap();
 
-    let out = usbooty_gui::decompress::decompress_to_cache(&dot_z, |_, _| {})
+    let abort = std::sync::atomic::AtomicBool::new(false);
+    let out = usbooty_gui::decompress::decompress_to_cache(&dot_z, &abort, |_, _| {})
         .expect("decompress_to_cache");
     let recovered = std::fs::read(&out).unwrap();
     assert_eq!(recovered, payload, "synthetic .Z round-trip lost bytes");
@@ -144,7 +146,8 @@ fn fixed_vhd_strips_to_original_bytes() {
 
     let vhd = dir.path().join("smoke.vhd");
     std::fs::write(&vhd, &bytes).unwrap();
-    let out = usbooty_gui::vhd::strip_footer_to_cache(&vhd).expect("strip_footer_to_cache");
+    let abort = std::sync::atomic::AtomicBool::new(false);
+    let out = usbooty_gui::vhd::strip_footer_to_cache(&vhd, &abort).expect("strip_footer_to_cache");
     let recovered = std::fs::read(&out).unwrap();
     assert_eq!(recovered, raw, "stripped VHD payload differs from input");
 }
@@ -159,6 +162,7 @@ fn dynamic_vhd_is_rejected() {
     bytes.extend(std::iter::repeat_n(0u8, 512 - 8 - 52 - 4));
     let vhd = dir.path().join("dyn.vhd");
     std::fs::write(&vhd, &bytes).unwrap();
-    let err = usbooty_gui::vhd::strip_footer_to_cache(&vhd).unwrap_err();
+    let abort = std::sync::atomic::AtomicBool::new(false);
+    let err = usbooty_gui::vhd::strip_footer_to_cache(&vhd, &abort).unwrap_err();
     assert!(format!("{err:#}").contains("dynamic"));
 }

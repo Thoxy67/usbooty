@@ -119,7 +119,7 @@ pub struct AppControllerRust {
     /// Plain-text activity log: the source of truth for "Save log".
     pub full_log: String,
     /// The same log accumulated as HTML, handed to the QML view via
-    /// `log_html_snapshot` when its lazily-loaded panel (re)appears.
+    /// `log_html_tail` when its lazily-loaded panel (re)appears.
     pub log_html: String,
 }
 

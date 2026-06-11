@@ -132,11 +132,25 @@ fn push_stats(qt: &CxxQtThread<AppController>, rate: f64, done: u64, total: u64)
 }
 
 /// Run `job` to completion, forwarding progress to the `AppController`.
+///
+/// `cancel` is the job handle's flag, set by `AppController::cancel`. It is
+/// checked before the resource downloads and around the helper spawn, the
+/// stretches during which the helper's stdin (the normal cancel channel)
+/// does not exist yet, so a cancel clicked there is not silently dropped.
 pub fn run_job(
     mut job: Job,
     qt: CxxQtThread<AppController>,
     stdin_slot: Arc<Mutex<Option<ChildStdin>>>,
+    cancel: Arc<std::sync::atomic::AtomicBool>,
 ) {
+    use std::sync::atomic::Ordering;
+
+    let cancelled = || cancel.load(Ordering::SeqCst);
+    if cancelled() {
+        finish(&qt, false, "Cancelled.".into());
+        return;
+    }
+
     // The UEFI:NTFS layout needs the bootloader image; download it (off the
     // Qt thread) and hand the helper a local path, so the root helper itself
     // never needs network access.
@@ -190,6 +204,13 @@ pub fn run_job(
         }
     }
 
+    // The resource downloads above can take a while; honour a cancel that
+    // arrived during them instead of going on to spawn the helper.
+    if cancelled() {
+        finish(&qt, false, "Cancelled.".into());
+        return;
+    }
+
     let helper = helper_path();
     let mut child = match Command::new("pkexec")
         .arg(&helper)
@@ -218,7 +239,11 @@ pub fn run_job(
     });
 
     // Send the job as one JSON line, then keep stdin open so `cancel` can be
-    // written to it later by AppController::cancel.
+    // written to it later by AppController::cancel. Keeping it open is part
+    // of the helper's protocol, not just a convenience: the helper treats
+    // EOF on its stdin as "the GUI died, abort", so the ChildStdin parked in
+    // the job handle must stay alive until the job finishes (finish() clears
+    // the handle, which is what finally closes the pipe).
     let Some(mut stdin) = child.stdin.take() else {
         reap(&mut child);
         finish(&qt, false, "Could not open the helper's stdin pipe".into());
@@ -234,6 +259,17 @@ pub fn run_job(
         return;
     }
     *stdin_slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(stdin);
+
+    // Close the race with a cancel that fired after `cancel()` last looked at
+    // the (then-empty) stdin slot but before the helper existed: now that the
+    // slot is populated, forward the flag as the helper's `cancel` line.
+    if cancelled()
+        && let Ok(mut guard) = stdin_slot.lock()
+        && let Some(stdin) = guard.as_mut()
+    {
+        let _ = writeln!(stdin, "cancel");
+        let _ = stdin.flush();
+    }
 
     // Stream stdout, forwarding each progress message to the UI.
     let Some(stdout) = child.stdout.take() else {
@@ -765,31 +801,47 @@ pub fn compute_iso_hashes(qt: CxxQtThread<AppController>, path: String, generati
 /// a multi-GB source never freezes the UI. Also the common landing point for
 /// `decompress_then_analyze` and `strip_vhd_then_analyze` after they finish
 /// producing a plain file.
-pub fn analyze_then_apply(qt: CxxQtThread<AppController>, src: PathBuf) {
+pub fn analyze_then_apply(
+    qt: CxxQtThread<AppController>,
+    src: PathBuf,
+    abort: Option<Arc<std::sync::atomic::AtomicBool>>,
+) {
     let display = src.display().to_string();
     let report = crate::iso::analyze(&src);
     // Pre-compute the Windows WIM metadata here too: it re-reads the WIM XML
     // (disk bound) and must not run inside the Qt-thread closure.
     let win = (report.os_kind == usbooty_core::OsKind::Windows)
         .then(|| crate::iso::windows_meta(&src));
+    // Analysis itself is bounded (seconds), so it runs to completion; a
+    // cancel clicked during it discards the result instead of applying it.
+    let cancelled = abort.is_some_and(|a| a.load(std::sync::atomic::Ordering::SeqCst));
     let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
         ctrl.as_mut().set_busy(false);
         ctrl.as_mut().set_progress(0.0);
         ctrl.as_mut().set_phase(QString::default());
         ctrl.as_mut().set_speed(QString::default());
         ctrl.as_mut().set_eta(QString::default());
+        ctrl.as_mut().rust_mut().job = None;
+        if cancelled {
+            ctrl.as_mut().set_status(QString::from("Cancelled."));
+            return;
+        }
         ctrl.as_mut().set_status(QString::from("Ready"));
         ctrl.as_mut().apply_iso(&display, report, win, None);
     });
 }
 
-pub fn decompress_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
+pub fn decompress_then_analyze(
+    qt: CxxQtThread<AppController>,
+    src: PathBuf,
+    abort: Arc<std::sync::atomic::AtomicBool>,
+) {
     let display = src.display().to_string();
     apply(&qt, ProgressMsg::info(format!("Decompressing {display} …")));
 
     let qt_for_progress = qt.clone();
     let mut meter = RateMeter::new();
-    let result = crate::decompress::decompress_to_cache(&src, move |consumed, total| {
+    let result = crate::decompress::decompress_to_cache(&src, &abort, move |consumed, total| {
         let rate = meter.sample(consumed);
         let fraction = if total > 0 {
             consumed as f64 / total as f64
@@ -816,7 +868,7 @@ pub fn decompress_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
             // file. Going through `set_iso` would spawn yet another worker
             // for the same job; calling `analyze_then_apply` directly skips
             // the extra hop.
-            analyze_then_apply(qt, path);
+            analyze_then_apply(qt, path, Some(abort));
         }
         Err(e) => {
             let message = format!("Could not decompress {display}: {e:#}");
@@ -834,6 +886,7 @@ pub fn decompress_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
                 ctrl.as_mut().set_eta(QString::default());
                 ctrl.as_mut().set_iso_summary(QString::from(&message));
                 ctrl.as_mut().set_status(QString::from(&message));
+                ctrl.as_mut().rust_mut().job = None;
             });
         }
     }
@@ -844,7 +897,11 @@ pub fn decompress_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
 /// VHDs surface a clear error explaining how to convert them. The progress
 /// surface is shared with the decompression path; the user sees an
 /// "Unwrapping VHD" phase while the cache file is written.
-pub fn strip_vhd_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
+pub fn strip_vhd_then_analyze(
+    qt: CxxQtThread<AppController>,
+    src: PathBuf,
+    abort: Arc<std::sync::atomic::AtomicBool>,
+) {
     let display = src.display().to_string();
     apply(
         &qt,
@@ -855,7 +912,7 @@ pub fn strip_vhd_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
         ctrl.as_mut().set_progress(0.0);
     });
 
-    match crate::vhd::strip_footer_to_cache(&src) {
+    match crate::vhd::strip_footer_to_cache(&src, &abort) {
         Ok(path) => {
             apply(
                 &qt,
@@ -863,7 +920,7 @@ pub fn strip_vhd_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
             );
             // Same shortcut as the decompression path: skip the `set_iso`
             // round-trip and analyze the unwrapped image directly.
-            analyze_then_apply(qt, path);
+            analyze_then_apply(qt, path, Some(abort));
         }
         Err(e) => {
             let message = format!("Could not open VHD {display}: {e:#}");
@@ -879,6 +936,7 @@ pub fn strip_vhd_then_analyze(qt: CxxQtThread<AppController>, src: PathBuf) {
                 ctrl.as_mut().set_phase(QString::default());
                 ctrl.as_mut().set_iso_summary(QString::from(&message));
                 ctrl.as_mut().set_status(QString::from(&message));
+                ctrl.as_mut().rust_mut().job = None;
             });
         }
     }
