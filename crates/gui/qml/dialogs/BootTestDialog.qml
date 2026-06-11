@@ -9,6 +9,9 @@ Dialog {
     required property var host
         anchors.centerIn: parent
         width: Math.min(460, host.width - 40)
+        // Hug the content, but never overflow a short host window; the
+        // inner ScrollView keeps every control reachable when clamped.
+        height: Math.min(implicitHeight, host.height - 40)
         modal: true
         topPadding: 14
         bottomPadding: 14
@@ -57,7 +60,14 @@ Dialog {
                 }
             }
         }
-        contentItem: ColumnLayout {
+        contentItem: ScrollView {
+            id: btScroll
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ColumnLayout {
+            width: btScroll.availableWidth
             spacing: 10
             // Target device path.
             RowLayout {
@@ -279,5 +289,6 @@ Dialog {
                 color: palette.placeholderText
                 font.pointSize: 8
             }
+            } // column
         }
     }

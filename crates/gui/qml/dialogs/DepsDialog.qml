@@ -9,7 +9,8 @@ Dialog {
     required property var host
         anchors.centerIn: parent
         width: Math.min(560, host.width - 40)
-        height: Math.min(host.height - 80, 600)
+        // Hug short content, cap at 600, and never overflow the host window.
+        height: Math.min(implicitHeight, host.height - 80, 600)
         modal: true
         topPadding: 14
         bottomPadding: 14

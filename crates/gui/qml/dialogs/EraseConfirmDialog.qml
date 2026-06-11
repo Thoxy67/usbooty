@@ -12,6 +12,9 @@ Dialog {
     signal inspectRequested()
         anchors.centerIn: parent
         width: Math.min(480, host.width - 40)
+        // Hug the content, but never overflow a short host window; the
+        // inner ScrollView keeps the confirm controls reachable when clamped.
+        height: Math.min(implicitHeight, host.height - 40)
         modal: true
         topPadding: 14
         bottomPadding: 14
@@ -51,7 +54,14 @@ Dialog {
         // with the current selection.
         contentItem: Loader {
             active: confirmDialog.visible
-            sourceComponent: ColumnLayout {
+            sourceComponent: ScrollView {
+            id: confirmScroll
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ColumnLayout {
+            width: confirmScroll.availableWidth
             spacing: 12
             // Target device card.
             Rectangle {
@@ -160,6 +170,7 @@ Dialog {
                 text: qsTr("This cannot be undone.")
                 font.bold: true
             }
-            }
+            } // column
+            } // scroll view
         }
     }

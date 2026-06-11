@@ -17,27 +17,105 @@ ApplicationWindow {
     // Windows 11 24H2 is build 26100; the forced-local-account network trick is
     // only needed on 24H2+.
     readonly property bool isWin11_24H2: app.windowsBuild === 0 || app.windowsBuild >= 26100
-    width: 660
-    // Height is content-driven (see binding below). Keep a generous floor
-    // so a freshly-launched window doesn't snap to a sliver while QML is
-    // still computing its first layout pass.
-    // 600 controls-column floor + 24 px RowLayout margins.
-    minimumWidth: 624
-    minimumHeight: 360
-    // Auto-fit the window vertically to the left column's actual content:
-    // hidden banners and the absent progress frame contribute zero height,
-    // so the window shrinks/grows as the UI gains or loses sections.
-    height: Math.max(minimumHeight,
-                     mainCol.implicitHeight
-                     + 24  // RowLayout top + bottom margins
-                     + (menuBar ? menuBar.height : 0))
-    Behavior on height {
-        // No animation during a job: progress phases and banners would
-        // trigger window resizes every few seconds, producing a visible
-        // wobble. Idle resizes (toggling the log, switching method) keep
-        // the eased transition.
-        enabled: !app.busy
-        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+    // Initial size: the compact single-column layout, clamped so the first
+    // frame already fits small displays (netbooks, 1366×768 laptops).
+    width: Math.min(compactWidth, Screen.desktopAvailableWidth - 32)
+    // Real floors are small: the controls column squeezes gracefully (combos
+    // elide, checkboxes wrap) and anything that doesn't fit vertically
+    // scrolls inside `controlsScroll`, so the user may shrink the window to
+    // whatever their screen or tiling layout demands. The width floor grows
+    // while the log column is open so the splitter always has a sane range.
+    minimumWidth: (logVisible ? leftPanelMinWidth + logMinWidth + rowChromeWidth
+                              : leftPanelMinWidth + 24)
+    minimumHeight: 320
+
+    // ---- Window height auto-fit -----------------------------------------
+    // The window grows/shrinks to match the controls column, clamped to the
+    // screen's usable height; anything that doesn't fit scrolls inside
+    // `controlsScroll`. Implemented imperatively rather than as a `height:`
+    // binding: a binding is silently destroyed by the first manual resize,
+    // and it fights the window manager whenever the window is maximized,
+    // fullscreen, or tiled.
+    readonly property int contentFitHeight:
+        mainCol.implicitHeight
+        + 24  // RowLayout top + bottom margins
+        + (menuBar ? menuBar.height : 0)
+    // The height the user chose by resizing manually (0 until they do).
+    // It acts as a floor, not a kill-switch: a taller-than-content window
+    // stays tall, but content that stops fitting (a Windows ISO adding its
+    // checkbox, the progress frame appearing) still grows the window, so
+    // everything stays visible without scrolling whenever the screen allows.
+    property int userHeight: 0
+    property bool selfResizing: false
+    onContentFitHeightChanged: fitHeightToContent()
+    // Restoring from maximize/fullscreen returns to the windowed geometry;
+    // re-fit it to whatever the content looks like now. (`window.` qualifier:
+    // the signal injects a deprecated parameter of the same name.)
+    onVisibilityChanged: {
+        if (window.visibility !== Window.Windowed)
+            return
+        ensureLogFits()
+        fitHeightToContent()
+    }
+    // Re-establish a workable two-column width when the WM hands the window
+    // a geometry narrower than the columns' floors. Typical path: the log
+    // was enabled while maximized (so the auto-widen was rightly skipped),
+    // then the window is restored to its saved pre-log "normal" geometry,
+    // which can't hold both columns and would crop the log panel.
+    function ensureLogFits() {
+        if (!logVisible)
+            return
+        if (visibility !== Window.Windowed
+                && visibility !== Window.AutomaticVisibility)
+            return
+        if (width >= minimumWidth)
+            return
+        // Remember the narrowest pre-grow width so collapsing the log later
+        // returns to it; the Math.min keeps re-entrant calls during the grow
+        // animation from overwriting it with an intermediate width.
+        preLogWidth = Math.min(preLogWidth, width)
+        setWindowWidth(Math.min(expandedWidth,
+                                Screen.desktopAvailableWidth - 16))
+    }
+    onHeightChanged: {
+        if (!visible || selfResizing || heightFitAnim.running)
+            return
+        // Maximize / fullscreen / tiling resizes are the WM's business, not
+        // a height preference to carry back into windowed mode.
+        if (window.visibility !== Window.Windowed)
+            return
+        userHeight = height
+    }
+    NumberAnimation {
+        id: heightFitAnim
+        target: window
+        property: "height"
+        duration: 120
+        easing.type: Easing.OutCubic
+    }
+    function fitHeightToContent() {
+        if (visibility !== Window.Windowed
+                && visibility !== Window.AutomaticVisibility)
+            return
+        var maxH = Screen.desktopAvailableHeight - 48
+        var target = Math.max(minimumHeight,
+                              Math.min(contentFitHeight, maxH),
+                              Math.min(userHeight, maxH))
+        if (Math.abs(target - height) < 2)
+            return
+        heightFitAnim.stop()
+        if (app.busy) {
+            // No animation during a job: progress phases and banners would
+            // trigger window resizes every few seconds, producing a visible
+            // wobble. Idle resizes (toggling sections, switching method)
+            // keep the eased transition below.
+            selfResizing = true
+            height = target
+            selfResizing = false
+        } else {
+            heightFitAnim.to = target
+            heightFitAnim.restart()
+        }
     }
     // Title reflects the job state so progress is visible even when the
     // window is in the background / minimized to the taskbar.
@@ -123,12 +201,30 @@ ApplicationWindow {
     readonly property int compactWidth: 660
     readonly property int expandedWidth: 1080
     property bool logExpanded: false
-    // Hard floor for the controls column; the user can never drag the
-    // separator narrower than this.
-    readonly property int leftPanelMinWidth: 600
+    // Floor for the controls column; the user can never drag the separator
+    // (or shrink the window) narrower than this. The column squeezes
+    // gracefully down to here: combos elide and checkbox labels wrap.
+    readonly property int leftPanelMinWidth: 480
+    // Floor for the log column while it is visible.
+    readonly property int logMinWidth: 300
+    // Horizontal chrome around the two columns: 24 px outer margins,
+    // 2 × 12 px RowLayout gaps, and the 6 px splitter.
+    readonly property int rowChromeWidth: 54
     // Current width of the controls column. Bound to the separator drag;
     // the log column (Layout.fillWidth) absorbs whatever is left over.
     property int leftPanelWidth: compactWidth - 24
+    // Keep the splitter position valid as the window narrows: the controls
+    // column gives way (down to its floor) instead of pushing the log
+    // column out of the window. If the WM delivered a width below even the
+    // two columns' floors (see ensureLogFits), grow back instead.
+    onWidthChanged: {
+        if (!logVisible)
+            return
+        ensureLogFits()
+        var maxW = width - rowChromeWidth - logMinWidth
+        leftPanelWidth = Math.max(leftPanelMinWidth,
+                                  Math.min(leftPanelWidth, maxW))
+    }
     Behavior on width {
         NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
     }
@@ -148,12 +244,16 @@ ApplicationWindow {
         window.width = w
     }
     // Grow to fit the log column, remembering the current width first (read
-    // fresh each time, so a manual resize between toggles is honoured). No-op
-    // and no remembering if the window is already wide enough.
+    // fresh each time, so a manual resize between toggles is honoured). The
+    // target is clamped to the screen so a small display gets "as wide as
+    // fits" instead of a window hanging off the desktop. No-op and no
+    // remembering if the window is already wide enough.
     function growForLog() {
-        if (window.width < window.expandedWidth) {
+        var target = Math.min(window.expandedWidth,
+                              Screen.desktopAvailableWidth - 16)
+        if (window.width < target) {
             window.preLogWidth = window.width
-            window.setWindowWidth(window.expandedWidth)
+            window.setWindowWidth(target)
         }
     }
     // Collapse the log column, restoring the remembered pre-log width.
@@ -186,6 +286,9 @@ ApplicationWindow {
         // Honour the persisted "always show logs" choice on first paint.
         if (app.showLogsAlways)
             window.growForLog()
+        // First-frame vertical fit (banners / cards have computed their
+        // implicit sizes by now).
+        window.fitHeightToContent()
     }
 
 
@@ -272,12 +375,14 @@ ApplicationWindow {
         anchors.margins: 12
         spacing: 12
 
-        ColumnLayout {
-            id: mainCol
-            // Sized to its content (the window's `height` binding tracks
-            // this implicitHeight). Hugged to the top so the log column
-            // can be taller without dragging the controls down.
-            Layout.alignment: Qt.AlignTop
+        ScrollView {
+            id: controlsScroll
+            // The controls column scrolls vertically whenever the window is
+            // shorter than its content (small displays, tiled layouts, a
+            // user-shrunk window); `fitHeightToContent` keeps the window
+            // tall enough that the scrollbar stays invisible in the common
+            // case.
+            Layout.fillHeight: true
             // Width follows the separator drag; the log column fills the rest.
             // Never narrower than leftPanelMinWidth (enforced both here and in
             // the drag handler so the layout can't squeeze it below the floor).
@@ -286,9 +391,22 @@ ApplicationWindow {
             // Pin the width while the log is visible: extra window width must
             // go to the log column (Layout.fillWidth), never to the controls.
             // The separator drag is the only thing that widens this column.
-            // With the log hidden there is no second column, so let it fill.
+            // With the log hidden there is no second column, so the controls
+            // follow the window width (maximized included).
+            Layout.fillWidth: !window.logVisible
             Layout.maximumWidth: window.logVisible
                 ? window.leftPanelWidth : Number.POSITIVE_INFINITY
+            Layout.alignment: Qt.AlignTop
+            // Vertical scrolling only; the inner column always matches the
+            // viewport width.
+            contentWidth: availableWidth
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+            ColumnLayout {
+            id: mainCol
+            width: controlsScroll.availableWidth
             spacing: 8
 
         // ---- Advisory banners ------------------------------------------
@@ -1202,7 +1320,8 @@ ApplicationWindow {
             }
         }
 
-        }
+            } // mainCol
+        } // controlsScroll
 
         // ---- Resizable separator ---------------------------------------
         // Drag to redistribute width between the controls column and the
@@ -1216,9 +1335,6 @@ ApplicationWindow {
             color: (splitterMouse.containsMouse || splitterMouse.pressed)
                 ? palette.highlight : palette.mid
             radius: 3
-            // Keep the lower bound for the log column in one place: its own
-            // minimum (340) plus the two RowLayout gaps and the splitter.
-            readonly property int logMinWidth: 340
             MouseArea {
                 id: splitterMouse
                 anchors.fill: parent
@@ -1239,9 +1355,10 @@ ApplicationWindow {
                         return
                     var curX = mapToItem(window.contentItem, mouse.x, mouse.y).x
                     var proposed = startWidth + (curX - pressX)
-                    // Upper bound: leave the log column at least logMinWidth.
-                    // 54 = 24 outer margins + 2×12 RowLayout gaps + 6 splitter.
-                    var maxWidth = window.width - 54 - logSplitter.logMinWidth
+                    // Upper bound: leave the log column at least logMinWidth
+                    // after the margins / gaps / splitter (rowChromeWidth).
+                    var maxWidth = window.width - window.rowChromeWidth
+                                   - window.logMinWidth
                     window.leftPanelWidth = Math.max(
                         window.leftPanelMinWidth,
                         Math.min(maxWidth, proposed))
@@ -1255,7 +1372,7 @@ ApplicationWindow {
             visible: window.logVisible
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumWidth: 340
+            Layout.minimumWidth: window.logMinWidth
             padding: 10
             background: Rectangle {
                 radius: 8

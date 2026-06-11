@@ -9,6 +9,9 @@ Dialog {
     required property var host
         anchors.centerIn: parent
         width: Math.min(500, host.width - 40)
+        // Hug the content, but never overflow a short host window; the
+        // inner ScrollView keeps every step reachable when clamped.
+        height: Math.min(implicitHeight, host.height - 40)
         modal: true
         // Frame the contents away from the coloured header so the layout
         // mirrors the Windows Setup dialog above.
@@ -28,7 +31,14 @@ Dialog {
         // is needed at startup.
         contentItem: Loader {
             active: winDialog.visible
-            sourceComponent: ColumnLayout {
+            sourceComponent: ScrollView {
+            id: winScroll
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ColumnLayout {
+            width: winScroll.availableWidth
             spacing: 10
             Label {
                 text: qsTr("Fetch an official ISO from Microsoft. Each step queries "
@@ -126,6 +136,7 @@ Dialog {
                 Layout.fillWidth: true
                 onClicked: app.openMicrosoftPage(winVersion.currentIndex)
             }
-            }
+            } // column
+            } // scroll view
         }
     }

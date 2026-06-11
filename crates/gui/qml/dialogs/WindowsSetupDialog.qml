@@ -13,12 +13,13 @@ Dialog {
     signal continued()
         anchors.centerIn: parent
         width: host.width - 60
-        // Match the window height (minus ~80px of chrome for the dialog
-        // header, footer, and outer margin). The inner ScrollView keeps
-        // overflowing content scrollable, so on small displays the dialog
-        // shrinks gracefully, and on tall displays it grows to show more
-        // checkboxes at once instead of being capped at a fixed value.
-        height: host.height - 80
+        // Hug the content up to the window height (minus ~80px of chrome
+        // for the dialog header, footer, and outer margin). The inner
+        // ScrollView keeps overflowing content scrollable, so on small
+        // displays the dialog shrinks gracefully, and on tall displays it
+        // grows to show more checkboxes at once, without stretching past
+        // its content on very large screens.
+        height: Math.min(implicitHeight, host.height - 80)
         modal: true
         // Inset the contentItem from the dialog frame on every side; the
         // header and footer carry their own spacing.

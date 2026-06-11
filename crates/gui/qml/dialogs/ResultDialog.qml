@@ -8,6 +8,9 @@ Dialog {
     required property var host
     anchors.centerIn: parent
     width: Math.min(480, host.width - 40)
+    // Failure messages can run long (full helper error chains); scroll them
+    // instead of growing past a short host window.
+    height: Math.min(implicitHeight, host.height - 40)
     modal: true
     topPadding: 14
     bottomPadding: 14
@@ -39,9 +42,17 @@ Dialog {
             }
         }
     }
-    contentItem: Label {
-        id: resultLabel
-        text: resultDialog.message
-        wrapMode: Text.Wrap
+    contentItem: ScrollView {
+        id: resultScroll
+        clip: true
+        contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+        Label {
+            id: resultLabel
+            width: resultScroll.availableWidth
+            text: resultDialog.message
+            wrapMode: Text.Wrap
+        }
     }
 }
