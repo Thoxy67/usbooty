@@ -313,14 +313,12 @@ impl Mount {
         let mut c = Command::new("ntfs-3g");
         c.arg(device).arg(&mountpoint);
         emit::cmd(&c);
-        let output = c
-            .output()
-            .with_context(|| {
-                format!(
-                    "running ntfs-3g for {device}; install the `ntfs-3g` package \
+        let output = c.output().with_context(|| {
+            format!(
+                "running ntfs-3g for {device}; install the `ntfs-3g` package \
                      (this kernel has no in-kernel NTFS driver)"
-                )
-            })?;
+            )
+        })?;
         if !output.status.success() {
             let _ = std::fs::remove_dir(&mountpoint);
             bail!(
@@ -395,7 +393,9 @@ impl LoopMount {
         let mut last_err = String::new();
         for fstype in ["udf", "iso9660"] {
             let mut c = Command::new("mount");
-            c.args(["-t", fstype, "-o", "loop,ro"]).arg(iso).arg(&mountpoint);
+            c.args(["-t", fstype, "-o", "loop,ro"])
+                .arg(iso)
+                .arg(&mountpoint);
             emit::cmd(&c);
             let output = c
                 .output()

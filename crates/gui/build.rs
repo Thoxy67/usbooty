@@ -58,26 +58,26 @@ fn main() {
                 "qml/dialogs/UefiShellDownloadDialog.qml",
             ]),
     )
-        .file("src/bridge/mod.rs")
-        // Compile the QTranslator C++ shim *through cxx-qt-build*, using
-        // a separate cc::Build invocation works locally with stale
-        // incremental artefacts but fails in a clean build because the
-        // two builders overwrite each other's link-arg state in OUT_DIR.
-        // cpp_file() lets cxx-qt-build add our .cpp to the same compile
-        // batch as its own glue, so Qt include flags, ABI flags and link
-        // ordering all match.
-        .cpp_file("include/translator_bridge.cpp")
-        .include_dir("include")
-        .qt_module("Qml")
-        .qt_module("Quick")
-        // Bundle the app icon into the binary as `qrc:/icons/usbooty.svg`, so
-        // QML can reference it whether running from the dev tree or installed.
-        .qrc("qrc/icons.qrc")
-        // Compiled translations (`.qm`) embedded as qrc:/i18n/usbooty_<loc>.qm
-        // so the binary can find them whether running from the dev tree or
-        // installed system-wide.
-        .qrc("qrc/translations.qrc")
-        .build();
+    .file("src/bridge/mod.rs")
+    // Compile the QTranslator C++ shim *through cxx-qt-build*, using
+    // a separate cc::Build invocation works locally with stale
+    // incremental artefacts but fails in a clean build because the
+    // two builders overwrite each other's link-arg state in OUT_DIR.
+    // cpp_file() lets cxx-qt-build add our .cpp to the same compile
+    // batch as its own glue, so Qt include flags, ABI flags and link
+    // ordering all match.
+    .cpp_file("include/translator_bridge.cpp")
+    .include_dir("include")
+    .qt_module("Qml")
+    .qt_module("Quick")
+    // Bundle the app icon into the binary as `qrc:/icons/usbooty.svg`, so
+    // QML can reference it whether running from the dev tree or installed.
+    .qrc("qrc/icons.qrc")
+    // Compiled translations (`.qm`) embedded as qrc:/i18n/usbooty_<loc>.qm
+    // so the binary can find them whether running from the dev tree or
+    // installed system-wide.
+    .qrc("qrc/translations.qrc")
+    .build();
 }
 
 /// Remove every `-flto*` token from the named env var, in place.

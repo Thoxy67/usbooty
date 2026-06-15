@@ -216,9 +216,15 @@ mod tests {
             local_path_from_url("file:///home/u/My%20ISOs/x%2364.iso"),
             "/home/u/My ISOs/x#64.iso"
         );
-        assert_eq!(local_path_from_url("file:///plain/path.iso"), "/plain/path.iso");
+        assert_eq!(
+            local_path_from_url("file:///plain/path.iso"),
+            "/plain/path.iso"
+        );
         // Plain paths pass through untouched, escapes included.
-        assert_eq!(local_path_from_url("/literal/100%23.iso"), "/literal/100%23.iso");
+        assert_eq!(
+            local_path_from_url("/literal/100%23.iso"),
+            "/literal/100%23.iso"
+        );
         // Malformed escapes survive verbatim.
         assert_eq!(local_path_from_url("file:///a%2.iso"), "/a%2.iso");
     }

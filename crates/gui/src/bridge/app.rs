@@ -18,16 +18,9 @@ impl qobject::AppController {
     /// `<div>` wrapper is added here around the dim timestamp + fragment.
     pub fn push_log_line(mut self: core::pin::Pin<&mut Self>, plain: &str, html: &str) {
         let now = cxx_qt_lib::QTime::current_time();
-        let stamp = format!(
-            "{:02}:{:02}:{:02}",
-            now.hour(),
-            now.minute(),
-            now.second()
-        );
+        let stamp = format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second());
         let plain = format!("[{stamp}] {plain}");
-        let html = format!(
-            "<div><span style=\"color:#7d8590\">[{stamp}]</span> {html}</div>"
-        );
+        let html = format!("<div><span style=\"color:#7d8590\">[{stamp}]</span> {html}</div>");
         {
             let mut rust = self.as_mut().rust_mut();
             rust.full_log.push_str(&plain);
@@ -158,8 +151,7 @@ impl qobject::AppController {
         let qt = self.qt_thread();
         std::thread::spawn(move || {
             let mut lines: Vec<String> = Vec::new();
-            let result =
-                crate::qemu::launch(&path, &cfg, &mut |line| lines.push(line.to_string()));
+            let result = crate::qemu::launch(&path, &cfg, &mut |line| lines.push(line.to_string()));
             let (child, outcome) = match result {
                 Ok(child) => (Some(child), Ok(())),
                 Err(e) => (None, Err(format!("{e:#}"))),

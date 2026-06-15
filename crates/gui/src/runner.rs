@@ -313,9 +313,7 @@ pub fn run_job(
         apply(&qt, msg);
     }
 
-    let stderr = stderr_drain
-        .and_then(|h| h.join().ok())
-        .unwrap_or_default();
+    let stderr = stderr_drain.and_then(|h| h.join().ok()).unwrap_or_default();
     let (success, message) = outcome(&mut child, saw_done, last_error, &stderr);
     let message = finish_summary(success, message, &meter, job_total + phase_peak);
 
@@ -735,9 +733,7 @@ fn append_phase_header(ctrl: Pin<&mut AppController>, name: &str) {
         return;
     }
     let escaped = html_escape(name);
-    let html = format!(
-        "<span style=\"color:#2188ff;font-weight:bold\">\u{25B6} {escaped}</span>"
-    );
+    let html = format!("<span style=\"color:#2188ff;font-weight:bold\">\u{25B6} {escaped}</span>");
     ctrl.push_log_line(&format!("== {name} =="), &html);
 }
 
@@ -842,8 +838,8 @@ pub fn analyze_then_apply(
     let report = crate::iso::analyze(&src);
     // Pre-compute the Windows WIM metadata here too: it re-reads the WIM XML
     // (disk bound) and must not run inside the Qt-thread closure.
-    let win = (report.os_kind == usbooty_core::OsKind::Windows)
-        .then(|| crate::iso::windows_meta(&src));
+    let win =
+        (report.os_kind == usbooty_core::OsKind::Windows).then(|| crate::iso::windows_meta(&src));
     // Analysis itself is bounded (seconds), so it runs to completion; a
     // cancel clicked during it discards the result instead of applying it.
     let cancelled = abort.is_some_and(|a| a.load(std::sync::atomic::Ordering::SeqCst));

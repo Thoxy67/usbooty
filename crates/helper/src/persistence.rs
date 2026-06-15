@@ -470,8 +470,14 @@ mod tests {
             "linux /casper/vmlinuz.efi quiet"
         );
         // Plain occurrences (followed by whitespace or end) still match.
-        assert!(contains_anchored("linux /casper/vmlinuz quiet", "/casper/vmlinuz"));
-        assert!(contains_anchored("linux /casper/vmlinuz", "/casper/vmlinuz"));
+        assert!(contains_anchored(
+            "linux /casper/vmlinuz quiet",
+            "/casper/vmlinuz"
+        ));
+        assert!(contains_anchored(
+            "linux /casper/vmlinuz",
+            "/casper/vmlinuz"
+        ));
         // Prefix anchors that continue with `/` (deeper path) still match,
         // mirroring Rufus's `file=/cdrom/preseed` behaviour.
         assert!(contains_anchored(

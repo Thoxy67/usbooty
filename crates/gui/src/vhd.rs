@@ -79,10 +79,7 @@ pub fn inspect(path: &Path) -> Result<VhdKind> {
 /// of the source's canonical path / size / mtime so repeated picks are free.
 /// `abort` is polled between copy chunks so a Cancel click stops the
 /// (potentially many-GB) unwrap promptly.
-pub fn strip_footer_to_cache(
-    src: &Path,
-    abort: &std::sync::atomic::AtomicBool,
-) -> Result<PathBuf> {
+pub fn strip_footer_to_cache(src: &Path, abort: &std::sync::atomic::AtomicBool) -> Result<PathBuf> {
     let kind = inspect(src)?;
     let data_size = match kind {
         VhdKind::Fixed { data_size } => data_size,

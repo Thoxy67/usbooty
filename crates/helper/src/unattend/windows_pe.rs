@@ -4,7 +4,9 @@
 
 use usbooty_core::WindowsSetup;
 
-use super::{escape, parse_locale, push_component_per_arch, push_run_command, target_archs, Locale};
+use super::{
+    Locale, escape, parse_locale, push_component_per_arch, push_run_command, target_archs,
+};
 
 pub(super) fn push_windows_pe(s: &mut String, setup: &WindowsSetup) {
     let bypasses: Vec<&str> = [
@@ -62,7 +64,9 @@ pub(super) fn push_windows_pe(s: &mut String, setup: &WindowsSetup) {
         intl_body.push_str("      <SetupUILanguage>\n");
         intl_body.push_str(&format!("        <UILanguage>{primary}</UILanguage>\n"));
         intl_body.push_str("      </SetupUILanguage>\n");
-        intl_body.push_str(&format!("      <InputLocale>{input_locale}</InputLocale>\n"));
+        intl_body.push_str(&format!(
+            "      <InputLocale>{input_locale}</InputLocale>\n"
+        ));
         intl_body.push_str(&format!("      <SystemLocale>{primary}</SystemLocale>\n"));
         intl_body.push_str(&format!("      <UILanguage>{primary}</UILanguage>\n"));
     }

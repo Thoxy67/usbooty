@@ -181,7 +181,8 @@ fn write_gpt<D: Read + Write + Seek>(
     };
 
     gpt.write_into(device).context("writing GPT")?;
-    gptman::GPT::write_protective_mbr_into(device, sector_size).context("writing protective MBR")?;
+    gptman::GPT::write_protective_mbr_into(device, sector_size)
+        .context("writing protective MBR")?;
     Ok(())
 }
 
@@ -263,8 +264,8 @@ fn synthesize_hybrid_mbr<D: Read + Write + Seek>(
         .context("hybrid MBR cannot address a partition past 2 TiB")?;
     let sectors = end - start + 1;
 
-    let mut mbr = mbrman::MBR::read_from(device, sector_size as u32)
-        .context("re-reading protective MBR")?;
+    let mut mbr =
+        mbrman::MBR::read_from(device, sector_size as u32).context("re-reading protective MBR")?;
 
     // Slot 1: real bootable mirror entry for legacy BIOS.
     mbr[1] = mbrman::MBRPartitionEntry {
@@ -364,7 +365,8 @@ fn write_gpt_uefi_ntfs<D: Read + Write + Seek>(
     };
 
     gpt.write_into(device).context("writing GPT")?;
-    gptman::GPT::write_protective_mbr_into(device, sector_size).context("writing protective MBR")?;
+    gptman::GPT::write_protective_mbr_into(device, sector_size)
+        .context("writing protective MBR")?;
     Ok(())
 }
 
@@ -476,7 +478,8 @@ fn write_gpt_persistence<D: Read + Write + Seek>(
     };
 
     gpt.write_into(device).context("writing GPT")?;
-    gptman::GPT::write_protective_mbr_into(device, sector_size).context("writing protective MBR")?;
+    gptman::GPT::write_protective_mbr_into(device, sector_size)
+        .context("writing protective MBR")?;
     Ok(())
 }
 
@@ -610,8 +613,14 @@ mod tests {
     #[test]
     fn mbr_partition_carries_real_chs_and_fat16_lba_type_past_horizon() {
         let mut disk = disk(64 * 1024 * 1024);
-        write_single_partition(&mut disk, PartitionTable::Mbr, FileSystem::Fat32, "X", SECTOR)
-            .unwrap();
+        write_single_partition(
+            &mut disk,
+            PartitionTable::Mbr,
+            FileSystem::Fat32,
+            "X",
+            SECTOR,
+        )
+        .unwrap();
         disk.set_position(0);
         let mbr = mbrman::MBR::read_from(&mut disk, SECTOR as u32).unwrap();
         // A 64 MiB disk is entirely CHS-addressable: real values, not zeros.

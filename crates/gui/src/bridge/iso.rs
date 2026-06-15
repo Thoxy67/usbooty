@@ -23,12 +23,14 @@ impl qobject::AppController {
         }
         let path_buf = PathBuf::from(&path);
         if !path_buf.is_file() {
-            self.as_mut().log_info(&format!("Source image not readable: {path}"));
+            self.as_mut()
+                .log_info(&format!("Source image not readable: {path}"));
             self.as_mut()
                 .set_iso_summary(QString::from("Cannot read that file"));
             return;
         }
-        self.as_mut().log_info(&format!("Source image selected: {path}"));
+        self.as_mut()
+            .log_info(&format!("Source image selected: {path}"));
         match crate::decompress::detect(&path_buf) {
             crate::decompress::Compression::None => {
                 // A `.vhd` file is raw data + a 512-byte footer; strip the
@@ -206,7 +208,11 @@ impl qobject::AppController {
         // in QML (Windows 11 is build >= 22000); the arch lets the unattend
         // target one architecture instead of emitting all three. Both come
         // pre-computed from the worker; 0 / empty for non-Windows or unknown.
-        let win = if is_windows { win.unwrap_or_default() } else { Default::default() };
+        let win = if is_windows {
+            win.unwrap_or_default()
+        } else {
+            Default::default()
+        };
         self.as_mut().set_windows_build(win.build as i32);
         self.as_mut()
             .set_windows_arch(QString::from(&win.arch.unwrap_or_default()));

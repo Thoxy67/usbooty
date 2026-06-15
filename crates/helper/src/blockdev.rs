@@ -21,7 +21,11 @@ const ZEROOUT_CHUNK: u64 = 256 * 1024 * 1024;
 nix::ioctl_read!(blkgetsize64, 0x12, 114, u64);
 // BLKSSZGET: `_IO(0x12, 104)`, logical sector size in bytes. Old-style ioctl
 // (no direction/size encoded in the request), hence the `_bad` variant.
-nix::ioctl_read_bad!(blksszget, nix::request_code_none!(0x12, 104), nix::libc::c_int);
+nix::ioctl_read_bad!(
+    blksszget,
+    nix::request_code_none!(0x12, 104),
+    nix::libc::c_int
+);
 // BLKRRPART: `_IO(0x12, 95)`, ask the kernel to re-read the partition table.
 nix::ioctl_none!(blkrrpart, 0x12, 95);
 // BLKFLSBUF: `_IO(0x12, 97)`, flush and invalidate the block-device page cache.
@@ -29,11 +33,7 @@ nix::ioctl_none!(blkflsbuf, 0x12, 97);
 // BLKZEROOUT: `_IO(0x12, 127)`, zero a byte range `[start, len]` without
 // transferring data from userspace (the kernel can use write-same/discard
 // offload on devices that support it).
-nix::ioctl_write_ptr_bad!(
-    blkzeroout,
-    nix::request_code_none!(0x12, 127),
-    [u64; 2]
-);
+nix::ioctl_write_ptr_bad!(blkzeroout, nix::request_code_none!(0x12, 127), [u64; 2]);
 
 /// Open a whole-disk block device read/write with `O_EXCL`.
 ///
@@ -223,7 +223,9 @@ fn unescape_proc_mounts(field: &str) -> String {
     while i < bytes.len() {
         if bytes[i] == b'\\'
             && i + 3 < bytes.len()
-            && bytes[i + 1..i + 4].iter().all(|b| (b'0'..=b'7').contains(b))
+            && bytes[i + 1..i + 4]
+                .iter()
+                .all(|b| (b'0'..=b'7').contains(b))
         {
             let v = u32::from(bytes[i + 1] - b'0') * 64
                 + u32::from(bytes[i + 2] - b'0') * 8

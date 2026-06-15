@@ -39,7 +39,9 @@ impl DeviceLock {
         // derive the same lock name; otherwise two helpers given different
         // spellings of the same device would both pass the lock and only
         // collide later, after polkit (and possibly after an erase began).
-        let device = device.canonicalize().unwrap_or_else(|_| device.to_path_buf());
+        let device = device
+            .canonicalize()
+            .unwrap_or_else(|_| device.to_path_buf());
         let basename = device
             .file_name()
             .and_then(|s| s.to_str())

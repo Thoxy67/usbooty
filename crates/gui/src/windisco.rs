@@ -111,19 +111,84 @@ struct ShellBuild {
 /// first). 2.2 ships both Release and Debug; the legacy 2.0 build is
 /// Release-only.
 const SHELL_BUILDS: &[ShellBuild] = &[
-    ShellBuild { version: "2.2", tag: "26H1", detail: "edk2-stable202602", has_debug: true },
-    ShellBuild { version: "2.2", tag: "25H2", detail: "edk2-stable202511", has_debug: true },
-    ShellBuild { version: "2.2", tag: "25H1", detail: "edk2-stable202505", has_debug: true },
-    ShellBuild { version: "2.2", tag: "24H2", detail: "edk2-stable202411", has_debug: true },
-    ShellBuild { version: "2.2", tag: "24H1", detail: "edk2-stable202405", has_debug: true },
-    ShellBuild { version: "2.2", tag: "23H2", detail: "edk2-stable202311", has_debug: true },
-    ShellBuild { version: "2.2", tag: "23H1", detail: "edk2-stable202305", has_debug: true },
-    ShellBuild { version: "2.2", tag: "22H2", detail: "edk2-stable202211", has_debug: true },
-    ShellBuild { version: "2.2", tag: "22H1", detail: "edk2-stable202205", has_debug: true },
-    ShellBuild { version: "2.2", tag: "21H2", detail: "edk2-stable202108", has_debug: true },
-    ShellBuild { version: "2.2", tag: "21H1", detail: "edk2-stable202105", has_debug: true },
-    ShellBuild { version: "2.2", tag: "20H2", detail: "edk2-stable202011", has_debug: true },
-    ShellBuild { version: "2.0", tag: "4.632", detail: "20100426", has_debug: false },
+    ShellBuild {
+        version: "2.2",
+        tag: "26H1",
+        detail: "edk2-stable202602",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "25H2",
+        detail: "edk2-stable202511",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "25H1",
+        detail: "edk2-stable202505",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "24H2",
+        detail: "edk2-stable202411",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "24H1",
+        detail: "edk2-stable202405",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "23H2",
+        detail: "edk2-stable202311",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "23H1",
+        detail: "edk2-stable202305",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "22H2",
+        detail: "edk2-stable202211",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "22H1",
+        detail: "edk2-stable202205",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "21H2",
+        detail: "edk2-stable202108",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "21H1",
+        detail: "edk2-stable202105",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.2",
+        tag: "20H2",
+        detail: "edk2-stable202011",
+        has_debug: true,
+    },
+    ShellBuild {
+        version: "2.0",
+        tag: "4.632",
+        detail: "20100426",
+        has_debug: false,
+    },
 ];
 
 /// One concrete downloadable UEFI Shell ISO (a build plus a Release/Debug
@@ -313,7 +378,10 @@ pub fn fetch_languages(edition_ids: &[u32]) -> Result<Catalog> {
                 session: session_index,
                 id,
             };
-            match languages.iter_mut().find(|l| l.name == name && !name.is_empty()) {
+            match languages
+                .iter_mut()
+                .find(|l| l.name == name && !name.is_empty())
+            {
                 Some(lang) => lang.skus.push(entry),
                 None => languages.push(Language {
                     display,
@@ -396,7 +464,9 @@ impl Catalog {
                 continue;
             }
 
-            let Some(options) = json.get("ProductDownloadOptions").and_then(|v| v.as_array())
+            let Some(options) = json
+                .get("ProductDownloadOptions")
+                .and_then(|v| v.as_array())
             else {
                 continue;
             };

@@ -6,7 +6,7 @@ use usbooty_core::WindowsSetup;
 
 use super::assets::{ENABLE_ADAPTERS_COMMAND, PASSWORD_NEVER_EXPIRES_COMMAND};
 use super::{
-    escape, parse_locale, push_component_per_arch, push_first_logon_commands, target_archs, Locale,
+    Locale, escape, parse_locale, push_component_per_arch, push_first_logon_commands, target_archs,
 };
 
 pub(super) fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
@@ -95,7 +95,9 @@ pub(super) fn push_oobe_system(s: &mut String, setup: &WindowsSetup) {
         input_locale,
     }) = oobe_locale.and_then(parse_locale)
     {
-        intl_body.push_str(&format!("      <InputLocale>{input_locale}</InputLocale>\n"));
+        intl_body.push_str(&format!(
+            "      <InputLocale>{input_locale}</InputLocale>\n"
+        ));
         intl_body.push_str(&format!("      <SystemLocale>{primary}</SystemLocale>\n"));
         intl_body.push_str(&format!("      <UILanguage>{primary}</UILanguage>\n"));
         intl_body.push_str(&format!("      <UserLocale>{primary}</UserLocale>\n"));

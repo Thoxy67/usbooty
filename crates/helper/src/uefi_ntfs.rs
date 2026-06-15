@@ -91,7 +91,13 @@ pub fn run(layout: UefiNtfsLayout<'_>, abort: &AtomicBool) -> Result<()> {
             usbooty_core::device::format_size(img_size),
             table_label = table.label(),
         ));
-        partition::write_uefi_ntfs_layout(&mut dev, table, img_size, &opts.label, sector_size as u64)?;
+        partition::write_uefi_ntfs_layout(
+            &mut dev,
+            table,
+            img_size,
+            &opts.label,
+            sector_size as u64,
+        )?;
         dev.flush().ok();
         let _ = nix::unistd::fsync(&dev);
         blockdev::reread_partition_table(&dev);

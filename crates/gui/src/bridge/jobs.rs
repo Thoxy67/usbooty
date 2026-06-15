@@ -14,20 +14,18 @@ use super::{JobHandle, qobject};
 /// fails before the helper was ever spawned. With `refresh`, the device
 /// list is re-scanned too (used when the failure suggests the device set
 /// changed under us).
-fn abort_start(
-    qt: &cxx_qt::CxxQtThread<qobject::AppController>,
-    message: String,
-    refresh: bool,
-) {
-    let _ = qt.queue(move |mut ctrl: core::pin::Pin<&mut qobject::AppController>| {
-        ctrl.as_mut().set_busy(false);
-        ctrl.as_mut().set_phase(QString::default());
-        ctrl.as_mut().set_status(QString::from(&message));
-        ctrl.as_mut().rust_mut().job = None;
-        if refresh {
-            ctrl.as_mut().refresh_devices();
-        }
-    });
+fn abort_start(qt: &cxx_qt::CxxQtThread<qobject::AppController>, message: String, refresh: bool) {
+    let _ = qt.queue(
+        move |mut ctrl: core::pin::Pin<&mut qobject::AppController>| {
+            ctrl.as_mut().set_busy(false);
+            ctrl.as_mut().set_phase(QString::default());
+            ctrl.as_mut().set_status(QString::from(&message));
+            ctrl.as_mut().rust_mut().job = None;
+            if refresh {
+                ctrl.as_mut().refresh_devices();
+            }
+        },
+    );
 }
 
 impl qobject::AppController {

@@ -191,7 +191,9 @@ impl DistroFamily {
         // Puppy variants carry their squashfs modules as `puppy_*.sfs` (or
         // `*pup*.sfs`) files at the root; labels vary wildly per puplet.
         if root_entries.iter().any(|(name, is_dir, _)| {
-            !*is_dir && name.ends_with(".sfs") && (name.starts_with("puppy_") || name.contains("pup"))
+            !*is_dir
+                && name.ends_with(".sfs")
+                && (name.starts_with("puppy_") || name.contains("pup"))
         }) {
             return DistroFamily::Puppy;
         }
@@ -574,7 +576,11 @@ mod distro_family_tests {
             Some(PersistenceKind::KnoppixData)
         );
         // Self-managed persistence: no slider, but a note for the UI.
-        for fam in [DistroFamily::Tails, DistroFamily::Puppy, DistroFamily::Antix] {
+        for fam in [
+            DistroFamily::Tails,
+            DistroFamily::Puppy,
+            DistroFamily::Antix,
+        ] {
             assert_eq!(fam.persistence(), None);
             assert!(fam.persistence_note_key().is_some());
         }

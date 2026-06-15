@@ -18,7 +18,16 @@ use usbooty_core::Job;
 /// removable-media locations (`/run/media`, `/media`, `/mnt`) are
 /// deliberately absent; that is where a stick legitimately shows up.
 const PROTECTED_MOUNTPOINTS: &[&str] = &[
-    "/", "/boot", "/boot/efi", "/efi", "/usr", "/var", "/etc", "/home", "/srv", "/opt",
+    "/",
+    "/boot",
+    "/boot/efi",
+    "/efi",
+    "/usr",
+    "/var",
+    "/etc",
+    "/home",
+    "/srv",
+    "/opt",
 ];
 
 /// Validate that `device` is a whole-disk block device that is safe to
@@ -70,7 +79,10 @@ pub fn validate_job_paths(job: &Job) -> Result<()> {
         if path.is_absolute() {
             Ok(())
         } else {
-            bail!("{label} path {} is not absolute; refusing it", path.display())
+            bail!(
+                "{label} path {} is not absolute; refusing it",
+                path.display()
+            )
         }
     };
     match job {
@@ -271,8 +283,7 @@ mod tests {
                     .lines()
                     .any(|l| {
                         let mut f = l.split_whitespace();
-                        f.next().is_some_and(|s| s.starts_with("/dev/"))
-                            && f.next() == Some("/")
+                        f.next().is_some_and(|s| s.starts_with("/dev/")) && f.next() == Some("/")
                     })
         };
         if root_resolvable {
