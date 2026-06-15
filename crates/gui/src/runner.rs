@@ -526,14 +526,19 @@ fn notify(success: bool, message: &str) {
 }
 
 /// Fetch the language list for a Windows release and publish it to the UI.
-pub fn win_fetch_languages(qt: CxxQtThread<AppController>, edition_id: u32) {
-    match crate::windisco::fetch_languages(edition_id) {
+pub fn win_fetch_languages(qt: CxxQtThread<AppController>, edition_ids: &'static [u32]) {
+    match crate::windisco::fetch_languages(edition_ids) {
         Ok(catalog) => {
             let names = catalog.language_names().join("\n");
+            // Pre-select the language matching the host locale; the user still
+            // has to press "List downloads" so nothing is fetched on their
+            // behalf.
+            let default = catalog.default_language_index();
             let _ = qt.queue(move |mut ctrl: Pin<&mut AppController>| {
                 ctrl.as_mut().set_busy(false);
                 ctrl.as_mut().set_status(QString::from("Select a language"));
                 ctrl.as_mut().set_win_languages(QString::from(&names));
+                ctrl.as_mut().set_win_language_default(default);
                 ctrl.as_mut().set_win_options(QString::default());
                 ctrl.as_mut().rust_mut().win_catalog = Some(catalog);
                 ctrl.as_mut().rust_mut().win_option_list.clear();
@@ -573,17 +578,44 @@ pub fn win_fetch_options(
 pub fn download_windows_url(
     qt: CxxQtThread<AppController>,
     url: String,
+    what: &'static str,
     abort: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) {
-    set_phase(&qt, "Downloading Windows ISO");
-    apply(
-        &qt,
-        ProgressMsg::info("Downloading the Windows ISO from Microsoft…"),
-    );
+    set_phase(&qt, &format!("Downloading {what}"));
+    apply(&qt, ProgressMsg::info(format!("Downloading the {what}…")));
 
     let dest_dir = directories::UserDirs::new()
         .and_then(|dirs| dirs.download_dir().map(std::path::Path::to_path_buf))
         .unwrap_or_else(std::env::temp_dir);
+
+    // Probe the size up front so the user sees how big the download is, and so
+    // we can refuse before committing to a multi-gigabyte transfer that would
+    // fill the destination filesystem. A withheld Content-Length just skips
+    // the guard; the streaming download then enforces completeness itself.
+    if let Some(size) = crate::windisco::content_length(&url) {
+        apply(
+            &qt,
+            ProgressMsg::info(format!(
+                "Image size: {}",
+                usbooty_core::device::format_size(size)
+            )),
+        );
+        if let Some(free) = crate::decompress::free_space(&dest_dir)
+            && free < size
+        {
+            finish(
+                &qt,
+                false,
+                format!(
+                    "Not enough free space in {}: the ISO needs {} but only {} is free.",
+                    dest_dir.display(),
+                    usbooty_core::device::format_size(size),
+                    usbooty_core::device::format_size(free),
+                ),
+            );
+            return;
+        }
+    }
 
     let qt_progress = qt.clone();
     let mut meter = RateMeter::new();
@@ -615,7 +647,7 @@ pub fn download_windows_url(
                     format_rate(bytes as f64 / elapsed as f64),
                 )
             } else {
-                "Windows ISO downloaded".to_string()
+                format!("{what} downloaded")
             };
             let path = path.to_string_lossy().into_owned();
             apply(&qt, ProgressMsg::info(format!("{summary} → {path}")));

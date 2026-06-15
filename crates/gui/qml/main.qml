@@ -504,6 +504,10 @@ ApplicationWindow {
                             text: qsTr("Download a Windows ISO…")
                             onTriggered: winDialog.open()
                         }
+                        MenuItem {
+                            text: qsTr("Download a UEFI Shell…")
+                            onTriggered: shellDialog.open()
+                        }
                         MenuSeparator { }
                         MenuItem {
                             text: qsTr("Clear source image")
@@ -1666,4 +1670,5 @@ ApplicationWindow {
     ResultDialog { id: resultDialog; app: app; host: window }
     AboutDialog { id: aboutDialog; app: app; host: window }
     WindowsDownloadDialog { id: winDialog; app: app; host: window }
+    UefiShellDownloadDialog { id: shellDialog; app: app; host: window }
 }

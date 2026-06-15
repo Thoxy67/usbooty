@@ -446,7 +446,7 @@ impl<R: BufRead> BufRead for ProgressReader<R> {
 /// Free space (in bytes) available to unprivileged writes on the filesystem
 /// holding `dir`. `None` when the probe itself fails; callers degrade to
 /// "no free-space limit" rather than refusing to work.
-fn free_space(dir: &Path) -> Option<u64> {
+pub(crate) fn free_space(dir: &Path) -> Option<u64> {
     let stat = nix::sys::statvfs::statvfs(dir).ok()?;
     Some(stat.blocks_available() as u64 * stat.fragment_size() as u64)
 }

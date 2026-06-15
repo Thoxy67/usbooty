@@ -59,8 +59,10 @@ Dialog {
                     id: winVersion
                     Layout.fillWidth: true
                     enabled: !app.busy
-                    // Windows release names are brand identifiers; leave untranslated.
-                    model: ["Windows 11", "Windows 10"]
+                    // Windows release names are brand identifiers; leave
+                    // untranslated. The list (incl. ARM64 and China editions)
+                    // is owned by the Rust side.
+                    model: app.winReleases !== "" ? app.winReleases.split("\n") : []
                 }
                 Button {
                     text: qsTr("List languages")
@@ -83,6 +85,17 @@ Dialog {
                     Layout.fillWidth: true
                     enabled: !app.busy && app.winLanguages !== ""
                     model: app.winLanguages !== "" ? app.winLanguages.split("\n") : []
+                    // Pre-select the language matching the system locale when a
+                    // fresh list arrives, but never fetch on the user's behalf:
+                    // they still press "List downloads". Reassigning the model
+                    // resets currentIndex to 0, so re-apply the default after.
+                    Connections {
+                        target: app
+                        function onWinLanguagesChanged() {
+                            if (app.winLanguages !== "")
+                                winLang.currentIndex = app.winLanguageDefault
+                        }
+                    }
                 }
                 Button {
                     text: qsTr("List downloads")

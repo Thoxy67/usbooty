@@ -43,17 +43,158 @@ const DOWNLOAD_PAGE: &str = "https://www.microsoft.com/software-download/windows
 /// app in its busy state forever.
 const API_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Selectable Windows releases: `(display name, Microsoft product-edition ID)`.
-/// Update the IDs from the Fido script when Microsoft ships a new release.
-pub const RELEASES: &[(&str, u32)] = &[("Windows 11", 3321), ("Windows 10", 2618)];
+/// A selectable Windows release for the download dialog.
+///
+/// Microsoft exposes some variants as wholly separate "product editions"
+/// rather than as architectures or SKUs of one edition. Two cases matter:
+///   * ARM64 is its own product-edition ID (Microsoft never treated it as a
+///     CPU arch the way it did x86/x64), so a release that offers ARM64 lists
+///     *two* IDs that we query and merge.
+///   * The China-specific images (government-mandated builds) are separate
+///     product editions too, surfaced here as their own releases.
+pub struct Release {
+    /// Brand name shown in the release combo.
+    pub name: &'static str,
+    /// Microsoft product-edition IDs to query and merge. Multiple IDs cover
+    /// architectures Microsoft models as separate products (x64 vs ARM64).
+    /// Update these from the Fido script when Microsoft ships a new release.
+    pub edition_ids: &'static [u32],
+    /// Whether this is a Windows 10 release; selects the right Microsoft
+    /// download page for the browser fallback.
+    pub win10: bool,
+}
 
-/// A language offered for a release, paired with its opaque SKU id.
+/// Selectable Windows releases. The IDs mirror Fido's data table.
+pub const RELEASES: &[Release] = &[
+    Release {
+        name: "Windows 11",
+        edition_ids: &[3321, 3324],
+        win10: false,
+    },
+    Release {
+        name: "Windows 11 Home China",
+        edition_ids: &[3322, 3325],
+        win10: false,
+    },
+    Release {
+        name: "Windows 11 Pro China",
+        edition_ids: &[3323, 3326],
+        win10: false,
+    },
+    Release {
+        name: "Windows 10",
+        edition_ids: &[2618],
+        win10: true,
+    },
+    Release {
+        name: "Windows 10 Home China",
+        edition_ids: &[2378],
+        win10: true,
+    },
+];
+
+/// A UEFI Shell build downloadable from the `pbatard/UEFI-Shell` project.
+/// Unlike the Windows images these are plain GitHub release assets, so the URL
+/// is deterministic and no anti-bot dance is needed.
+struct ShellBuild {
+    /// EFI Shell version (also part of the asset name), e.g. "2.2".
+    version: &'static str,
+    /// Git tag / release, e.g. "26H1" (used in both the URL and the label).
+    tag: &'static str,
+    /// Human detail shown in the label, e.g. "edk2-stable202602".
+    detail: &'static str,
+    /// Whether a Debug asset exists alongside the Release one.
+    has_debug: bool,
+}
+
+/// The selectable UEFI Shell builds, mirroring Fido's data table (newest
+/// first). 2.2 ships both Release and Debug; the legacy 2.0 build is
+/// Release-only.
+const SHELL_BUILDS: &[ShellBuild] = &[
+    ShellBuild { version: "2.2", tag: "26H1", detail: "edk2-stable202602", has_debug: true },
+    ShellBuild { version: "2.2", tag: "25H2", detail: "edk2-stable202511", has_debug: true },
+    ShellBuild { version: "2.2", tag: "25H1", detail: "edk2-stable202505", has_debug: true },
+    ShellBuild { version: "2.2", tag: "24H2", detail: "edk2-stable202411", has_debug: true },
+    ShellBuild { version: "2.2", tag: "24H1", detail: "edk2-stable202405", has_debug: true },
+    ShellBuild { version: "2.2", tag: "23H2", detail: "edk2-stable202311", has_debug: true },
+    ShellBuild { version: "2.2", tag: "23H1", detail: "edk2-stable202305", has_debug: true },
+    ShellBuild { version: "2.2", tag: "22H2", detail: "edk2-stable202211", has_debug: true },
+    ShellBuild { version: "2.2", tag: "22H1", detail: "edk2-stable202205", has_debug: true },
+    ShellBuild { version: "2.2", tag: "21H2", detail: "edk2-stable202108", has_debug: true },
+    ShellBuild { version: "2.2", tag: "21H1", detail: "edk2-stable202105", has_debug: true },
+    ShellBuild { version: "2.2", tag: "20H2", detail: "edk2-stable202011", has_debug: true },
+    ShellBuild { version: "2.0", tag: "4.632", detail: "20100426", has_debug: false },
+];
+
+/// One concrete downloadable UEFI Shell ISO (a build plus a Release/Debug
+/// variant), already resolved to a label and direct URL.
+#[derive(Clone)]
+pub struct ShellOption {
+    /// Label shown in the combo.
+    pub label: String,
+    /// Direct GitHub download URL.
+    pub url: String,
+}
+
+/// Flatten the build table into one entry per downloadable ISO (each build's
+/// Release, plus its Debug when one exists).
+pub fn uefi_shell_options() -> Vec<ShellOption> {
+    let mut out = Vec::new();
+    for b in SHELL_BUILDS {
+        for (variant, suffix) in [("Release", "RELEASE"), ("Debug", "DEBUG")] {
+            if suffix == "DEBUG" && !b.has_debug {
+                continue;
+            }
+            out.push(ShellOption {
+                label: format!(
+                    "UEFI Shell {ver} {tag} ({detail}), {variant}",
+                    ver = b.version,
+                    tag = b.tag,
+                    detail = b.detail,
+                ),
+                url: format!(
+                    "https://github.com/pbatard/UEFI-Shell/releases/download/{tag}/\
+                     UEFI-Shell-{ver}-{tag}-{suffix}.iso",
+                    tag = b.tag,
+                    ver = b.version,
+                ),
+            });
+        }
+    }
+    out
+}
+
+/// One anti-bot-cleared HTTP session bound to a single product-edition ID.
+/// The very same agent (cookie jar) and GUID that fetched a SKU's languages
+/// must be reused to request that SKU's download links.
+#[derive(Clone)]
+struct Session {
+    /// HTTP agent carrying the session cookies.
+    agent: ureq::Agent,
+    /// Anti-bot session GUID.
+    session_id: String,
+}
+
+/// An opaque SKU id paired with the session that produced it.
+#[derive(Clone)]
+struct Sku {
+    /// Index into [`Catalog::sessions`].
+    session: usize,
+    /// Opaque SKU identifier used to request the download links.
+    id: String,
+}
+
+/// A language offered for a release. The same language may be backed by SKUs
+/// from several product editions (e.g. an x64 edition and an ARM64 edition),
+/// each carrying its own session; all are queried when listing downloads.
 #[derive(Clone)]
 pub struct Language {
     /// Localized language name shown to the user.
     pub display: String,
-    /// Opaque SKU identifier used to request the download links.
-    sku_id: String,
+    /// English language key (e.g. "French"), used for locale matching.
+    name: String,
+    /// SKUs across every product edition that offers this language.
+    skus: Vec<Sku>,
 }
 
 /// One concrete downloadable ISO (a specific architecture / variant).
@@ -65,20 +206,19 @@ pub struct DownloadOption {
     pub url: String,
 }
 
-/// The languages for one release, bound to the cookie-jar session that fetched
-/// them; the very same `Agent` must be reused to request download links.
+/// The languages for one release, bound to the cookie-jar sessions that
+/// fetched them.
 #[derive(Clone)]
 pub struct Catalog {
-    /// HTTP agent carrying the session cookies.
-    agent: ureq::Agent,
-    /// Anti-bot session GUID.
-    session_id: String,
+    /// One session per product edition that answered, referenced by `Sku`.
+    sessions: Vec<Session>,
     /// Available languages, sorted by display name.
     pub languages: Vec<Language>,
 }
 
-/// Fetch the list of languages available for a Windows product edition.
-pub fn fetch_languages(edition_id: u32) -> Result<Catalog> {
+/// Open and anti-bot-clear a fresh session, then return the parsed
+/// `getskuinformationbyproductedition` response for one product edition.
+fn open_session(edition_id: u32) -> Result<(Session, serde_json::Value)> {
     // A single agent with a cookie jar is reused for every request below.
     // Every call through it carries the catalog timeout; these are all small
     // JSON / page fetches.
@@ -117,32 +257,82 @@ pub fn fetch_languages(edition_id: u32) -> Result<Catalog> {
     )
     .context("requesting the Windows language list")?;
     check_errors(&json)?;
+    Ok((Session { agent, session_id }, json))
+}
 
-    let skus = json
-        .get("Skus")
-        .and_then(|v| v.as_array())
-        .filter(|s| !s.is_empty())
-        .context("Microsoft returned no languages; the API may have changed")?;
+/// Fetch and merge the languages available across a release's product
+/// editions. Each edition (e.g. x64 and ARM64) is queried in its own session;
+/// SKUs are grouped by language so that listing a language later pulls every
+/// architecture Microsoft offers for it.
+pub fn fetch_languages(edition_ids: &[u32]) -> Result<Catalog> {
+    let mut sessions = Vec::new();
+    // First-seen order is preserved here, then sorted by display name below.
+    let mut languages: Vec<Language> = Vec::new();
+    let mut last_err = None;
 
-    let mut languages = Vec::new();
-    for sku in skus {
-        let sku_id = match sku.get("Id") {
-            Some(serde_json::Value::String(s)) => s.clone(),
-            Some(other) => other.to_string(),
+    for &edition_id in edition_ids {
+        let (session, json) = match open_session(edition_id) {
+            Ok(pair) => pair,
+            // One edition failing (e.g. an ARM64 ID Microsoft retired, or a
+            // transient anti-bot rejection) must not sink the whole release:
+            // keep whatever the other editions returned.
+            Err(e) => {
+                last_err = Some(e);
+                continue;
+            }
+        };
+
+        let skus = match json
+            .get("Skus")
+            .and_then(|v| v.as_array())
+            .filter(|s| !s.is_empty())
+        {
+            Some(skus) => skus,
             None => continue,
         };
-        let display = sku
-            .get("LocalizedLanguage")
-            .or_else(|| sku.get("Language"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown")
-            .to_string();
-        languages.push(Language { display, sku_id });
+
+        let session_index = sessions.len();
+        for sku in skus {
+            let id = match sku.get("Id") {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(other) => other.to_string(),
+                None => continue,
+            };
+            let name = sku
+                .get("Language")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let display = sku
+                .get("LocalizedLanguage")
+                .or_else(|| sku.get("Language"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            let entry = Sku {
+                session: session_index,
+                id,
+            };
+            match languages.iter_mut().find(|l| l.name == name && !name.is_empty()) {
+                Some(lang) => lang.skus.push(entry),
+                None => languages.push(Language {
+                    display,
+                    name,
+                    skus: vec![entry],
+                }),
+            }
+        }
+        sessions.push(session);
+    }
+
+    if languages.is_empty() {
+        return Err(last_err.unwrap_or_else(|| {
+            anyhow::anyhow!("Microsoft returned no languages; the API may have changed")
+        }));
     }
     languages.sort_by(|a, b| a.display.cmp(&b.display));
     Ok(Catalog {
-        agent,
-        session_id,
+        sessions,
         languages,
     })
 }
@@ -153,51 +343,177 @@ impl Catalog {
         self.languages.iter().map(|l| l.display.clone()).collect()
     }
 
-    /// Fetch the concrete download options (architectures) for one language.
+    /// Index of the language that best matches the host system locale, or 0
+    /// when nothing matches. Used to pre-select the combo without committing
+    /// the user to it (a port of Fido's `Select-Language`).
+    pub fn default_language_index(&self) -> i32 {
+        let locale = system_locale();
+        self.languages
+            .iter()
+            .position(|l| language_matches(&locale, &l.name))
+            .unwrap_or(0) as i32
+    }
+
+    /// Fetch the concrete download options (architectures) for one language,
+    /// querying every product edition's SKU and merging the results.
     pub fn fetch_options(&self, language_index: usize) -> Result<Vec<DownloadOption>> {
         let language = self
             .languages
             .get(language_index)
             .context("no language selected")?;
 
-        let body = self
-            .agent
-            .get(format!(
-                "https://www.microsoft.com/software-download-connector/api/\
-                 GetProductDownloadLinksBySku?profile={PROFILE}&productEditionId=undefined\
-                 &SKU={}&friendlyFileName=undefined&Locale=en-US&sessionID={}",
-                language.sku_id, self.session_id
-            ))
-            .header("User-Agent", USER_AGENT)
-            // Microsoft's servers deny this request without a Referer.
-            .header("Referer", DOWNLOAD_PAGE)
-            .call()
-            .and_then(|mut r| r.body_mut().read_to_vec())
-            .context("requesting the Windows download links")?;
-        let json: serde_json::Value =
-            serde_json::from_slice(&body).context("parsing the download-links response")?;
-        check_errors(&json)?;
+        let mut out: Vec<DownloadOption> = Vec::new();
+        let mut last_err = None;
+        for sku in &language.skus {
+            let Some(session) = self.sessions.get(sku.session) else {
+                continue;
+            };
+            let body = session
+                .agent
+                .get(format!(
+                    "https://www.microsoft.com/software-download-connector/api/\
+                     GetProductDownloadLinksBySku?profile={PROFILE}&productEditionId=undefined\
+                     &SKU={}&friendlyFileName=undefined&Locale=en-US&sessionID={}",
+                    sku.id, session.session_id
+                ))
+                .header("User-Agent", USER_AGENT)
+                // Microsoft's servers deny this request without a Referer.
+                .header("Referer", DOWNLOAD_PAGE)
+                .call()
+                .and_then(|mut r| r.body_mut().read_to_vec())
+                .context("requesting the Windows download links");
+            let body = match body {
+                Ok(b) => b,
+                Err(e) => {
+                    last_err = Some(e);
+                    continue;
+                }
+            };
+            let json: serde_json::Value =
+                serde_json::from_slice(&body).context("parsing the download-links response")?;
+            if let Err(e) = check_errors(&json) {
+                last_err = Some(e);
+                continue;
+            }
 
-        let options = json
-            .get("ProductDownloadOptions")
-            .and_then(|v| v.as_array())
-            .filter(|o| !o.is_empty())
-            .context("Microsoft returned no download options")?;
-
-        let mut out = Vec::new();
-        for option in options {
-            if let Some(url) = option.get("Uri").and_then(|u| u.as_str()) {
-                out.push(DownloadOption {
-                    label: file_name_from_url(url),
-                    url: url.to_string(),
-                });
+            let Some(options) = json.get("ProductDownloadOptions").and_then(|v| v.as_array())
+            else {
+                continue;
+            };
+            for option in options {
+                if let Some(url) = option.get("Uri").and_then(|u| u.as_str()) {
+                    // Distinct product editions can echo the same arch; keep
+                    // the listing unique by URL.
+                    if out.iter().any(|o| o.url == url) {
+                        continue;
+                    }
+                    out.push(DownloadOption {
+                        label: file_name_from_url(url),
+                        url: url.to_string(),
+                    });
+                }
             }
         }
         if out.is_empty() {
-            bail!("no ISO links were present in Microsoft's response");
+            return Err(last_err
+                .unwrap_or_else(|| anyhow::anyhow!("Microsoft returned no download options")));
         }
         Ok(out)
     }
+}
+
+/// The host UI locale as a lowercased BCP-47-ish tag (e.g. `fr-ca`), derived
+/// from the usual environment variables. Empty when none are set.
+fn system_locale() -> String {
+    let raw = ["LC_ALL", "LC_MESSAGES", "LANG"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
+        .unwrap_or_default();
+    // Strip the ".UTF-8" / "@modifier" suffixes and normalise the separator.
+    raw.split(['.', '@'])
+        .next()
+        .unwrap_or("")
+        .replace('_', "-")
+        .to_lowercase()
+}
+
+/// Whether the Microsoft English language name `name` is the best fit for the
+/// host `locale` (both already lowercased; `locale` uses `-` separators). A
+/// port of Fido's `Select-Language`, trimmed to the substring tests that
+/// matter and with Fido's Bulgarian copy-paste bug fixed.
+fn language_matches(locale: &str, name: &str) -> bool {
+    let lang = locale.split('-').next().unwrap_or(locale);
+    let has = |s: &str| name.contains(s);
+    // Region-specific variants first, so they win over the bare-language rules.
+    match locale {
+        "en-us" => return name == "english",
+        "pt-br" => return has("brazil"),
+        "pt-pt" => return name == "portuguese",
+        "fr-ca" => return has("french") && has("canad"),
+        "zh-cn" => return has("chinese") && has("simp"),
+        "zh-tw" => return has("chinese") && has("trad"),
+        "es-es" => return name == "spanish",
+        _ => {}
+    }
+    match lang {
+        "ar" => has("arabic"),
+        "bg" => has("bulgar"),
+        "zh" => has("chinese"),
+        "hr" => has("croat"),
+        "cs" | "cz" => has("czech"),
+        "da" => has("danish"),
+        "nl" => has("dutch"),
+        "en" => has("english") && (has("inter") || has("ingdom")),
+        "et" => has("eston"),
+        "fi" => has("finn"),
+        "fr" => name == "french",
+        "de" => has("german"),
+        "el" => has("greek"),
+        "he" => has("hebrew"),
+        "hu" => has("hungar"),
+        "id" => has("indones"),
+        "it" => has("italia"),
+        "ja" => has("japan"),
+        "ko" => has("korea"),
+        "lv" => has("latvia"),
+        "lt" => has("lithuania"),
+        "ms" => has("malay"),
+        "nb" | "nn" | "no" => has("norw"),
+        "fa" => has("persia"),
+        "pl" => has("polish"),
+        "pt" => name == "portuguese",
+        "ro" => has("romania"),
+        "ru" => has("russia"),
+        "sr" => has("serbia"),
+        "sk" => has("slovak"),
+        "sl" => has("slovenia"),
+        "es" => has("spanish"),
+        "sv" => has("swed"),
+        "th" => has("thai"),
+        "tr" => has("turk"),
+        "uk" => has("ukrain"),
+        "vi" => has("vietnam"),
+        _ => false,
+    }
+}
+
+/// Probe the size of a download via a HEAD request, so the UI can show it and
+/// guard against a destination that lacks the room. `None` when the server
+/// withholds `Content-Length` (the streaming download still works).
+pub fn content_length(url: &str) -> Option<u64> {
+    let resp = ureq::head(url)
+        .config()
+        .timeout_global(Some(API_TIMEOUT))
+        .build()
+        .header("User-Agent", USER_AGENT)
+        .call()
+        .ok()?;
+    resp.headers()
+        .get("content-length")?
+        .to_str()
+        .ok()?
+        .parse()
+        .ok()
 }
 
 /// Download `url` into `dest_dir`, returning `(saved path, every digest)`.
@@ -558,6 +874,28 @@ mod tests {
             unique_dest(dir.path(), "Win11.iso"),
             dir.path().join("Win11 (2).iso")
         );
+    }
+
+    #[test]
+    fn language_matches_handles_regions_and_bare_languages() {
+        // Region-specific variants beat the bare-language rules.
+        assert!(language_matches("pt-br", "portuguese (brazil)"));
+        assert!(!language_matches("pt-br", "portuguese"));
+        assert!(language_matches("pt-pt", "portuguese"));
+        assert!(language_matches("fr-ca", "french canadian"));
+        assert!(!language_matches("fr-ca", "french"));
+        assert!(language_matches("zh-cn", "chinese (simplified)"));
+        assert!(language_matches("zh-tw", "chinese (traditional)"));
+        // Bare language prefixes.
+        assert!(language_matches("fr-fr", "french"));
+        assert!(language_matches("de-de", "german"));
+        assert!(language_matches("en-us", "english"));
+        assert!(language_matches("en-gb", "english international"));
+        assert!(!language_matches("en-us", "english international"));
+        // Fido's Bulgarian copy-paste bug is fixed here.
+        assert!(language_matches("bg-bg", "bulgarian"));
+        // No match falls through to false (caller defaults to index 0).
+        assert!(!language_matches("xx-yy", "klingon"));
     }
 
     #[test]

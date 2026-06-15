@@ -93,8 +93,11 @@ pub struct AppControllerRust {
     /// index actually resolves to. Built once from `deps` detection at
     /// startup; never changes during a session.
     pub(crate) available_filesystem_kinds: Vec<FileSystem>,
+    pub(crate) win_releases: QString,
     pub(crate) win_languages: QString,
+    pub(crate) win_language_default: i32,
     pub(crate) win_options: QString,
+    pub(crate) uefi_shells: QString,
     pub(crate) qemu_available: bool,
     pub(crate) qemu_kvm: bool,
     pub(crate) qemu_uefi: bool,
@@ -110,6 +113,8 @@ pub struct AppControllerRust {
     pub win_catalog: Option<crate::windisco::Catalog>,
     /// Download options fetched for the selected language.
     pub win_option_list: Vec<crate::windisco::DownloadOption>,
+    /// The flattened UEFI Shell download list, parallel to `uefi_shells`.
+    pub uefi_shell_list: Vec<crate::windisco::ShellOption>,
     /// Present while a job runs; cleared by the runner when it finishes.
     pub job: Option<JobHandle>,
     /// Bumped whenever the loaded ISO changes (or hashing restarts) so an
@@ -137,6 +142,12 @@ impl Default for AppControllerRust {
             .collect::<Vec<_>>()
             .join("\n");
         let qemu_caps = crate::qemu::detect();
+        let uefi_shell_list = crate::windisco::uefi_shell_options();
+        let uefi_shells = uefi_shell_list
+            .iter()
+            .map(|o| o.label.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
         Self {
             iso_path: QString::default(),
             iso_summary: QString::from("No image selected"),
@@ -221,8 +232,17 @@ impl Default for AppControllerRust {
             inspect_text: QString::default(),
             available_filesystems: QString::from(&fs_labels),
             available_filesystem_kinds: fs_kinds,
+            win_releases: QString::from(
+                &crate::windisco::RELEASES
+                    .iter()
+                    .map(|r| r.name)
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
             win_languages: QString::default(),
+            win_language_default: 0,
             win_options: QString::default(),
+            uefi_shells: QString::from(&uefi_shells),
             qemu_available: qemu_caps.qemu,
             qemu_kvm: qemu_caps.kvm,
             qemu_uefi: qemu_caps.uefi,
@@ -234,6 +254,7 @@ impl Default for AppControllerRust {
             iso_report: None,
             win_catalog: None,
             win_option_list: Vec::new(),
+            uefi_shell_list,
             job: None,
             hash_generation: 0,
             full_log: String::new(),

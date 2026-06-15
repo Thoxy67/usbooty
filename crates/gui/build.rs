@@ -55,6 +55,7 @@ fn main() {
                 "qml/dialogs/AboutDialog.qml",
                 "qml/dialogs/EraseConfirmDialog.qml",
                 "qml/dialogs/WindowsDownloadDialog.qml",
+                "qml/dialogs/UefiShellDownloadDialog.qml",
             ]),
     )
         .file("src/bridge/mod.rs")

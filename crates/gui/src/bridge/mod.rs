@@ -198,9 +198,15 @@ pub mod qobject {
         // actually installed on the host; the QML combo binds to this so
         // a user only sees variants that will succeed.
         #[qproperty(QString, available_filesystems)]
-        // Windows-download dialog: newline-separated language / option lists.
+        // Windows-download dialog: newline-separated release / language /
+        // option lists, plus the locale-matched language to pre-select.
+        #[qproperty(QString, win_releases)]
         #[qproperty(QString, win_languages)]
+        #[qproperty(i32, win_language_default)]
         #[qproperty(QString, win_options)]
+        // UEFI Shell download dialog: newline-separated list of selectable
+        // builds (each a Release/Debug variant), owned by the Rust side.
+        #[qproperty(QString, uefi_shells)]
         // QEMU boot-test capabilities, probed once at startup: whether
         // qemu-system-x86_64 is installed, whether /dev/kvm offers hardware
         // acceleration, and whether OVMF firmware is present for UEFI boot.
@@ -249,6 +255,9 @@ pub mod qobject {
         /// Download a Windows ISO option (by index) and select it as the source.
         #[qinvokable]
         fn win_download(self: Pin<&mut AppController>, option_index: i32);
+        /// Download a UEFI Shell ISO (by index) and select it as the source.
+        #[qinvokable]
+        fn uefi_download(self: Pin<&mut AppController>, option_index: i32);
         /// Open Microsoft's official download page in the system browser.
         #[qinvokable]
         fn open_microsoft_page(self: &AppController, version_index: i32);

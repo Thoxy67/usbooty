@@ -15,10 +15,10 @@ impl qobject::AppController {
         if *self.busy() {
             return;
         }
-        let Some(&(_, edition_id)) = crate::windisco::RELEASES.get(version_index.max(0) as usize)
-        else {
+        let Some(release) = crate::windisco::RELEASES.get(version_index.max(0) as usize) else {
             return;
         };
+        let edition_ids = release.edition_ids;
         self.as_mut().set_busy(true);
         self.as_mut().set_win_languages(QString::default());
         self.as_mut().set_win_options(QString::default());
@@ -26,7 +26,7 @@ impl qobject::AppController {
             .set_status(QString::from("Contacting Microsoft…"));
 
         let qt = self.qt_thread();
-        std::thread::spawn(move || crate::runner::win_fetch_languages(qt, edition_id));
+        std::thread::spawn(move || crate::runner::win_fetch_languages(qt, edition_ids));
     }
 
     /// Fetch the download options for a previously-listed language.
@@ -103,7 +103,32 @@ impl qobject::AppController {
         let handle = JobHandle::new();
         let abort = handle.cancel.clone();
         let qt = self.qt_thread();
-        std::thread::spawn(move || crate::runner::download_windows_url(qt, url, abort));
+        std::thread::spawn(move || {
+            crate::runner::download_windows_url(qt, url, "Windows ISO", abort)
+        });
+        self.as_mut().rust_mut().job = Some(handle);
+    }
+
+    /// Download a UEFI Shell ISO (by index into the [`crate::windisco`]
+    /// shell-options list) and select it as the source image. These are plain
+    /// GitHub release assets, so unlike the Windows path there is no catalog
+    /// to fetch first.
+    pub fn uefi_download(mut self: core::pin::Pin<&mut Self>, option_index: i32) {
+        if *self.busy() || option_index < 0 {
+            return;
+        }
+        let Some(option) = self.rust().uefi_shell_list.get(option_index as usize) else {
+            return;
+        };
+        let url = option.url.clone();
+        self.as_mut().init_job_ui("Downloading UEFI Shell ISO…");
+
+        let handle = JobHandle::new();
+        let abort = handle.cancel.clone();
+        let qt = self.qt_thread();
+        std::thread::spawn(move || {
+            crate::runner::download_windows_url(qt, url, "UEFI Shell ISO", abort)
+        });
         self.as_mut().rust_mut().job = Some(handle);
     }
 
@@ -111,7 +136,10 @@ impl qobject::AppController {
     /// reliable fallback when Microsoft's anti-bot system blocks the in-app
     /// query (common on VPNs and some ISPs).
     pub fn open_microsoft_page(&self, version_index: i32) {
-        let url = if version_index == 1 {
+        let win10 = crate::windisco::RELEASES
+            .get(version_index.max(0) as usize)
+            .is_some_and(|r| r.win10);
+        let url = if win10 {
             "https://www.microsoft.com/software-download/windows10"
         } else {
             "https://www.microsoft.com/software-download/windows11"
